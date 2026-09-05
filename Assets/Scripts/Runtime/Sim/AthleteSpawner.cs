@@ -39,6 +39,9 @@ namespace PoDecath.Sim
         [Tooltip("Baked by PoDecath/Bake Audio Clips. Gives every athlete its own footsteps; leave it empty "
                + "for a field that runs in silence.")]
         public AudioBank audioBank;
+        [Tooltip("The get-up policy (athlete_getup.onnx). Every RL athlete gets it as a second, pre-loaded "
+               + "worker; without it a fall is a DNF exactly as it always was.")]
+        public Unity.InferenceEngine.ModelAsset getUpModel;
         [Tooltip("Materials for the trails, blob shadows and dust. Without it athletes get no presentation.")]
         public VfxBank vfxBank;
         [Tooltip("Ribbon behind each athlete in its own colour; the only thing that tells a field of "
@@ -78,6 +81,7 @@ namespace PoDecath.Sim
                 }
                 AddFootsteps(a);
                 AddPresentation(a, number - 1);
+                AddRecovery(a);
                 if (dash != null) dash.Register(a);
             }
             if (cameraRig != null && dash != null && dash.Reference != null)
@@ -172,6 +176,27 @@ namespace PoDecath.Sim
             }
         }
 
+        /// <summary>
+        /// Gives one physics athlete the ability to get up off the deck.
+        ///
+        /// Attached to the same object as the <see cref="PolicyRunner"/>, because that is what holds the
+        /// second worker. The event is wired to the give-up event here rather than polling for it, so a
+        /// recovery that fails becomes a DNF on the frame it fails.
+        /// </summary>
+        void AddRecovery(DashEvent.Athlete a)
+        {
+            if (getUpModel == null || !a.IsRL || a.runner == null) return;
+            var recovery = a.runner.gameObject.AddComponent<RecoveryController>();
+            recovery.rig = a.rig;
+            recovery.runner = a.runner;
+            recovery.Configure(a.spawnHeight);
+            a.recovery = recovery;
+
+            DashEvent.Athlete captured = a;
+            DashEvent race = dash;
+            if (race != null) recovery.GaveUp += _ => race.OnRecoveryGaveUp(captured);
+        }
+
         DashEvent.Athlete SpawnRL(AthleteDefinition def, int layer, PolicyJson pj)
         {
             TextAsset xml = def.mjcfOverride != null ? def.mjcfOverride : defaultMjcf;
@@ -234,6 +259,9 @@ namespace PoDecath.Sim
             }
             if (opt.debugVisuals) TintPrimitives(res.root, def.Tint);
 
+            // Set before Initialize: that is where both workers are built, and building the get-up worker
+            // up front is the whole point — the frame an athlete hits the deck must not stall.
+            runner.recoveryModel = getUpModel;
             runner.Initialize(cfg, def.model);
             if (def.model == null) Debug.LogWarning($"[AthleteSpawner] '{def.displayName}' has no ONNX model; it will hold its default pose.", this);
 

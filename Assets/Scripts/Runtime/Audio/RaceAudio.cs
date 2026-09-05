@@ -71,7 +71,7 @@ namespace PoDecath.Audio
         LongJumpEvent.Stage _lastStage;
         DashEvent.Athlete _lastFeatured;
         int _lastAttempt = -1;
-        int _knownFinished, _knownFallen, _lastBeep = -1;
+        int _knownFinished, _knownFallen, _knownRecoveries, _lastBeep = -1;
         bool _bellRung;
         float _level;
         float _nextSample;
@@ -135,7 +135,7 @@ namespace PoDecath.Audio
             if (race.Attempt != _lastAttempt)
             {
                 _lastAttempt = race.Attempt;
-                _knownFinished = _knownFallen = 0;
+                _knownFinished = _knownFallen = _knownRecoveries = 0;
                 _bellRung = false;
             }
 
@@ -288,12 +288,20 @@ namespace PoDecath.Audio
                 Crowd(bank != null ? bank.crowdApplause : bank != null ? bank.crowdSwell : null, 1f, 0.97f);
             _lastPhase = phase;
 
-            int finished = 0, fallen = 0;
-            DashEvent.Athlete lastHome = null, lastDown = null;
+            int finished = 0, fallen = 0, recovered = 0;
             foreach (DashEvent.Athlete a in race.Athletes)
             {
-                if (a.finished) { finished++; lastHome = a; }
-                if (a.fell) { fallen++; lastDown = a; }
+                if (a.finished) finished++;
+                if (a.fell) fallen++;
+                recovered += a.recoveries;
+            }
+            // A runner getting back onto its feet is the one thing in this event a crowd reliably makes a
+            // noise about, and it is the only cue here that is applause rather than a cheer: it is
+            // appreciation for still being in the race, not celebration of winning it.
+            if (recovered > _knownRecoveries)
+            {
+                Crowd(bank != null ? bank.crowdApplause : bank.crowdSwell, 0.7f, Random.Range(0.97f, 1.05f));
+                _knownRecoveries = recovered;
             }
             // The first one home gets the loudest cheer; the rest of the field gets progressively less.
             if (finished > _knownFinished)

@@ -263,6 +263,7 @@ namespace PoDecath.UI
                 SetText(row.name, a.name, a.color);
                 SetText(row.gap, Gap(a, leader, i));
                 row.gap.style.color = a.fell ? new Color(1f, 0.5f, 0.42f)
+                                    : a.recovering ? new Color(1f, 0.78f, 0.33f)   // amber: in trouble, not out
                                     : a.finished ? Color.white
                                     : new Color(0.72f, 0.76f, 0.82f);
                 row.element.EnableInClassList("order-row--lead", i == 0);
@@ -313,6 +314,10 @@ namespace PoDecath.UI
         string Gap(DashEvent.Athlete a, DashEvent.Athlete leader, int index)
         {
             if (Jump != null) return a.finished ? $"{a.distance:F2} m" : "—";
+            // Down but not out. This is the single most interesting line the overlay can carry, so it wins
+            // over the gap: a runner on the deck getting back up is what everyone in the stadium is looking
+            // at, and a row that just shows a speed of 0.2 m/s does not say that.
+            if (a.recovering) return "DOWN";
             if (a.fell) return "DNF";
             if (a.finished) return index == 0 ? Fmt(a.time) : $"+{a.time - leader.time:F2}";
             if (leader == null || a == leader) return race.Current == DashEvent.Phase.Running ? $"{a.speed:F1} m/s" : "";
@@ -352,9 +357,14 @@ namespace PoDecath.UI
 
             int place = order.IndexOf(a) + 1;
             string where = place > 0 ? Ordinal(place) : "";
-            if (a.fell) SetText(_lowerDetail, $"{where}  ·  down at {a.fellAt:F0} m");
+            if (a.recovering) SetText(_lowerDetail, $"{where}  ·  down at {a.distance:F0} m  ·  getting up");
+            else if (a.fell) SetText(_lowerDetail, $"{where}  ·  down at {a.fellAt:F0} m");
             else if (a.finished) SetText(_lowerDetail, $"{where}  ·  {a.time:F2} s");
-            else SetText(_lowerDetail, $"{where}  ·  {a.speed:F1} m/s  ·  {a.distance:F0} / {race.raceDistance:F0} m");
+            else
+            {
+                string ups = a.recoveries > 0 ? $"  ·  {a.recoveries} up" : "";
+                SetText(_lowerDetail, $"{where}  ·  {a.speed:F1} m/s  ·  {a.distance:F0} / {race.raceDistance:F0} m{ups}");
+            }
         }
 
         // ---------------------------------------------------------------- countdown

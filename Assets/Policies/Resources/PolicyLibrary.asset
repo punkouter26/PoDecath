@@ -14,6 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Sim.PolicyLibrary
   defaultConfig: {fileID: 11400000, guid: 4106a2f92c9597b4d896132b8cd14629, type: 2}
   entries:
+  - displayName: athlete_getup
+    model: {fileID: 5022602860645237092, guid: aee7d2be5e6a36b45aa7c4d0dceaddc8, type: 3}
+    config: {fileID: 11400000, guid: 4106a2f92c9597b4d896132b8cd14629, type: 2}
   - displayName: athlete_isaac
     model: {fileID: 5022602860645237092, guid: 4428ceb6a6ee9be428b036dd09311b1c, type: 3}
     config: {fileID: 11400000, guid: 4106a2f92c9597b4d896132b8cd14629, type: 2}

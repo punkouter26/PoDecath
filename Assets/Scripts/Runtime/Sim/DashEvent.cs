@@ -28,6 +28,8 @@ namespace PoDecath.Sim
             public VelocityCommandSource command;
             public HeuristicRunner heuristic;
             public TrackFollower follower;
+            [Tooltip("Set when a get-up policy was loaded. Without one a fall is a DNF, as it always was.")]
+            public RecoveryController recovery;
             public float spawnHeight = 0.95f;
             public int lane;
             /// <summary>Unique 1-based suffix shown in the results, so eight copies of one policy stay tellable apart.</summary>
@@ -42,6 +44,10 @@ namespace PoDecath.Sim
             [NonSerialized] public bool finished;
             [NonSerialized] public bool fell;
             [NonSerialized] public float fellAt;
+            /// <summary>Down and trying to get back up. Still racing: not finished, not a DNF.</summary>
+            [NonSerialized] public bool recovering;
+            /// <summary>How many times it has picked itself up this attempt.</summary>
+            [NonSerialized] public int recoveries;
             // Balance sampling (RL only, one sample per physics step while running).
             [NonSerialized] public float minUpright;
             [NonSerialized] public float minHeightFrac;
@@ -218,7 +224,8 @@ namespace PoDecath.Sim
         {
             a.time = 0f; a.distance = 0f; a.speed = 0f; a.finished = false; a.fell = false; a.fellAt = 0f;
             a.minUpright = 1f; a.minHeightFrac = 1f; a.uprightSum = 0f; a.uprightSamples = 0;
-            a.stopping = false;
+            a.stopping = false; a.recovering = false; a.recoveries = 0;
+            if (a.recovery != null) a.recovery.ResetForAttempt();
             if (a.follower != null) a.follower.enabled = true;
             if (a.IsRL && a.rig != null && a.rig.root != null) a.rig.root.immovable = false;
             Vector3 p = SpawnPosition(a);
@@ -300,8 +307,15 @@ namespace PoDecath.Sim
         }
 
         /// <summary>
-        /// Samples uprightness and height for one physics athlete and reports whether it has gone down.
-        /// A faller stops being driven, because the get-up policy is still a placeholder.
+        /// Samples uprightness and height for one physics athlete and decides what a fall means for it.
+        ///
+        /// With a get-up policy loaded, going down is no longer the end of a race: control passes to
+        /// <see cref="RecoveryController"/>, the athlete stays in the running order, and it is only booked
+        /// as a DNF if the recovery gives up. Without one — no <c>athlete_getup.onnx</c> in
+        /// <c>Assets/Policies</c>, or the athlete has already used its recoveries — the old behaviour is
+        /// exactly what happens, which is what keeps this safe to ship before the policy is any good.
+        ///
+        /// Returns true when the athlete should stop being updated as a racer this frame.
         /// </summary>
         protected bool DetectFall(Athlete a, Vector3 pos)
         {
@@ -311,10 +325,40 @@ namespace PoDecath.Sim
             a.minUpright = Mathf.Min(a.minUpright, upright);
             a.minHeightFrac = Mathf.Min(a.minHeightFrac, heightFrac);
             a.uprightSum += upright; a.uprightSamples++;
+
+            // Already up and running again: the recovery controller hands the body back itself.
+            if (a.recovery != null && a.recovery.Busy)
+            {
+                a.recovering = true;
+                a.recoveries = a.recovery.Recoveries;
+                return false;   // still in the race, still worth measuring
+            }
+            a.recovering = false;
+
             if (upright >= fallUprightDot && heightFrac >= fallHeightFraction) return false;
+
+            if (a.recovery != null && a.recovery.TryRecover())
+            {
+                a.recovering = true;
+                return false;
+            }
+
             a.fell = true; a.fellAt = a.distance;
-            if (a.runner != null) a.runner.enabled = false;   // placeholder: get-up policy not trained yet
+            if (a.runner != null) a.runner.enabled = false;
             return true;
+        }
+
+        /// <summary>
+        /// Books a DNF for an athlete whose recovery gave up. Wired by whatever built the controller, so the
+        /// event does not have to poll for it.
+        /// </summary>
+        public void OnRecoveryGaveUp(Athlete a)
+        {
+            if (a == null || a.finished || a.fell) return;
+            a.recovering = false;
+            a.fell = true;
+            a.fellAt = a.distance;
+            if (a.runner != null) a.runner.enabled = false;
         }
 
         /// <summary>Result line the live HUD shows once a whole field has been ranked.</summary>
@@ -396,7 +440,9 @@ namespace PoDecath.Sim
 
         /// <summary>Right-hand column of the results card.</summary>
         protected virtual string StatusFor(Athlete a) =>
-            a.finished ? $"{a.time:F2} s" : (a.fell ? $"DNF  fell at {a.distance:F0} m" : $"DNF  {a.distance:F0} m");
+            a.finished
+                ? (a.recoveries > 0 ? $"{a.time:F2} s  (+{a.recoveries} up)" : $"{a.time:F2} s")
+                : (a.fell ? $"DNF  fell at {a.distance:F0} m" : $"DNF  {a.distance:F0} m");
 
         /// <summary>One athlete's slice of the console summary line.</summary>
         protected virtual string SummaryFor(Athlete a)

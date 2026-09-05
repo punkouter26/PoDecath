@@ -19,6 +19,10 @@ namespace PoDecath.Sim
         public CreatureRig rig;
         public PolicyConfig config;
         public ModelAsset model;
+        [Tooltip("Optional second policy for getting up off the ground (athlete_getup.onnx). Loaded "
+               + "alongside the main one and held ready, so switching to it costs nothing at the moment a "
+               + "runner goes down — which is the one moment in a race that must not hitch.")]
+        public ModelAsset recoveryModel;
         public BackendType backend = BackendType.CPU;
         public VelocityCommandSource commandSource;
         [Tooltip("Layer used by the creature so height-scan raycasts ignore it.")]
@@ -26,6 +30,8 @@ namespace PoDecath.Sim
 
         Model _model;
         Worker _worker;
+        Model _recovery;
+        Worker _recoveryWorker;
         Tensor<float> _input;
         ObservationBuilder _obsBuilder;
 
@@ -42,6 +48,23 @@ namespace PoDecath.Sim
 
         public bool IsReady => _ready;
         public bool HasModel => _worker != null;
+
+        /// <summary>Whether a get-up policy was loaded and can be switched to.</summary>
+        public bool HasRecoveryModel => _recoveryWorker != null;
+
+        /// <summary>
+        /// Drives the get-up policy instead of the running one.
+        ///
+        /// Both share the observation contract exactly — the get-up task was trained as a subclass of the
+        /// run-to-target environment for precisely this reason — so the switch is a change of which worker
+        /// the same observation vector is handed to. The only difference on this side is the command: the
+        /// get-up policy was trained with it zeroed, because a body on the deck has nowhere to be going.
+        /// </summary>
+        public bool UseRecovery { get; set; }
+
+        /// <summary>Which policy is actually driving right now, for the HUD and the telemetry overlay.</summary>
+        public string ActiveModelName =>
+            UseRecovery && recoveryModel != null ? recoveryModel.name : ModelName;
         public int ObservationSize => _obs.Length;
         public int ActionSize => _action.Length;
         public float[] LastObservation => _obs;
@@ -88,6 +111,27 @@ namespace PoDecath.Sim
                 }
             }
 
+            // The get-up policy is loaded here rather than when somebody falls. Building a Worker takes long
+            // enough to be a visible hitch, and the frame an athlete hits the deck is the frame the
+            // broadcast director cuts to them — the worst possible moment to stall.
+            if (recoveryModel != null && _input != null)
+            {
+                try
+                {
+                    _recovery = ModelLoader.Load(recoveryModel);
+                    _recoveryWorker = new Worker(_recovery, backend);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[PolicyRunner] Failed to load recovery policy '{recoveryModel.name}': "
+                                   + $"{e.Message}. Falls will end a run, as before.", this);
+                    _recoveryWorker?.Dispose();
+                    _recoveryWorker = null;
+                    _recovery = null;
+                }
+            }
+            UseRecovery = false;
+
             for (int i = 0; i < actDim; i++) _targets[i] = rig.DefaultPosition(i);
             rig.ApplyTargets(_targets);
             _stepCounter = 0;
@@ -132,8 +176,11 @@ namespace PoDecath.Sim
         {
             rig.ReadJointState(_jointPos, _jointVel);
 
+            // A recovering athlete gets a zero command, which is exactly what the get-up policy was trained
+            // against. Ticking the command source anyway would leave it steering toward a finish line the
+            // body cannot currently walk to, and the first thing it did on standing up would be to lurch.
             Vector3 cmd = Vector3.zero;
-            if (commandSource != null)
+            if (commandSource != null && !UseRecovery)
             {
                 commandSource.Tick(rig);
                 cmd = commandSource.Command;
@@ -142,11 +189,12 @@ namespace PoDecath.Sim
             _obsBuilder.Fill(_obs, rig, cmd, _lastAction, _jointPos, _jointVel);
 
             int n = _action.Length;
-            if (_worker != null)
+            Worker worker = UseRecovery && _recoveryWorker != null ? _recoveryWorker : _worker;
+            if (worker != null)
             {
                 _input.Upload(_obs);
-                _worker.Schedule(_input);
-                var output = _worker.PeekOutput() as Tensor<float>;
+                worker.Schedule(_input);
+                var output = worker.PeekOutput() as Tensor<float>;
                 if (output != null)
                 {
                     output.CompleteAllPendingOperations();
@@ -190,9 +238,12 @@ namespace PoDecath.Sim
         {
             _input?.Dispose();
             _worker?.Dispose();
+            _recoveryWorker?.Dispose();
             _input = null;
             _worker = null;
+            _recoveryWorker = null;
             _model = null;
+            _recovery = null;
         }
 
         void OnDestroy() => DisposeWorker();

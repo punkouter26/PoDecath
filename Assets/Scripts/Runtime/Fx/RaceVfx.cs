@@ -32,6 +32,7 @@ namespace PoDecath.Fx
         int _lastAttempt = -1;
         readonly HashSet<DashEvent.Athlete> _fallen = new HashSet<DashEvent.Athlete>();
         readonly HashSet<DashEvent.Athlete> _finished = new HashSet<DashEvent.Athlete>();
+        readonly Dictionary<DashEvent.Athlete, int> _recoveries = new Dictionary<DashEvent.Athlete, int>();
         readonly List<Hurdle> _hurdles = new List<Hurdle>();
 
         LongJumpEvent Jump => race as LongJumpEvent;
@@ -67,6 +68,7 @@ namespace PoDecath.Fx
                 _lastAttempt = race.Attempt;
                 _fallen.Clear();
                 _finished.Clear();
+                _recoveries.Clear();
                 if (_hurdles.Count == 0) HookHurdles();   // a set built late still gets its sparks
             }
 
@@ -96,6 +98,13 @@ namespace PoDecath.Fx
                 {
                     float force = Mathf.Clamp01(a.speed / Mathf.Max(1f, fallSpeedReference));
                     VfxLibrary.Play(VfxLibrary.Effect.FallDust, Ground(a), Vector3.up, 0.5f + force);
+                }
+                // Back on its feet: a puff off the deck as it pushes up, which is the visual half of the
+                // applause the mix plays on the same event.
+                if (a.recoveries > _recoveries.GetValueOrDefault(a))
+                {
+                    _recoveries[a] = a.recoveries;
+                    VfxLibrary.Play(VfxLibrary.Effect.FallDust, Ground(a), Vector3.up, 0.6f);
                 }
                 if (a.finished && _finished.Add(a))
                 {

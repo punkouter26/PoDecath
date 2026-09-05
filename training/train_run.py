@@ -22,6 +22,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 sys.path.insert(0, os.path.dirname(__file__))
+from envs.get_up import GetUpEnv  # noqa: E402
 from envs.run_to_target import RunToTargetEnv  # noqa: E402
 from envs.run_track import RunTrackEnv  # noqa: E402
 from ppo import PPO, PPOConfig, export_onnx  # noqa: E402
@@ -30,6 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TASKS = {  # name -> (env class, exported ONNX file name in Assets/Policies)
     "target": ("run_to_target", RunToTargetEnv, "athlete_run.onnx"),
     "track": ("run_track", RunTrackEnv, "athlete_track.onnx"),
+    "getup": ("get_up", GetUpEnv, "athlete_getup.onnx"),
 }
 TASK = "run_to_target"
 
@@ -66,12 +68,17 @@ def main() -> None:
     ap.add_argument("--resume", default="")
     ap.add_argument("--save-every", type=int, default=50)
     ap.add_argument("--tb-port", type=int, default=6006)
+    ap.add_argument("--lr", type=float, default=1e-3, help="initial PPO learning rate")
+    ap.add_argument("--desired-kl", type=float, default=0.01,
+                    help="KL the adaptive learning rate steers toward. Raise it for a task whose reward is "
+                         "noisy enough that the controller otherwise pins the rate at its floor.")
     ap.add_argument("--keep-old-runs", action="store_true")
     ap.add_argument("--no-tensorboard", action="store_true")
     ap.add_argument("--unity-policies", default=os.path.join(HERE, "..", "Assets", "Policies"))
     ap.add_argument("--run-name", default="")
     ap.add_argument("--task", choices=sorted(TASKS.keys()), default="target",
-                    help="target = run to random targets; track = laps of the rooftop loop with a carrot target")
+                    help="target = run to random targets; track = laps of the rooftop loop with a carrot "
+                         "target; getup = recover to standing from a random fallen pose")
     args = ap.parse_args()
 
     global TASK
@@ -88,7 +95,7 @@ def main() -> None:
         launch_tensorboard(tb_root, args.tb_port)
 
     env = env_cls(args.xml, args.num_envs, device=device, seed=args.seed, target_speed=args.target_speed)
-    cfg = PPOConfig(steps_per_env=args.steps)
+    cfg = PPOConfig(steps_per_env=args.steps, lr=args.lr, desired_kl=args.desired_kl)
     ppo = PPO(env.obs_dim, env.A, args.num_envs, device, cfg)
     ck_dir = os.path.join(HERE, "checkpoints", TASK)
     os.makedirs(ck_dir, exist_ok=True)
@@ -129,8 +136,14 @@ def main() -> None:
         writer.add_scalar("perf/fps", fps, it)
         if it % 10 == 0:
             el = time.time() - t_start
+            # The get-up task has nothing to run toward, so it prints what it is actually doing instead.
+            middle = (f"| stood {s.get('stood_frac', 0):4.2f} | up {s.get('stand_frac', 0):4.2f} "
+                      f"| hold {s.get('hold_frac', 0):4.2f}"
+                      if TASK == "get_up" else
+                      f"| fall {s.get('fall_rate', 0):4.2f} | v {s.get('v_toward', 0):5.2f} "
+                      f"| reach {s.get('reach_frac', 0):.3f}")
             print(f"it {it:5d} | {fps:8.0f} sps | ret {s.get('ep_return', 0):7.2f} | len {s.get('ep_len_s', 0):5.1f}s "
-                  f"| fall {s.get('fall_rate', 0):4.2f} | v {s.get('v_toward', 0):5.2f} | reach {s.get('reach_frac', 0):.3f} "
+                  f"{middle} "
                   f"| kl {stats['kl']:.4f} lr {stats['lr']:.1e} std {stats['action_std']:.2f} | {el/60:5.1f} min", flush=True)
         if (it + 1) % args.save_every == 0 or it + 1 == args.iters:
             ck = os.path.join(ck_dir, f"model_{it + 1:05d}.pt")

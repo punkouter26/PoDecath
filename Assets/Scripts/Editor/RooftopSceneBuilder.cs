@@ -35,6 +35,7 @@ namespace PoDecath.EditorTools
         const string RaceScenePath = "Assets/Scenes/RooftopRace.unity";
         const string LongJumpScenePath = "Assets/Scenes/RooftopLongJump.unity";
         const string TrackOnnxPath = "Assets/Policies/athlete_track.onnx";
+        const string GetUpOnnxPath = "Assets/Policies/athlete_getup.onnx";
 
         /// <summary>
         /// Dash = the straight, Lap = one runner round the loop, Race = the picked field round the loop,
@@ -307,6 +308,11 @@ namespace PoDecath.EditorTools
             spawner.numberRunners = fieldMode;      // "Matt RL 1", "Matt Isaac 2", ... so a full field has distinct names
             spawner.audioBank = audio;              // every athlete gets its own footsteps
             spawner.vfxBank = vfx;                  // and its trail, blob shadow and foot dust
+            // The get-up policy, if one has been trained. Absent, every athlete behaves exactly as before:
+            // a fall is a DNF. Present, a fallen runner switches to it and tries to rejoin the race.
+            spawner.getUpModel = AssetDatabase.LoadAssetAtPath<ModelAsset>(GetUpOnnxPath);
+            if (spawner.getUpModel == null)
+                Debug.Log($"[PoDecath] No {GetUpOnnxPath}; falls stay DNFs until the get-up policy is trained.");
 
             // Hurdles: only on the loop, and only when the picker asked for them. HurdleSet builds and
             // resets them itself; in the other lap events it costs one disabled component and nothing else.
