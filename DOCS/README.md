@@ -66,8 +66,11 @@ DOCS/                           this summary and the roadmap
   `.venv/Scripts/python.exe train_run.py --task track --resume checkpoints/run_to_target/latest.pt --iters 2300 --target-speed 4.0`
 - Evaluate: `.venv/Scripts/python.exe eval_100m.py --runs 5`
 - Unity: menu `PoDecath/Build Rooftop Scene`, then play `Assets/Scenes/Rooftop.unity`.
-- Long jump: menu `PoDecath/Build Long Jump Scene` (also rebuilds `RaceSetup.unity` with a LAP RACE / LONG JUMP
-  picker), then play `Assets/Scenes/RooftopLongJump.unity` or go through the setup menu. The infield is
+- Long jump: menu `PoDecath/Build Long Jump Scene` (also rebuilds `RaceSetup.unity`), then play
+  `Assets/Scenes/RooftopLongJump.unity` or go through the setup menu.
+- Setup menu (`RaceSetup.unity`, build index 0): LAP RACE / LONG JUMP picker, then a counter per athlete definition
+  including the RED heuristic bot, up to 16 in total. The lap is 100.1 m, so it is the game's 100 m; the 20 m dash
+  on the straight (`Rooftop.unity`) is a development scene and is not offered on the menu. The infield is
   34.7 x 12.3 m, so the runway is 17.9 m and the pit 8 m (regulation 40 m + 9 m does not fit); the event
   runs 2.4 m south of the loop centre line to clear the White House flagpole.
 

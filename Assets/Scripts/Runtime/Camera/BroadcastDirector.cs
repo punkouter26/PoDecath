@@ -68,7 +68,7 @@ namespace PoDecath.Cam
         float _incidentLeft;
         int _lastAttempt = -1;
         int _knownFallen, _knownFinished;
-        float _startS;
+        float _startS, _finishS;
         // Long jump: the competitor and stage last seen, so a change of either is a cut.
         DashEvent.Athlete _jumpCompetitor;
         LongJumpEvent.Stage _jumpStage;
@@ -82,7 +82,9 @@ namespace PoDecath.Cam
             _fieldSubject = new GameObject("BroadcastSubject_Field").transform;
             _leaderSubject.SetParent(transform, false);
             _fieldSubject.SetParent(transform, false);
-            _startS = race is LapEvent lap ? lap.startS : 0f;
+            // A lap starts and finishes on the same line; a dash finishes raceDistance further round.
+            if (race is LapEvent lap) { _startS = lap.startS; _finishS = _startS; }
+            else if (path != null && race != null) { _startS = path.ProjectGlobal(race.startLine); _finishS = _startS + race.raceDistance; }
 
             Aim(startLineCam, _fieldSubject); Aim(wideCam, _fieldSubject);
             Aim(offTheGunCam, _leaderSubject); Aim(railCam, _leaderSubject); Aim(bendCam, _leaderSubject);
@@ -169,12 +171,12 @@ namespace PoDecath.Cam
             Place(railCam, path.Position(leaderS, outward) + up * railHeight);
             Place(bendCam, path.Position(NearestBendApex(leaderS), outward + 3f) + up * bendHeight);
             Place(headOnCam, path.Position(leaderS + headOnLead, 0f) + up * 1.9f);
-            Place(finishCam, path.Position(_startS, outward * 0.8f) + up * 2.4f);
+            Place(finishCam, path.Position(_finishS, outward * 0.8f) + up * 2.4f);
 
             // Stadium wide: high, set back off the finish straight, framing the whole loop.
             Vector3 loopCentre = path.transform.position;
             loopCentre.y = path.deckTopY;
-            Vector3 back = path.Position(_startS, outward) - loopCentre;
+            Vector3 back = path.Position(_finishS, outward) - loopCentre;
             back.y = 0f;
             if (back.sqrMagnitude < 0.01f) back = Vector3.forward;
             Place(wideCam, loopCentre + back.normalized * wideBack + up * wideHeight);

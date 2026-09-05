@@ -56,6 +56,12 @@ namespace PoDecath.Sim
         public Vector3 direction = Vector3.right;
         public float raceDistance = 100f;
         public float laneSpacing = 1.6f;
+        [Tooltip("Lanes abreast. The deck is 5.3 m wide and the lane pitch is solved for five across it, so a "
+               + "bigger field goes into further rows rather than off the roof.")]
+        public int maxLanes = 5;
+        [Tooltip("Gap along the course between grid rows. Rows are set forward from the line like the lap "
+               + "grid, and every runner covers the full distance from its own mark, so nobody loses anything.")]
+        public float rowSpacing = 1.5f;
 
         [Header("Timing")]
         public float countdownSeconds = 3f;
@@ -140,11 +146,22 @@ namespace PoDecath.Sim
             else if (Reference == null) Reference = a;
         }
 
-        public Vector3 LanePosition(int lane)
+        int Lanes => Mathf.Max(1, maxLanes);
+        int Rows => Mathf.Max(1, Mathf.CeilToInt(Athletes.Count / (float)Lanes));
+
+        /// <summary>Lateral offset of a grid slot; each row is centred on the deck for however many it holds.</summary>
+        protected float LaneOffset(int lane)
         {
-            float offset = (lane - (Athletes.Count - 1) * 0.5f) * laneSpacing;
-            return startLine + Lateral * offset;
+            int row = lane / Lanes;
+            int inRow = Mathf.Min(Lanes, Athletes.Count - row * Lanes);
+            return ((lane % Lanes) - (inRow - 1) * 0.5f) * laneSpacing;
         }
+
+        /// <summary>How far along the course this slot's mark is: front row furthest, last row on the line.</summary>
+        protected float RowAdvance(int lane) => (Rows - 1 - lane / Lanes) * rowSpacing;
+
+        public Vector3 LanePosition(int lane) =>
+            startLine + direction.normalized * RowAdvance(lane) + Lateral * LaneOffset(lane);
 
         public Quaternion FacingRotation => Quaternion.FromToRotation(Vector3.right, new Vector3(direction.x, 0f, direction.z).normalized);
 
@@ -153,9 +170,10 @@ namespace PoDecath.Sim
         protected virtual Quaternion SpawnRotation(Athlete a) => FacingRotation;
         protected virtual void SetCourseTarget(Athlete a)
         {
-            a.command?.SetTarget(startLine + direction.normalized * (raceDistance + 12f) + Lateral * ((a.lane - (Athletes.Count - 1) * 0.5f) * laneSpacing));
+            a.command?.SetTarget(LanePosition(a.lane) + direction.normalized * (raceDistance + 12f));
         }
-        protected virtual float MeasureDistance(Athlete a, Vector3 pos) => Vector3.Dot(pos - startLine, direction.normalized);
+        /// <summary>Distance from the runner's own mark, so a staggered grid costs nobody anything.</summary>
+        protected virtual float MeasureDistance(Athlete a, Vector3 pos) => Vector3.Dot(pos - LanePosition(a.lane), direction.normalized);
         protected virtual float FloorY(Athlete a) => LanePosition(a.lane).y;
 
         public virtual void StartRace()

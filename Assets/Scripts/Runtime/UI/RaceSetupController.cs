@@ -8,8 +8,9 @@ using PoDecath.Sim;
 namespace PoDecath.UI
 {
     /// <summary>
-    /// Race setup menu: one counter row per RL athlete definition, minus/plus, capped at
-    /// <see cref="RaceRoster.MaxRunners"/> in total and at least one runner overall.
+    /// Event setup menu: a row of event buttons (lap race, long jump — whichever scenes exist), then
+    /// one counter row per athlete definition including the RED heuristic bot, minus/plus, capped at
+    /// <see cref="RaceRoster.MaxRunners"/> in total and at least one athlete overall.
     ///
     /// The grid order interleaves the types round-robin rather than listing each block in turn. The
     /// starting grid is staggered two abreast (the deck is far too narrow to line a full field up in one

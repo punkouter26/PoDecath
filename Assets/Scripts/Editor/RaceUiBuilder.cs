@@ -166,22 +166,24 @@ namespace PoDecath.EditorTools
             public EventEntry(string label, string sceneName, string hint) { this.label = label; this.sceneName = sceneName; this.hint = hint; }
         }
 
+        // The lap is 100.1 m, so it is the 100 m; the 20 m dash on the straight is not offered here.
         static readonly EventEntry LapRaceEntry = new EventEntry("LAP RACE", "RooftopRace",
-            $"Pick 1 to {RaceRoster.MaxRunners} runners. They race one lap of the rooftop track.");
+            $"Pick 1 to {RaceRoster.MaxRunners} runners. One 100 m lap of the rooftop track.");
         static readonly EventEntry LongJumpEntry = new EventEntry("LONG JUMP", "RooftopLongJump",
             $"Pick 1 to {RaceRoster.MaxRunners} jumpers. Three rounds each on the infield runway; best mark wins.");
 
         /// <summary>
-        /// Builds the menu that picks the field. Heuristic entries are skipped: these events are RL only.
-        /// Only events whose scene exists are offered, so building the race scenes alone still gives a
-        /// menu with just the lap race on it.
+        /// Builds the menu that picks the event and the field. Every roster entry is offered, the RED
+        /// heuristic bot included (house rule: every event has one), each with its own counter. Only events
+        /// whose scene exists are offered, so building the race scenes alone still gives a menu without the
+        /// long jump on it.
         /// </summary>
         public static void BuildSetupScene(List<AthleteDefinition> roster)
         {
             var choices = new List<AthleteDefinition>();
             foreach (AthleteDefinition d in roster)
-                if (d != null && d.kind != AthleteKind.Heuristic) choices.Add(d);
-            if (choices.Count == 0) { Debug.LogError("[PoDecath] No RL athlete definitions to race."); return; }
+                if (d != null) choices.Add(d);
+            if (choices.Count == 0) { Debug.LogError("[PoDecath] No athlete definitions to race."); return; }
             var events = new List<EventEntry>();
             foreach (EventEntry e in new[] { LapRaceEntry, LongJumpEntry })
                 if (AssetDatabase.LoadAssetAtPath<SceneAsset>($"Assets/Scenes/{e.sceneName}.unity") != null) events.Add(e);
@@ -209,7 +211,7 @@ namespace PoDecath.EditorTools
             vlg.childForceExpandHeight = false; vlg.childForceExpandWidth = true;
             vlg.padding = new RectOffset(22, 22, 22, 22);
 
-            Text title = PoDecathSceneBuilder.CreateText("Title", panel, "RACE SETUP", 76, TextAnchor.MiddleCenter, FontStyle.Bold);
+            Text title = PoDecathSceneBuilder.CreateText("Title", panel, "EVENT SETUP", 76, TextAnchor.MiddleCenter, FontStyle.Bold);
             PoDecathSceneBuilder.SetPreferredHeight(title.gameObject, 120);
             title.color = AccentColor;
 
@@ -230,7 +232,10 @@ namespace PoDecath.EditorTools
             if (events.Count > 1)
             {
                 RectTransform picker = PoDecathSceneBuilder.CreatePanel("EventPicker", panel, new Color(0, 0, 0, 0));
-                PoDecathSceneBuilder.SetPreferredHeight(picker.gameObject, 120);
+                PoDecathSceneBuilder.SetPreferredHeight(picker.gameObject, 150);
+                // A horizontal group that force-expands its children reports flexibleHeight 1 upward, and
+                // the panel's vertical layout then hands it every spare pixel: pin it to its preferred size.
+                picker.GetComponent<LayoutElement>().flexibleHeight = 0f;
                 var phlg = picker.gameObject.AddComponent<HorizontalLayoutGroup>();
                 phlg.spacing = 16;
                 phlg.childAlignment = TextAnchor.MiddleCenter;
@@ -280,7 +285,7 @@ namespace PoDecath.EditorTools
             ctrl.totalText = total;
 
             PoDecathSceneBuilder.AddSpacer(panel, 20);
-            Button start = PoDecathSceneBuilder.CreateButton("StartButton", panel, "START RACE", 42, AccentColor);
+            Button start = PoDecathSceneBuilder.CreateButton("StartButton", panel, "START", 42, AccentColor);
             PoDecathSceneBuilder.SetPreferredHeight(start.gameObject, 170);
             ctrl.startButton = start;
 

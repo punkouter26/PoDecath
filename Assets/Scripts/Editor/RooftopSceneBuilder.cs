@@ -35,7 +35,8 @@ namespace PoDecath.EditorTools
 
         /// <summary>
         /// Dash = the straight, Lap = one runner round the loop, Race = the picked field round the loop,
-        /// LongJump = the picked field on the runway inside the loop.
+        /// LongJump = the picked field on the runway inside the loop. The lap is 100.1 m, so the menu's
+        /// "100 m" IS the lap race; the dash on the straight is the development scene only.
         /// </summary>
         public enum Mode { Dash, Lap, Race, LongJump }
 
@@ -267,7 +268,7 @@ namespace PoDecath.EditorTools
             PoDecathSceneBuilder.CreateEventSystem();
             Canvas canvas = PoDecathSceneBuilder.CreateCanvas("HUDCanvas");
             RectTransform safe = PoDecathSceneBuilder.CreateSafeArea(canvas.transform);
-            PoDecathSceneBuilder.BuildHud(safe, null, null, camRig, null, handsOff: lapMode || jumpMode);   // stats card + Restart only
+            PoDecathSceneBuilder.BuildHud(safe, null, null, camRig, null, handsOff: fieldMode || lapMode);   // stats card + Restart only
             var hud = safe.GetComponent<GameplayHUD>();
             hud.dash = dash;
             hud.menuSceneName = "MainMenu";
