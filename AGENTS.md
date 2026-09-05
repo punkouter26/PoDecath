@@ -13,7 +13,7 @@ Unity ML-Agents is not used and must not be added.
 | Control | 50 Hz PD position targets (decimation 4) |
 | Geometry | ProBuilder 6 arenas generated at runtime; creature built from primitives |
 | Camera | Cinemachine 3 (`CinemachineCamera` + `CinemachineFollow` + `CinemachineRotationComposer`) |
-| UI | uGUI, `CanvasScaler` 1080x1920, safe-area anchored |
+| UI | UI Toolkit, one `PanelSettings` at 1080x1920 (match 0.5), safe area as padding in `UiRoot` |
 
 ## Layout
 
@@ -23,7 +23,14 @@ Assets/
                             ObservationBuilder, PolicyRunner, VelocityCommandSource,
                             EpisodeManager, ArenaGenerator, QuadrupedFactory, ArenaBootstrap,
                             SessionSettings, FootContactSensor
-  Scripts/Runtime/UI/       MainMenuController, GameplayHUD, TouchPerturbation, SafeAreaFitter
+  Scripts/Runtime/UI/       UiRoot + MainMenuView, SetupView, HudView, BroadcastView, ResultsView,
+                            TouchPerturbation
+  Scripts/Runtime/Fx/       VfxBank, VfxLibrary, RaceVfx, FootstepDust, AthleteTrail, BlobShadow
+  Scripts/Runtime/Env/      RenderTier, SceneLook, CinematicFocus
+  Scripts/Runtime/Diag/     TelemetryOverlay (F3)
+  Scripts/Runtime/Audio/    AudioBank, AudioMix, CrowdRing, SpatialCue, ListenerAcoustics,
+                            RaceAudio, FootstepAudio
+  UI/                       UXML layouts + Theme.uss (design tokens), PoDecathPanel, PoDecath.tss
   Scripts/Runtime/Camera/   CameraRig
   Scripts/Editor/           PoDecathSceneBuilder (menu PoDecath/Build Everything),
                             PolicyLibraryTools (+ AssetPostprocessor)
@@ -32,7 +39,10 @@ Assets/
                             Resources/PolicyLibrary.asset (auto-maintained)
   Prefabs/Quadruped.prefab  12-DoF placeholder rig (Go2 proportions)
   Models/                   Blender .glb skins (1 unit = 1 m, origins at joint pivots)
-  Materials/                URP Lit materials, Foot.physicMaterial (mu = 1.0)
+  Materials/                URP Lit materials wearing generated maps, Fx_* particle materials,
+                            VfxBank, Foot.physicMaterial (mu = 1.0)
+  Textures/                 generated surface maps (albedo/normal/mask) and particle sprites
+  Settings/                 URP assets per tier + the generated Broadcast_Volume_* profiles
 ```
 
 Never hand-edit `.meta`, `Library/`, `Logs/`, `Temp/`, or `.onnx` files. Scenes and prefabs are
@@ -166,6 +176,16 @@ observation (0, 0, -1).
 - `eval` compiles against runtime assemblies only; call editor tooling through
   `unity command menu --path "PoDecath/Build Everything"`.
 - `capture_game_view --save_path` resolves under `Assets/`; delete the capture folder afterwards.
+- **Never hold an asset reference across `EditorSceneManager.NewScene`.** Opening a scene unloads unused
+  assets, and the managed wrapper that survives keeps a valid instance id — so it still serialises
+  correctly into the new scene while comparing equal to `null`. A builder that caches an asset before
+  `NewScene` and then guards on `asset != null` after it writes some references correctly and silently
+  skips the rest. Load or re-load the asset on the far side of `NewScene` (see `AudioBakery.LoadBank`).
+  `AssetImporter.SaveAndReimport` has the same effect on anything already in memory.
+- `eval`/`eval_file` compile with warnings as errors and cannot see `UnityEngine.UI`; fully qualify
+  `UnityEngine.SceneManagement.SceneManager`. Keep `EditorApplication.Step()` batches small — the pipeline
+  server aborts any main-thread operation over 5 s, and a full field of sixteen blows through that fast.
+  Audio reports `isPlaying == false` while play mode is stepped; unpause before judging it.
 
 ## House rules (from the project owner, apply to every session)
 

@@ -113,6 +113,11 @@ namespace PoDecath.Sim
         public List<RaceResult> Results { get; } = new List<RaceResult>();
         /// <summary>Fires once every runner has finished or fallen — the cue for the results modal.</summary>
         public event Action<List<RaceResult>> RaceComplete;
+        /// <summary>
+        /// Fires as a new attempt is put on the grid, before the countdown. The cue for anything the last
+        /// attempt disturbed and that has to be standing again for this one — the hurdles, mainly.
+        /// </summary>
+        public event Action RaceStarted;
         public Phase Current { get; protected set; } = Phase.Idle;
         public float RaceTime { get; protected set; }
         public float Countdown { get; protected set; }
@@ -160,6 +165,25 @@ namespace PoDecath.Sim
         /// <summary>How far along the course this slot's mark is: front row furthest, last row on the line.</summary>
         protected float RowAdvance(int lane) => (Rows - 1 - lane / Lanes) * rowSpacing;
 
+        /// <summary>
+        /// How far forward of the start line the front row sits, so anything that wants to put an obstacle
+        /// on the course knows where the grid stops.
+        /// </summary>
+        public float GridLength => (Rows - 1) * rowSpacing;
+
+        /// <summary>
+        /// The running order as it stands right now, using the same comparison the results board will.
+        /// Reuses one list, so the live overlay can ask for it every refresh without allocating; the caller
+        /// must read it before the next call rather than holding on to it.
+        /// </summary>
+        public List<Athlete> LiveOrder()
+        {
+            _ranking.Clear();
+            _ranking.AddRange(Athletes);
+            _ranking.Sort(Rank);
+            return _ranking;
+        }
+
         public Vector3 LanePosition(int lane) =>
             startLine + direction.normalized * RowAdvance(lane) + Lateral * LaneOffset(lane);
 
@@ -185,6 +209,7 @@ namespace PoDecath.Sim
             Current = Phase.Countdown;
             Stability = 1f;
             _phaseTimer = 0f;
+            RaceStarted?.Invoke();
         }
 
         public void RestartNow() => StartRace();

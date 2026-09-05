@@ -44,13 +44,32 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
 | Lap race around the roof loop (carrot follower + lap policy) | `TrackPath.cs`, `TrackFollower.cs`, `LapEvent.cs`, `training/envs/run_track.py`, menu `PoDecath/Build Rooftop Lap Scene` | done: 100 m lap in 25 s, no falls |
 | Balance / get-up policy | `training/envs/get_up.py` | placeholder |
 | Long jump on an infield deck inside the loop (ProBuilder runway, board, recessed sand pit; sequential attempts, 3 rounds, best mark; broadcast cuts + results modal; picked from the setup menu) | `LongJumpBuilder.cs`, `LongJumpPit.cs`, `LongJumpEvent.cs`, menu `PoDecath/Build Long Jump Scene` | done: scene `Assets/Scenes/RooftopLongJump.unity`; take-off impulse scripted until a jump policy exists |
-| Other events (high jump, hurdles, ...) | `DOCS/ROADMAP.md` | placeholders |
+| Lap distances: 400 m (4 laps) and 1500 m (15 laps), picked on the menu; one scene, `SessionSettings.Laps` | `LapEvent`, `RaceSetupController` | done |
+| Hurdles: 0.762 m bars on 9 kg toppling frames along the straights, knocks booked per runner | `HurdleSet.cs`, `Hurdle.cs` | playable; no policy clears one yet |
+| Broadcast overlay: clock + lap counter, live running order that animates a pass, lap splits, lower third that wipes in on every cut, punching countdown | `Assets/UI/Broadcast.uxml`, `BroadcastView.cs` | done |
+| UI Toolkit screens: setup menu, HUD, broadcast overlay, results card, main menu, diagnostics — one stylesheet, one panel | `Assets/UI/*.uxml` + `Theme.uss`, `UiRoot.cs` and the `*View.cs` drivers, `UiBakery.cs` | done; the uGUI versions are gone |
+| Look: graded post stack per tier, procedural sky, three time-of-day presets, fog, reflection probe, focus racked onto whoever is on air | `LookBakery.cs` -> `Assets/Settings/Broadcast_Volume_*.asset`, `SceneLook.cs`, `CinematicFocus.cs` | done |
+| Surfaces: procedural albedo/normal/mask for asphalt, concrete, rubber, sand, turf, metal, paint; mesh UVs re-projected in world metres | `TextureBakery.cs` -> `Assets/Textures/`, `WorldUvProjector.cs` | done |
+| Quality tiers: mobile (0.8 scale, 1 cascade, blob shadows) and PC (MSAA 4x, soft shadows, SSAO, depth of field), one switch | `RenderTier.cs`, `LookBakery.TuneRenderPipelineAssets` | done |
+| VFX: gun smoke, sand burst, fall dust, hurdle sparks, finish confetti, per-footfall dust; all pooled and built in code at the tier's budget | `VfxBakery.cs` -> `Assets/Materials/Fx_*`, `VfxLibrary.cs`, `RaceVfx.cs`, `FootstepDust.cs` | done |
+| Athlete presentation: lane-colour trail ribbon, contact/blob shadow — identity without tinting skin | `AthleteTrail.cs`, `BlobShadow.cs` | done |
+| Audio: synthesised crowd bed/swell/groan/applause/chant, wind, pistol, countdown, bell, clatter, hurdle clip, sand, whoosh, sting, breathing, 10 footfalls across 3 surfaces | `AudioBakery.cs` -> `Assets/Audio/` | done |
+| Spatial mix: crowd ring round the deck, 3D one-shot cue pool, code buses with ducking, reverb + distance low pass on the listener, crowd mood machine | `CrowdRing.cs`, `SpatialCue.cs`, `AudioMix.cs`, `ListenerAcoustics.cs`, `RaceAudio.cs` | done |
+| Diagnostics overlay (F3): FPS + 1% low + frame graph, draw calls / batches / SetPass / triangles, GC per frame, memory, athlete and audio-voice counts, crowd mood | `TelemetryOverlay.cs`, `Assets/UI/Telemetry.uxml` | done |
+| Other events (high jump, throws, ...) | `DOCS/ROADMAP.md` | placeholders |
 
 ## Folder map
 
 ```
 Assets/Scripts/Runtime/Sim      physics, policy runner, importer, events, athletes
-Assets/Scripts/Runtime/UI       portrait HUD and menu
+Assets/Scripts/Runtime/UI       UI Toolkit screen drivers (UiRoot + one View per screen)
+Assets/Scripts/Runtime/Audio    crowd ring, cue pool, mix buses, listener acoustics, footsteps
+Assets/Scripts/Runtime/Fx       particle library, race VFX, athlete trails, blob shadows
+Assets/Scripts/Runtime/Env      render tier, scene look (sun/sky/fog/volume), cinematic focus
+Assets/Scripts/Runtime/Diag     the F3 telemetry overlay
+Assets/UI                       UXML layouts, Theme.uss design tokens, panel + theme assets
+Assets/Textures                 generated surface maps and particle sprites (PoDecath/Bake Surfaces, Bake Effects)
+Assets/Audio                    generated clips + AudioBank (PoDecath/Bake Audio Clips)
 Assets/Scripts/Editor           scene/prefab builders (PoDecath menu)
 Assets/Models                   WhiteHouse.glb, Athlete_Matt.glb, athlete.xml (copied from training)
 Assets/Policies                 ONNX checkpoints + PolicyLibrary (auto-refreshed)
@@ -66,11 +85,21 @@ DOCS/                           this summary and the roadmap
   `.venv/Scripts/python.exe train_run.py --task track --resume checkpoints/run_to_target/latest.pt --iters 2300 --target-speed 4.0`
 - Evaluate: `.venv/Scripts/python.exe eval_100m.py --runs 5`
 - Unity: menu `PoDecath/Build Rooftop Scene`, then play `Assets/Scenes/Rooftop.unity`.
+- Audio: menu `PoDecath/Bake Audio Clips` synthesises the whole sound set into `Assets/Audio/` and points
+  `AudioBank.asset` at it. The scene builders run it themselves, so this is only needed to re-bake by hand.
+- Surfaces, effects, look and UI panel: `PoDecath/Bake Surfaces`, `Bake Effects`, `Bake Look`, `Bake UI Panel`.
+  Like the audio, the scene builders call these themselves; the menu items are for re-baking after a recipe
+  changes. Every one of them is deterministic, so a re-bake does not churn the repository.
+- Diagnostics: F3 in any scene opens the telemetry overlay (frame graph, draw calls, GC, memory, athletes,
+  audio voices, crowd mood). It is the thing to open before believing any performance claim.
 - Long jump: menu `PoDecath/Build Long Jump Scene` (also rebuilds `RaceSetup.unity`), then play
   `Assets/Scenes/RooftopLongJump.unity` or go through the setup menu.
-- Setup menu (`RaceSetup.unity`, build index 0): LAP RACE / LONG JUMP picker, then a counter per athlete definition
+- Setup menu (`RaceSetup.unity`, build index 0): a 100 M / 400 M / 1500 M / HURDLES / LONG JUMP picker, then a counter per athlete definition
   including the RED heuristic bot, up to 16 in total. The lap is 100.1 m, so it is the game's 100 m; the 20 m dash
-  on the straight (`Rooftop.unity`) is a development scene and is not offered on the menu. The infield is
+  on the straight (`Rooftop.unity`) is a development scene and is not offered on the menu. Every loop event
+  is the same `RooftopRace.unity` and the same `LapEvent`: the picker writes the lap count and the hurdles
+  flag into `SessionSettings` on its way out, and `LapEvent.Awake` turns the lap count into the race
+  distance and the clock (60 s per lap, capped at 600 s). The infield is
   34.7 x 12.3 m, so the runway is 17.9 m and the pit 8 m (regulation 40 m + 9 m does not fit); the event
   runs 2.4 m south of the loop centre line to clear the White House flagpole.
 

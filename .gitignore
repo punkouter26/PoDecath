@@ -75,3 +75,7 @@ training/checkpoints/
 *.pt
 *.pth
 *.ckpt
+
+# Editor capture scratch: verification screenshots taken through the Unity CLI.
+Assets/_Recovery/
+Assets/_Recovery.meta

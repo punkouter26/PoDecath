@@ -213,6 +213,10 @@ namespace PoDecath.EditorTools
             var mc = go.GetComponent<MeshCollider>();
             if (mc == null) mc = go.AddComponent<MeshCollider>();
             mc.sharedMesh = go.GetComponent<MeshFilter>().sharedMesh;
+            // ProBuilder gives every face one normalised repeat, so a 22 m straight and a 1 m curve wedge
+            // would wear the same texture at wildly different scales. Re-project in world metres instead,
+            // at the scale the material was dressed at, so the deck is continuous across every joint.
+            WorldUvProjector.Project(go, TextureBakery.TileForMaterial(mat));
             go.isStatic = true;
             EditorUtility.SetDirty(go);
         }

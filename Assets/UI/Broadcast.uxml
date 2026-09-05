@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The furniture a televised event carries over the picture.
+
+    Only the containers are declared here; the rows in the running order and the splits board are made in
+    BroadcastView from a count that depends on the field, so authoring sixteen of each by hand would be
+    sixteen places to forget to change something.
+-->
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/Theme.uss" />
+
+    <ui:VisualElement name="root" class="root">
+        <ui:VisualElement name="safe" class="safe" style="padding: 16px;">
+
+            <!-- Top bar: what the event is, where it has got to, and the clock. -->
+            <ui:VisualElement name="top-bar" class="bcast-top">
+                <ui:VisualElement class="col fill">
+                    <ui:Label name="stage" class="bcast-stage" text="100 M" />
+                    <ui:Label name="lead" class="bcast-lead" text="" />
+                </ui:VisualElement>
+                <ui:Label name="clock" class="bcast-clock" text="0.00" style="min-width: 260px;" />
+            </ui:VisualElement>
+
+            <!-- Running order beside the splits board. Portrait is 1080 wide, so they sit side by side. -->
+            <ui:VisualElement class="row" style="align-items: flex-start;">
+                <ui:VisualElement name="order" class="order">
+                    <ui:Label class="label-micro" text="ORDER" style="margin-left: 8px; margin-bottom: 4px;" />
+                    <ui:VisualElement name="order-rows" />
+                    <ui:Label name="overflow" class="label-micro hidden" text="" style="margin-left: 8px;" />
+                </ui:VisualElement>
+
+                <ui:VisualElement name="splits" class="splits">
+                    <ui:Label class="label-micro" text="SPLITS" style="margin-left: 8px; margin-bottom: 4px;" />
+                    <ui:VisualElement name="split-rows" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement class="spacer" />
+
+            <!-- Lower third: who the gallery has cut to. Wipes in from the left on every cut. -->
+            <ui:VisualElement name="lower-third" class="lower-third lower-third--out">
+                <ui:Label name="lower-name" class="lower-name" text="" />
+                <ui:Label name="lower-detail" class="lower-detail" text="" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- Outside the safe area on purpose: the countdown is centred on the picture, not on the layout. -->
+        <ui:Label name="countdown" class="countdown countdown--off" text="3" />
+    </ui:VisualElement>
+</ui:UXML>

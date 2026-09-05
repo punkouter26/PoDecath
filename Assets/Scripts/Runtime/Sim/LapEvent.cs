@@ -20,10 +20,24 @@ namespace PoDecath.Sim
         public float startS = 0f;
         [Tooltip("Carrot distance for RL athletes. Training used 6 m, but 9 m smooths the bend entry: 5/5 clean laps vs 1/4 at 6 m.")]
         public float lookahead = 9f;
+        [Tooltip("Clock allowed per lap. A lap-trained policy runs about 25 s and the RED bot about 11 s, "
+               + "so 60 s is generous without letting a stalled field sit there for ever. maxRaceSeconds "
+               + "is recomputed from this and the lap count, because a 1500 m cannot share a 400 m's clock.")]
+        public float secondsPerLap = 60f;
+        [Tooltip("Ceiling on the recomputed clock however many laps are asked for. A 1500 m that nobody "
+               + "is going to finish should not hold the screen for a quarter of an hour.")]
+        public float maxRaceSecondsCap = 600f;
+        [Tooltip("Set when the event is running over hurdles; only used to word the results.")]
+        public HurdleSet hurdles;
 
         void Awake()
         {
+            // One scene serves every lap distance. The picker puts the lap count in SessionSettings on its
+            // way out, so 100 m, 400 m and 1500 m are the same LapEvent with a different number here.
+            if (SessionSettings.Laps > 0) laps = SessionSettings.Laps;
+            laps = Mathf.Max(1, laps);
             if (path != null) raceDistance = laps * path.LapLength;
+            maxRaceSeconds = Mathf.Clamp(laps * secondsPerLap, 30f, maxRaceSecondsCap);
         }
 
         // The grid itself is DashEvent's (maxLanes abreast, rowSpacing between rows); the lap only maps a
@@ -73,6 +87,36 @@ namespace PoDecath.Sim
         {
             if (path != null) a.heuristic.ResetOnTrack(path, StartArc(a), TrackLateral(a));
             else base.ResetHeuristic(a, p);
+        }
+
+        // ---- results wording ----
+
+        int Down(Athlete a) => hurdles != null ? hurdles.KnockedBy(a) : 0;
+
+        /// <summary>
+        /// The board's right-hand column, plus what the runner did to the hurdles when there are any.
+        /// Nobody has been trained to clear one yet, so how many a runner put down is most of the story
+        /// of its race and belongs next to the time.
+        /// </summary>
+        protected override string StatusFor(Athlete a)
+        {
+            int down = Down(a);
+            return down > 0 ? $"{base.StatusFor(a)}  ·  {down} down" : base.StatusFor(a);
+        }
+
+        protected override string SummaryFor(Athlete a)
+        {
+            int down = Down(a);
+            return down > 0 ? $"{base.SummaryFor(a)} ({down} hurdle{(down == 1 ? "" : "s")} down)" : base.SummaryFor(a);
+        }
+
+        public override string ResultsSubtitle(System.Collections.Generic.List<RaceResult> results)
+        {
+            int finishers = 0;
+            foreach (RaceResult r in results) if (r.finished) finishers++;
+            string what = laps > 1 ? $"{raceDistance:F0} m ({laps} laps)" : $"{raceDistance:F0} m lap";
+            string over = hurdles != null && hurdles.Count > 0 ? $", {hurdles.Down} of {hurdles.Count} hurdles down" : "";
+            return $"{finishers} of {results.Count} completed the {what}{over}";
         }
     }
 }

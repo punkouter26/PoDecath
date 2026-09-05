@@ -7,9 +7,12 @@ using UnityEngine.UI;
 using Unity.Cinemachine;
 using Unity.Cinemachine.TargetTracking;
 using Unity.InferenceEngine;
+using PoDecath.Audio;
 using PoDecath.Sim;
 using PoDecath.UI;
 using PoDecath.Cam;
+using PoDecath.Env;
+using PoDecath.Fx;
 
 namespace PoDecath.EditorTools
 {
@@ -81,8 +84,19 @@ namespace PoDecath.EditorTools
             Material sand = PoDecathSceneBuilder.Mat("LongJump_Sand", new Color(0.87f, 0.79f, 0.6f));
             Material foulMat = PoDecathSceneBuilder.Mat("LongJump_Foul", new Color(0.1f, 0.1f, 0.11f));
             Material debugMat = PoDecathSceneBuilder.Mat("Athlete_Debug", new Color(0.8f, 0.8f, 0.82f));
+            Material hurdleFrame = PoDecathSceneBuilder.Mat("Hurdle_Frame", new Color(0.9f, 0.9f, 0.92f));
+            Material hurdleBar = PoDecathSceneBuilder.Mat("Hurdle_Bar", new Color(0.95f, 0.62f, 0.1f));
             PhysicsMaterial footPm = PoDecathSceneBuilder.EnsureFootPhysicsMaterial();
             PolicyLibraryTools.Refresh();
+            // Surfaces before the track is built: KartTrackBuilder.Finish projects UVs at the scale each
+            // material was dressed at, so the dressing has to exist by the time the first box is made.
+            TextureBakery.EnsureBaked();
+            VfxBakery.EnsureBaked();
+            LookBakery.BakeProfiles();
+            LookBakery.BakeSky();
+            // The whole sound set is generated, so it is baked here rather than assumed to be on disk.
+            // The reference is picked up again after the new scene is opened, not kept from here.
+            AudioBakery.BakeBank();
 
             var whAsset = AssetDatabase.LoadAssetAtPath<GameObject>(WhiteHousePath);
             if (whAsset == null) { Debug.LogError($"[PoDecath] {WhiteHousePath} not found or not imported by glTFast."); return; }
@@ -101,11 +115,38 @@ namespace PoDecath.EditorTools
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            var lightGo = new GameObject("Directional Light");
+            // Opening a scene unloads unused assets, so the bank is resolved on this side of it. A
+            // reference held across NewScene still serialises correctly but compares equal to null, which
+            // silently skips every guard that depends on it. See AudioBakery.LoadBank.
+            AudioBank audio = AudioBakery.LoadBank();
+            VfxBank vfx = VfxBakery.LoadBank();
+
+            var lightGo = new GameObject("Sun");
             var light = lightGo.AddComponent<Light>();
-            light.type = LightType.Directional; light.intensity = 1.4f; light.shadows = LightShadows.Soft;
-            light.color = new Color(1f, 0.97f, 0.92f);
+            light.type = LightType.Directional;
+            light.shadows = LightShadows.Soft;
             lightGo.transform.rotation = Quaternion.Euler(48f, -40f, 0f);
+
+            // The look: one global Volume carrying the graded profile for whichever tier is running, the
+            // sun above, the procedural sky behind it and the fog that ties them together. Everything the
+            // component needs is resolved on this side of NewScene, because opening a scene unloads unused
+            // assets and a stale wrapper serialises fine while comparing equal to null (see AudioBakery).
+            var volumeGo = new GameObject("Global Volume");
+            var volume = volumeGo.AddComponent<UnityEngine.Rendering.Volume>();
+            volume.isGlobal = true;
+            volume.priority = 0f;
+            var look = volumeGo.AddComponent<SceneLook>();
+            look.sun = light;
+            look.volume = volume;
+            look.pcProfile = LookBakery.LoadProfile(mobile: false);
+            look.mobileProfile = LookBakery.LoadProfile(mobile: true);
+            look.skyMaterial = AssetDatabase.LoadAssetAtPath<Material>(LookBakery.SkyMaterialPath);
+            look.timeOfDay = SceneLook.TimeOfDay.Afternoon;
+            volume.sharedProfile = look.pcProfile;
+            // Applied here as well as at runtime: sky, ambient, fog and the sun's colour and intensity are
+            // per-scene RenderSettings, so they have to be written before the scene is saved or the scene
+            // on disk carries Unity's defaults and only looks right once something has pressed play.
+            look.Apply(force: true);
 
             // White House
             var wh = PrefabUtility.InstantiatePrefab(whAsset) as GameObject;
@@ -227,7 +268,7 @@ namespace PoDecath.EditorTools
                 lapEvent.laps = 1;
                 lapEvent.startS = 0f;
                 lapEvent.lookahead = 9f;   // 6 m (training value) made athletes fall at the first bend; 9 m gave 5/5 clean laps
-                lapEvent.maxRaceSeconds = 90f;
+                lapEvent.secondsPerLap = 60f;   // LapEvent.Awake turns this and the lap count into maxRaceSeconds
                 dash = lapEvent;
                 dash.raceDistance = path.LapLength;
             }
@@ -247,7 +288,7 @@ namespace PoDecath.EditorTools
                 var lapEvent = (LapEvent)dash;
                 lapEvent.maxLanes = 2;        // +-0.54 m lanes: the offsets that survive the 8.8 m bend
                 lapEvent.rowSpacing = 1.5f;   // 4 rows x 1.5 m = 4.5 m, inside the 22.4 m straight
-                lapEvent.maxRaceSeconds = 120f;
+                lapEvent.secondsPerLap = 60f;   // 100 m gets 60 s, the 400 m 240 s, the 1500 m the 600 s cap
                 dash.autoRestart = false;
             }
 
@@ -264,17 +305,99 @@ namespace PoDecath.EditorTools
             spawner.creatureLayerName = CreatureLayer;
             spawner.includeHeuristic = !lapMode;   // lap scene starts with only the RL athlete; flip the checkbox to add the RED pacer
             spawner.numberRunners = fieldMode;      // "Matt RL 1", "Matt Isaac 2", ... so a full field has distinct names
+            spawner.audioBank = audio;              // every athlete gets its own footsteps
+            spawner.vfxBank = vfx;                  // and its trail, blob shadow and foot dust
 
-            // HUD
+            // Hurdles: only on the loop, and only when the picker asked for them. HurdleSet builds and
+            // resets them itself; in the other lap events it costs one disabled component and nothing else.
+            if (raceMode)
+            {
+                var hurdlesGo = new GameObject("Hurdles");
+                var hurdles = hurdlesGo.AddComponent<HurdleSet>();
+                hurdles.path = path;
+                hurdles.race = dash;
+                hurdles.frameMaterial = hurdleFrame;
+                hurdles.barMaterial = hurdleBar;
+                hurdles.clatter = audio != null ? audio.hurdleClatter : null;
+                hurdles.clip = audio != null ? audio.hurdleClip : null;
+            }
+
+            // Screens. UI Toolkit documents on one shared panel, layered by sorting order; the layout and
+            // the styling are in Assets/UI, not in this file.
             PoDecathSceneBuilder.CreateEventSystem();
-            Canvas canvas = PoDecathSceneBuilder.CreateCanvas("HUDCanvas");
-            RectTransform safe = PoDecathSceneBuilder.CreateSafeArea(canvas.transform);
-            PoDecathSceneBuilder.BuildHud(safe, null, null, camRig, null, handsOff: !devScene);   // stats card + Restart only
-            var hud = safe.GetComponent<GameplayHUD>();
-            hud.dash = dash;
-            hud.menuSceneName = "MainMenu";
+            HudView hud = RaceUiBuilder.BuildHud(dash, camRig, handsOn: devScene);
 
-            if (fieldMode) RaceUiBuilder.BuildBroadcastAndResults(dash, path, camRig, safe, hud, pit);
+            BroadcastDirector director = fieldMode ? RaceUiBuilder.BuildBroadcastAndResults(dash, path, camRig, hud, pit) : null;
+            if (!fieldMode) RaceUiBuilder.AddTelemetry(dash);   // the dev scenes get the diagnostics panel too
+
+            // Focus follows the gallery. Without this the depth of field in the PC profile is authored at a
+            // fixed 12 m, which is right for one shot in seven; with it, a close-up racks onto the athlete
+            // and the city behind goes soft, and a stadium wide stops down until the whole roof is sharp.
+            var focus = camGo.AddComponent<CinematicFocus>();
+            focus.volume = volume;
+            focus.director = director;
+            focus.race = dash;
+            focus.view = cam;
+
+            // One probe over the deck. The building is white marble and glass and the track furniture is
+            // metal; with nothing to reflect they all fall back to a flat sky colour and read as plastic.
+            var probeGo = new GameObject("Rooftop Reflection Probe");
+            probeGo.transform.position = new Vector3(track.center.x, track.deckTopY + 6f, track.center.z);
+            var probe = probeGo.AddComponent<ReflectionProbe>();
+            probe.mode = UnityEngine.Rendering.ReflectionProbeMode.Realtime;
+            probe.refreshMode = UnityEngine.Rendering.ReflectionProbeRefreshMode.OnAwake;   // the sky does not move mid-race
+            probe.timeSlicingMode = UnityEngine.Rendering.ReflectionProbeTimeSlicingMode.AllFacesAtOnce;
+            probe.resolution = 128;
+            probe.size = new Vector3(120f, 40f, 90f);
+            probe.boxProjection = true;
+            probe.cullingMask = ~0;
+            probe.farClipPlane = 800f;
+
+            // The picture, alongside the mix below. The library builds and pools every particle system in
+            // code at the tier's budget; RaceVfx is what decides when one goes off, off the same race
+            // state the overlay and the audio read.
+            if (vfx != null)
+            {
+                var vfxGo = new GameObject("RaceVfx");
+                var library = vfxGo.AddComponent<VfxLibrary>();
+                library.bank = vfx;
+                var raceVfx = vfxGo.AddComponent<RaceVfx>();
+                raceVfx.race = dash;
+                raceVfx.pit = pit;
+            }
+
+            // The mix. Footsteps belong to the athletes; this is the crowd, the gun, the bell and the cuts.
+            //
+            // Three objects rather than one, because they are three different kinds of sound source. The
+            // crowd is a ring of 3D emitters round the deck, so it swings behind the camera on a cut. The
+            // cue pool is 3D one-shots fired from where things happen — the gun behind the grid, the bell at
+            // the line, the thud in the pit. RaceAudio itself only owns what genuinely has no position: the
+            // countdown, the stings, and the wind.
+            if (audio != null)
+            {
+                var audioGo = new GameObject("RaceAudio");
+
+                var ring = audioGo.AddComponent<CrowdRing>();
+                ring.bank = audio;
+                ring.path = path;
+
+                audioGo.AddComponent<SpatialCue>();
+
+                var raceAudio = audioGo.AddComponent<RaceAudio>();
+                raceAudio.bank = audio;
+                raceAudio.race = dash;
+                raceAudio.director = director;
+                raceAudio.crowd = ring;
+                raceAudio.pit = pit;
+
+                // The room, on the listener: the reverb of a stone courtyard and the dullness of distance.
+                var acoustics = camGo.AddComponent<ListenerAcoustics>();
+                acoustics.race = dash;
+
+                // The diagnostics panel reports what the crowd is doing, and it was built before the mix.
+                var telemetry = Object.FindFirstObjectByType<PoDecath.Diag.TelemetryOverlay>();
+                if (telemetry != null) telemetry.audioMix = raceAudio;
+            }
 
             string scenePath = jumpMode ? LongJumpScenePath : raceMode ? RaceScenePath : (lapMode ? LapScenePath : ScenePath);
             EditorSceneManager.SaveScene(scene, scenePath);

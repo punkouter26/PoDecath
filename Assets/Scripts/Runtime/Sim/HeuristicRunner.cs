@@ -12,6 +12,11 @@ namespace PoDecath.Sim
         public float accelSeconds = 3.0f;
         public float bobAmplitude = 0.03f;
         public float bobHz = 3.0f;
+        [Tooltip("Optional kinematic body, set by HurdleSet so the bot has something to knock hurdles over "
+               + "with. When it is here the bot is swept to its pose instead of being teleported: a "
+               + "teleported kinematic body is depenetrated out of whatever it lands inside, which shoves a "
+               + "hurdle metres down the track instead of knocking it over.")]
+        public Rigidbody body;
 
         public bool Running { get; private set; }
         public float Speed { get; private set; }
@@ -94,7 +99,7 @@ namespace PoDecath.Sim
                 Distance += new Vector2(_vel.x, _vel.z).magnitude * fdt;
                 Speed = _vel.magnitude;
                 if (next.y <= _landY) { next.y = _landY; Airborne = false; Speed = 0f; }
-                transform.position = next;
+                MoveTo(next, transform.rotation);
                 return;
             }
             if (!Running) return;
@@ -109,14 +114,31 @@ namespace PoDecath.Sim
                 _s += Speed * dt;
                 Vector3 p = path.Position(_s, _lateral);
                 p.y += bob;
-                transform.position = p;
                 Vector3 t = path.Tangent(_s);
-                transform.rotation = Quaternion.FromToRotation(Vector3.right, new Vector3(t.x, 0f, t.z).normalized);
+                MoveTo(p, Quaternion.FromToRotation(Vector3.right, new Vector3(t.x, 0f, t.z).normalized));
                 return;
             }
             Vector3 q = Start + Direction * Distance;
             q.y = _baseY + bob;
-            transform.position = q;
+            MoveTo(q, transform.rotation);
+        }
+
+        /// <summary>
+        /// Puts the bot on its next pose. With a kinematic <see cref="body"/> attached this is a swept
+        /// move rather than a teleport, which is the difference between clipping a hurdle and knocking it
+        /// over: a teleported kinematic body arrives already inside whatever it hit and PhysX resolves that
+        /// by shoving the hurdle out of the way, metres down the track. Nothing else about the bot changes
+        /// — it is still a pace profile that cannot be pushed off its line and never falls.
+        /// </summary>
+        void MoveTo(Vector3 position, Quaternion rotation)
+        {
+            if (body != null && body.isKinematic)
+            {
+                body.MovePosition(position);
+                body.MoveRotation(rotation);
+                return;
+            }
+            transform.SetPositionAndRotation(position, rotation);
         }
     }
 }

@@ -192,57 +192,11 @@ namespace PoDecath.EditorTools
             camGo.transform.position = new Vector3(0, 1, -10);
             camGo.AddComponent<AudioListener>();
 
+            // One UI Toolkit document. What was ninety lines of VerticalLayoutGroup, Dropdown and Text
+            // construction is a UXML layout in Assets/UI/MainMenu.uxml wearing the shared stylesheet.
             CreateEventSystem();
-            Canvas canvas = CreateCanvas("MenuCanvas");
-            RectTransform safe = CreateSafeArea(canvas.transform);
-
-            RectTransform panel = CreatePanel("MenuPanel", safe, new Color(0, 0, 0, 0));
-            Stretch(panel, new Vector2(60, 120), new Vector2(-60, -160));
-            var vlg = panel.gameObject.AddComponent<VerticalLayoutGroup>();
-            vlg.spacing = 26;
-            vlg.childAlignment = TextAnchor.MiddleCenter;
-            vlg.childControlHeight = true;
-            vlg.childControlWidth = true;
-            vlg.childForceExpandHeight = false;
-            vlg.childForceExpandWidth = true;
-            vlg.padding = new RectOffset(24, 24, 24, 24);
-
-            Text title = CreateText("Title", panel, "PoDecath", 84, TextAnchor.MiddleCenter, FontStyle.Bold);
-            SetPreferredHeight(title.gameObject, 140);
-            title.color = AccentColor;
-            Text subtitle = CreateText("Subtitle", panel, "Physics creature evaluation\nIsaac Lab / MuJoCo policies on Unity ArticulationBody", 30, TextAnchor.MiddleCenter);
-            SetPreferredHeight(subtitle.gameObject, 110);
-            subtitle.color = new Color(0.7f, 0.74f, 0.8f);
-
-            AddSpacer(panel, 30);
-            Text polLabel = CreateText("PolicyLabel", panel, "Policy checkpoint", 32, TextAnchor.MiddleLeft, FontStyle.Bold);
-            SetPreferredHeight(polLabel.gameObject, 50);
-            Dropdown policyDd = CreateDropdown("PolicyDropdown", panel);
-
-            Text arenaLabel = CreateText("ArenaLabel", panel, "Arena", 32, TextAnchor.MiddleLeft, FontStyle.Bold);
-            SetPreferredHeight(arenaLabel.gameObject, 50);
-            Dropdown arenaDd = CreateDropdown("ArenaDropdown", panel);
-
-            AddSpacer(panel, 10);
-            Toggle fps = CreateToggle("Fps60Toggle", panel, "Target 60 FPS (off = 30 FPS)");
-
-            AddSpacer(panel, 30);
-            Button start = CreateButton("StartButton", panel, "START EVALUATION", 40, AccentColor);
-            SetPreferredHeight(start.gameObject, 170);
-
-            AddSpacer(panel, 10);
-            Text info = CreateText("InfoText", panel, "", 26, TextAnchor.MiddleCenter);
-            SetPreferredHeight(info.gameObject, 100);
-            info.color = new Color(0.6f, 0.65f, 0.7f);
-
-            var ctrlGo = new GameObject("MainMenu");
-            var ctrl = ctrlGo.AddComponent<MainMenuController>();
-            ctrl.policyDropdown = policyDd;
-            ctrl.arenaDropdown = arenaDd;
-            ctrl.fps60Toggle = fps;
-            ctrl.startButton = start;
-            ctrl.infoText = info;
-            ctrl.arenaSceneName = "Arena";
+            var menu = UiBakery.AddScreen<MainMenuView>("MainMenu", UiBakery.MainMenuUxml, 0f);
+            if (menu != null) menu.arenaSceneName = "Arena";
 
             EditorSceneManager.SaveScene(scene, MainMenuScenePath);
         }
@@ -320,11 +274,20 @@ namespace PoDecath.EditorTools
             perturb.cam = cam;
             perturb.enabled = false;
 
-            // HUD
+            // HUD. The arena is the hands-on development scene, so it keeps slow motion and the camera
+            // toggle and opens with the stats card up.
             CreateEventSystem();
-            Canvas canvas = CreateCanvas("HUDCanvas");
-            RectTransform safe = CreateSafeArea(canvas.transform);
-            BuildHud(safe, runner, episodes, camRig, perturb);
+            var hud = UiBakery.AddScreen<HudView>("HUD", UiBakery.HudUxml, 10f);
+            if (hud != null)
+            {
+                hud.runner = runner;
+                hud.episodes = episodes;
+                hud.cameraRig = camRig;
+                hud.perturbation = perturb;
+                hud.handsOn = true;
+                hud.statsHiddenAtStart = false;
+            }
+            RaceUiBuilder.AddTelemetry(null);
 
             EditorSceneManager.SaveScene(scene, ArenaScenePath);
         }
@@ -352,115 +315,12 @@ namespace PoDecath.EditorTools
             return cm;
         }
 
-        // ------------------------------------------------------------------ HUD
+        // ------------------------------------------------------------------ input
 
-        internal static void BuildHud(RectTransform safe, PolicyRunner runner, EpisodeManager episodes, CameraRig camRig, TouchPerturbation perturb, bool handsOff = false)
-        {
-            // Top status card
-            RectTransform card = CreatePanel("StatusCard", safe, CardColor);
-            card.anchorMin = new Vector2(0, 1);
-            card.anchorMax = new Vector2(1, 1);
-            card.pivot = new Vector2(0.5f, 1);
-            card.offsetMin = new Vector2(36, -370);
-            card.offsetMax = new Vector2(-36, -36);
-            var cardLayout = card.gameObject.AddComponent<VerticalLayoutGroup>();
-            cardLayout.padding = new RectOffset(28, 28, 22, 22);
-            cardLayout.spacing = 6;
-            cardLayout.childControlHeight = true;
-            cardLayout.childControlWidth = true;
-            cardLayout.childForceExpandHeight = false;
-            cardLayout.childForceExpandWidth = true;
-
-            Text model = CreateText("ModelText", card, "model", 26, TextAnchor.MiddleLeft);
-            model.color = AccentColor;
-            SetPreferredHeight(model.gameObject, 40);
-            Text speed = CreateText("SpeedText", card, "Speed", 40, TextAnchor.MiddleLeft, FontStyle.Bold);
-            SetPreferredHeight(speed.gameObject, 58);
-            Text dist = CreateText("DistanceText", card, "Distance", 32, TextAnchor.MiddleLeft);
-            SetPreferredHeight(dist.gameObject, 48);
-            Text stab = CreateText("StabilityText", card, "Stability", 32, TextAnchor.MiddleLeft);
-            SetPreferredHeight(stab.gameObject, 48);
-            Text ep = CreateText("EpisodeText", card, "Episode", 32, TextAnchor.MiddleLeft);
-            SetPreferredHeight(ep.gameObject, 48);
-            Text last = CreateText("LastResultText", card, "Last: -", 26, TextAnchor.MiddleLeft);
-            last.color = new Color(0.72f, 0.76f, 0.82f);
-            SetPreferredHeight(last.gameObject, 40);
-
-            // Bottom control bar
-            RectTransform bar = CreatePanel("ControlBar", safe, CardColor);
-            bar.anchorMin = new Vector2(0, 0);
-            bar.anchorMax = new Vector2(1, 0);
-            bar.pivot = new Vector2(0.5f, 0);
-            bar.offsetMin = new Vector2(36, 36);
-            bar.offsetMax = new Vector2(-36, 330);
-            var barLayout = bar.gameObject.AddComponent<VerticalLayoutGroup>();
-            barLayout.padding = new RectOffset(20, 20, 18, 18);
-            barLayout.spacing = 14;
-            barLayout.childControlHeight = true;
-            barLayout.childControlWidth = true;
-            barLayout.childForceExpandHeight = false;
-            barLayout.childForceExpandWidth = true;
-
-            RectTransform row = CreatePanel("ButtonRow", bar, new Color(0, 0, 0, 0));
-            SetPreferredHeight(row.gameObject, 150);
-            var rowLayout = row.gameObject.AddComponent<HorizontalLayoutGroup>();
-            rowLayout.spacing = 14;
-            rowLayout.childControlHeight = true;
-            rowLayout.childControlWidth = true;
-            rowLayout.childForceExpandHeight = true;
-            rowLayout.childForceExpandWidth = true;
-
-            Button restart = CreateButton("RestartButton", row, "Restart", handsOff ? 40 : 30, handsOff ? AccentColor : ButtonColor);
-            Button slow = null, camera = null, menu = null;
-            Toggle flick = null;
-            if (!handsOff)
-            {
-                slow = CreateButton("SlowMoButton", row, "0.5x", 30, ButtonColor);
-                camera = CreateButton("CameraButton", row, "Cam: Chase", 30, ButtonColor);
-                menu = CreateButton("MenuButton", row, "Menu", 30, ButtonColor);
-                flick = CreateToggle("PerturbToggle", bar, "Touch-flick perturbation (swipe mid-screen)");
-                SetPreferredHeight(flick.gameObject, 80);
-            }
-            else
-            {
-                // Hands-off: one thumb-height Restart button, nothing else
-                bar.offsetMax = new Vector2(-36, 226);
-            }
-
-            var hud = safe.gameObject.AddComponent<GameplayHUD>();
-            hud.episodes = episodes;
-            hud.runner = runner;
-            hud.cameraRig = camRig;
-            hud.perturbation = perturb;
-            hud.modelText = model;
-            hud.speedText = speed;
-            hud.distanceText = dist;
-            hud.stabilityText = stab;
-            hud.episodeText = ep;
-            hud.lastResultText = last;
-            hud.restartButton = restart;
-            hud.slowMoButton = slow;
-            hud.cameraButton = camera;
-            hud.menuButton = menu;
-            hud.perturbToggle = flick;
-            hud.slowMoLabel = slow != null ? slow.GetComponentInChildren<Text>() : null;
-            hud.cameraLabel = camera != null ? camera.GetComponentInChildren<Text>() : null;
-            hud.menuSceneName = "MainMenu";
-        }
-
-        // ------------------------------------------------------------------ uGUI helpers
-
-        static DefaultControls.Resources UiResources() => new DefaultControls.Resources
-        {
-            standard = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd"),
-            background = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Background.psd"),
-            inputField = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/InputFieldBackground.psd"),
-            knob = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd"),
-            checkmark = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Checkmark.psd"),
-            dropdown = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/DropdownArrow.psd"),
-            mask = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UIMask.psd"),
-        };
-
+        /// <summary>
+        /// The EventSystem. UI Toolkit draws its own panels but still takes pointer and key input
+        /// through one, so every scene with a screen in it needs exactly one of these.
+        /// </summary>
         internal static void CreateEventSystem()
         {
             var go = new GameObject("EventSystem");
@@ -472,169 +332,5 @@ namespace PoDecath.EditorTools
 #endif
         }
 
-        internal static Canvas CreateCanvas(string name)
-        {
-            var go = new GameObject(name);
-            var canvas = go.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            var scaler = go.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(RefWidth, RefHeight);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
-            go.AddComponent<GraphicRaycaster>();
-            return canvas;
-        }
-
-        internal static RectTransform CreateSafeArea(Transform parent)
-        {
-            var go = new GameObject("SafeArea", typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var rt = go.GetComponent<RectTransform>();
-            Stretch(rt, Vector2.zero, Vector2.zero);
-            go.AddComponent<SafeAreaFitter>();
-            return rt;
-        }
-
-        internal static RectTransform CreatePanel(string name, Transform parent, Color color)
-        {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var img = go.AddComponent<Image>();
-            img.color = color;
-            img.raycastTarget = color.a > 0.01f;
-            if (color.a > 0.01f)
-            {
-                img.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Background.psd");
-                img.type = Image.Type.Sliced;
-            }
-            var rt = go.GetComponent<RectTransform>();
-            Stretch(rt, Vector2.zero, Vector2.zero);
-            return rt;
-        }
-
-        internal static void Stretch(RectTransform rt, Vector2 offsetMin, Vector2 offsetMax)
-        {
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.offsetMin = offsetMin;
-            rt.offsetMax = offsetMax;
-        }
-
-        internal static Text CreateText(string name, Transform parent, string content, int size, TextAnchor anchor, FontStyle style = FontStyle.Normal)
-        {
-            var go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            var t = go.AddComponent<Text>();
-            t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            t.text = content;
-            t.fontSize = size;
-            t.fontStyle = style;
-            t.alignment = anchor;
-            t.color = TextColor;
-            t.horizontalOverflow = HorizontalWrapMode.Wrap;
-            t.verticalOverflow = VerticalWrapMode.Overflow;
-            t.raycastTarget = false;
-            return t;
-        }
-
-        internal static Button CreateButton(string name, Transform parent, string label, int fontSize, Color color)
-        {
-            GameObject go = DefaultControls.CreateButton(UiResources());
-            go.name = name;
-            go.transform.SetParent(parent, false);
-            var img = go.GetComponent<Image>();
-            img.color = color;
-            var btn = go.GetComponent<Button>();
-            var colors = btn.colors;
-            colors.highlightedColor = Color.Lerp(color, Color.white, 0.15f);
-            colors.pressedColor = Color.Lerp(color, Color.black, 0.25f);
-            btn.colors = colors;
-            var text = go.GetComponentInChildren<Text>();
-            text.text = label;
-            text.fontSize = fontSize;
-            text.fontStyle = FontStyle.Bold;
-            text.color = TextColor;
-            return btn;
-        }
-
-        static Toggle CreateToggle(string name, Transform parent, string label)
-        {
-            GameObject go = DefaultControls.CreateToggle(UiResources());
-            go.name = name;
-            go.transform.SetParent(parent, false);
-            var toggle = go.GetComponent<Toggle>();
-            var bg = go.transform.Find("Background") as RectTransform;
-            if (bg != null)
-            {
-                bg.sizeDelta = new Vector2(56, 56);
-                bg.anchoredPosition = new Vector2(10, 0);
-                var check = bg.Find("Checkmark") as RectTransform;
-                if (check != null) check.sizeDelta = new Vector2(44, 44);
-            }
-            var text = go.GetComponentInChildren<Text>();
-            if (text != null)
-            {
-                text.text = label;
-                text.fontSize = 28;
-                text.color = TextColor;
-                var trt = text.rectTransform;
-                trt.offsetMin = new Vector2(80, 0);
-            }
-            SetPreferredHeight(go, 70);
-            return toggle;
-        }
-
-        static Dropdown CreateDropdown(string name, Transform parent)
-        {
-            GameObject go = DefaultControls.CreateDropdown(UiResources());
-            go.name = name;
-            go.transform.SetParent(parent, false);
-            var dd = go.GetComponent<Dropdown>();
-            var img = go.GetComponent<Image>();
-            img.color = ButtonColor;
-            dd.captionText.fontSize = 32;
-            dd.captionText.color = TextColor;
-            dd.itemText.fontSize = 30;
-            dd.itemText.color = TextColor;
-            var arrow = go.transform.Find("Arrow") as RectTransform;
-            if (arrow != null) arrow.sizeDelta = new Vector2(48, 48);
-
-            RectTransform template = dd.template;
-            if (template != null)
-            {
-                template.sizeDelta = new Vector2(0, 420);
-                var tImg = template.GetComponent<Image>();
-                if (tImg != null) tImg.color = new Color(0.12f, 0.13f, 0.17f, 0.98f);
-                var item = template.Find("Viewport/Content/Item") as RectTransform;
-                if (item != null) item.sizeDelta = new Vector2(0, 84);
-                var content = template.Find("Viewport/Content") as RectTransform;
-                if (content != null) content.sizeDelta = new Vector2(0, 84);
-                var itemBg = template.Find("Viewport/Content/Item/Item Background")?.GetComponent<Image>();
-                if (itemBg != null) itemBg.color = new Color(0.16f, 0.18f, 0.24f, 1f);
-                var itemCheck = template.Find("Viewport/Content/Item/Item Checkmark") as RectTransform;
-                if (itemCheck != null) itemCheck.sizeDelta = new Vector2(40, 40);
-            }
-            SetPreferredHeight(go, 110);
-            return dd;
-        }
-
-        internal static void AddSpacer(Transform parent, float height)
-        {
-            var go = new GameObject("Spacer", typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            SetPreferredHeight(go, height);
-        }
-
-        internal static void SetPreferredHeight(GameObject go, float height)
-        {
-            var le = go.GetComponent<LayoutElement>();
-            if (le == null) le = go.AddComponent<LayoutElement>();
-            le.preferredHeight = height;
-            le.minHeight = height;
-            // A child layout group that force-expands reports flexibleHeight 1 upward, and the parent's
-            // vertical layout then hands it every spare pixel. A fixed height means fixed.
-            le.flexibleHeight = 0f;
-        }
     }
 }

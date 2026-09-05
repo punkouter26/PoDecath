@@ -11,12 +11,12 @@ scaffolded as a placeholder so later phases plug into the same athlete, event an
 | 2 | Long jump | run-up = `run_to_target` with a carrot; take-off scripted (one vertical impulse), flight and landing are PhysX; a real take-off policy is still to train | `LongJumpEvent` + `LongJumpPit` on the infield deck (`LongJumpBuilder`), menu `PoDecath/Build Long Jump Scene` | playable, 3 rounds each |
 | 3 | Shot put | throw (placeholder) | placeholder | placeholder |
 | 4 | High jump | run-up + jump-over-bar (placeholder) | placeholder | placeholder |
-| 5 | 400 m | `run_track` (carrot on the loop centre line, `athlete_track.onnx`) | `LapEvent` + `TrackFollower` (set `laps` = 4 for 400 m) | 1 lap verified |
-| 6 | 110 m hurdles | run + hurdle clearance (placeholder) | placeholder | placeholder |
+| 5 | 400 m | `run_track` (carrot on the loop centre line, `athlete_track.onnx`) | `LapEvent` + `TrackFollower`, `laps` = 4 from the event picker | playable; 400 m in 44.6 s by the RED bot |
+| 6 | Hurdles | clearance not trained; athletes run into them | `HurdleSet` + `Hurdle` on the loop, picked as HURDLES | playable, nobody clears one yet |
 | 7 | Discus | throw (placeholder) | placeholder | placeholder |
 | 8 | Pole vault | placeholder | placeholder | placeholder |
 | 9 | Javelin | throw (placeholder) | placeholder | placeholder |
-| 10 | 1500 m | endurance loop | placeholder | placeholder |
+| 10 | 1500 m | `run_track`, 15 laps | `LapEvent`, `laps` = 15 from the event picker | playable; no get-up policy, so a fall ends a runner's race |
 
 Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
 
@@ -46,6 +46,13 @@ Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
 ## Known gaps
 
 - Get-up policy not trained yet; a fallen RL athlete is marked DNF and the race restarts.
+- **No athlete can clear a hurdle.** The hurdles event is playable and physical — 0.762 m bars on 9 kg
+  frames that topple when hit, knocks counted per runner and shown on the results board — but every
+  policy runs straight into them, and without a get-up policy that is a DNF. Measured over a 3-strong
+  RL field: all three down inside 25 m, 3 of 7 hurdles knocked over. A take-off policy trained on this
+  course is the fix; the course is now there to train against.
+- Audio is entirely synthesised (`PoDecath/Bake Audio Clips` -> `Assets/Audio/`). It is a complete,
+  reproducible placeholder set, not a sample library; every clip can be replaced on the `AudioBank`.
 - Long jump take-off is scripted: `LongJumpEvent.takeoffRise` adds one vertical velocity to the base at the
   board. Run-up, foot plants (take-off point and fouls), flight and the landing mark are all simulated. The
   sprint policy reaches only ~4.5 m/s on the 17.9 m runway, so its marks are ~2-3 m against the RED bot's

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The in-race HUD: a developer stats card that a broadcast scene keeps put away behind the STATS button,
+    and the control bar along the bottom.
+
+    The card is the second view of a race, not the first. The broadcast overlay carries the event; this is
+    what you open to see how a policy is actually doing — speed, stability, which checkpoint is driving.
+-->
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/Theme.uss" />
+
+    <ui:VisualElement name="root" class="root" picking-mode="Ignore">
+        <ui:VisualElement name="safe" class="safe" picking-mode="Ignore" style="padding: 16px;">
+
+            <ui:VisualElement class="spacer" picking-mode="Ignore" />
+
+            <ui:VisualElement name="stats-card" class="card stats hidden">
+                <ui:Label name="model" class="label-small" text="-" style="margin-bottom: 8px;" />
+                <ui:VisualElement class="stat-line">
+                    <ui:Label class="stat-key" text="Speed" />
+                    <ui:Label name="speed" class="stat-value" text="0.00 m/s" />
+                </ui:VisualElement>
+                <ui:VisualElement class="stat-line">
+                    <ui:Label class="stat-key" text="Distance" />
+                    <ui:Label name="distance" class="stat-value" text="0 m" />
+                </ui:VisualElement>
+                <ui:VisualElement class="stat-line">
+                    <ui:Label class="stat-key" text="Stability" />
+                    <ui:Label name="stability" class="stat-value" text="100 %" />
+                </ui:VisualElement>
+                <ui:VisualElement class="stat-line">
+                    <ui:Label class="stat-key" text="Attempt" />
+                    <ui:Label name="attempt" class="stat-value" text="1" />
+                </ui:VisualElement>
+                <ui:Label name="last-result" class="label-micro" text="" style="margin-top: 8px;" />
+            </ui:VisualElement>
+
+            <ui:VisualElement name="control-bar" class="control-bar">
+                <ui:Button name="restart" class="btn btn--primary" text="RESTART" />
+                <ui:Button name="stats" class="btn btn--ghost" text="STATS" />
+                <ui:Button name="slowmo" class="btn btn--ghost hidden" text="0.5x" />
+                <ui:Button name="camera" class="btn btn--ghost hidden" text="CAM" />
+                <ui:Button name="menu" class="btn btn--ghost" text="MENU" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

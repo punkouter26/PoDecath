@@ -53,15 +53,28 @@ namespace PoDecath.Cam
         [Header("Placement (metres)")]
         [Tooltip("How far outside the deck edge the trackside cameras sit. The deck is ringed by a 1 m "
                + "barrier, so a camera parked close and low just films the barrier.")]
-        public float trackside = 8f;
-        public float railHeight = 3.0f;
-        public float bendHeight = 8.0f;
+        public float trackside = 11f;
+        [Tooltip("The rail camera's height above the deck. The deck is ringed by a 0.8 m barrier and a "
+               + "second one on the far side; a camera at chest height frames both of them and very little "
+               + "athlete, so it sits high enough to shoot over the near rail and down onto the runner.")]
+        public float railHeight = 4.6f;
+        public float bendHeight = 9.0f;
         public float headOnLead = 14f;
         public float wideHeight = 30f;
         public float wideBack = 40f;
 
         public Shot Current { get; private set; } = Shot.StartLine;
         public string CurrentName => Current.ToString();
+
+        /// <summary>
+        /// Who the gallery is on: the leader, or whoever has just gone down while the incident is being
+        /// shown, or the competitor on the runway. This is what a lower third would carry, so the broadcast
+        /// overlay reads it rather than working the leader out a second time.
+        /// </summary>
+        public DashEvent.Athlete Featured { get; private set; }
+
+        /// <summary>True when the shot on air is framed on one athlete rather than on the whole field.</summary>
+        public bool OnIndividual => Current != Shot.Wide && Current != Shot.StartLine;
 
         Transform _leaderSubject, _fieldSubject;
         float _shotAge;
@@ -131,6 +144,7 @@ namespace PoDecath.Cam
                 _incidentLeft -= Time.deltaTime;
                 if (faller != null) _fieldSubject.position = Subject(faller);
             }
+            Featured = _incidentLeft > 0f && faller != null ? faller : leader;
 
             float leaderS = leader != null ? ArcOf(leader) : _startS;
             PlaceCameras(leaderS);
@@ -208,6 +222,7 @@ namespace PoDecath.Cam
         void DirectJump(LongJumpEvent jump)
         {
             DashEvent.Athlete who = jump.Competitor;
+            Featured = who;
             bool cutNow = false;
             if (who != _jumpCompetitor || jump.CurrentStage != _jumpStage || race.Attempt != _lastAttempt)
             {

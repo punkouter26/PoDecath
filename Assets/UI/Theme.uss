@@ -1,0 +1,391 @@
+/*
+ * PoDecath UI theme.
+ *
+ * One stylesheet for every screen: the setup menu, the in-race HUD, the broadcast overlay, the results
+ * card and the diagnostics panel. Everything that used to be a hard-coded Color in RaceUiBuilder.cs is a
+ * token here, so re-colouring the whole game is one block of text rather than a rebuild of four scenes.
+ *
+ * Two rules run through the whole thing:
+ *
+ *  - Spacing is on an 8 px grid at the 1080 x 1920 reference resolution. Every padding, margin and gap
+ *    below is a multiple of 8 (or 4 for the tightest ones), which is what makes screens built by different
+ *    parts of the codebase look like they belong to the same game.
+ *
+ *  - The broadcast furniture is thinner than the cards. It sits over the picture, and most of what is
+ *    behind it is the sky over the roof, which is the brightest thing in the scene. Anything laid over
+ *    that needs a real scrim behind it, not 50% black.
+ */
+
+:root {
+    /* Ink */
+    --ink:            rgb(240, 244, 249);
+    --ink-dim:        rgb(168, 178, 192);
+    --ink-faint:      rgb(116, 126, 140);
+
+    /* Surfaces, darkest first */
+    --scrim:          rgba(5, 7, 12, 0.92);
+    --surface:        rgba(13, 16, 24, 0.94);
+    --surface-2:      rgba(24, 29, 40, 0.96);
+    --surface-line:   rgba(255, 255, 255, 0.08);
+    --overlay:        rgba(6, 8, 14, 0.88);
+    --overlay-strip:  rgba(6, 8, 14, 0.84);
+    --row:            rgba(255, 255, 255, 0.05);
+    --row-lead:       rgba(255, 255, 255, 0.11);
+
+    /* Accents */
+    --accent:         rgb(46, 191, 140);
+    --accent-press:   rgb(32, 150, 110);
+    --danger:         rgb(255, 108, 92);
+    --warn:           rgb(255, 198, 84);
+
+    /* Type scale */
+    --t-micro:        18px;
+    --t-small:        24px;
+    --t-body:         30px;
+    --t-title:        40px;
+    --t-display:      58px;
+    --t-clock:        66px;
+
+    /* Grid */
+    --gap-1:           8px;
+    --gap-2:          16px;
+    --gap-3:          24px;
+    --gap-4:          32px;
+    --gap-5:          48px;
+
+    --radius:         12px;
+    --radius-sm:       8px;
+}
+
+/* ------------------------------------------------------------------ base */
+
+.root {
+    flex-grow: 1;
+    color: var(--ink);
+    font-size: var(--t-body);
+}
+
+/* Every screen sits inside this: it is the safe area, applied in code from Screen.safeArea. */
+.safe {
+    position: absolute;
+    left: 0; right: 0; top: 0; bottom: 0;
+}
+
+.fill { flex-grow: 1; }
+.row { flex-direction: row; align-items: center; }
+.col { flex-direction: column; }
+.spacer { flex-grow: 1; }
+.hidden { display: none; }
+
+.card {
+    background-color: var(--surface);
+    border-radius: var(--radius);
+    border-width: 1px;
+    border-color: var(--surface-line);
+    padding: var(--gap-3);
+}
+
+.muted { color: var(--ink-dim); }
+.faint { color: var(--ink-faint); }
+.danger { color: var(--danger); }
+.warn { color: var(--warn); }
+
+.label-micro { font-size: var(--t-micro); letter-spacing: 2px; color: var(--ink-dim); }
+.label-small { font-size: var(--t-small); }
+.label-title { font-size: var(--t-title); -unity-font-style: bold; }
+.label-display { font-size: var(--t-display); -unity-font-style: bold; }
+
+/* Numbers that change every frame — clocks, splits, speeds — are tabular by hand: a fixed width per
+   field stops the whole row jittering sideways as a digit changes. */
+.numeric {
+    -unity-text-align: middle-right;
+    -unity-font-style: bold;
+}
+
+/* ------------------------------------------------------------------ buttons */
+
+.btn {
+    background-color: var(--surface-2);
+    border-radius: var(--radius-sm);
+    border-width: 0;
+    color: var(--ink);
+    font-size: var(--t-body);
+    padding: var(--gap-2) var(--gap-3);
+    margin: 0;
+    min-height: 88px;                  /* a 44 pt touch target at 2x, which is the floor on a phone */
+    transition-property: background-color, scale;
+    transition-duration: 0.12s;
+    transition-timing-function: ease-out;
+}
+
+.btn:hover { background-color: rgba(46, 191, 140, 0.18); }
+.btn:active { scale: 0.97 0.97; background-color: var(--accent-press); }
+.btn:disabled { opacity: 0.35; }
+
+.btn--primary { background-color: var(--accent); color: rgb(6, 20, 15); -unity-font-style: bold; }
+.btn--primary:hover { background-color: rgb(60, 210, 156); }
+
+.btn--ghost { background-color: rgba(255, 255, 255, 0.06); }
+
+.btn--step {
+    /* A stepper sits on a row that is already --surface-2, so it needs its own lighter ground or it
+       disappears into the row and reads as two floating glyphs. */
+    min-width: 96px;
+    min-height: 88px;
+    width: 96px;
+    margin-left: 8px;
+    font-size: 44px;
+    -unity-font-style: bold;
+    padding: 0;
+    background-color: rgba(255, 255, 255, 0.10);
+    color: var(--ink);
+}
+
+.btn--step:hover { background-color: rgba(46, 191, 140, 0.30); }
+.btn--step:disabled { opacity: 0.25; }
+
+/* ------------------------------------------------------------------ broadcast overlay */
+
+.bcast-top {
+    flex-direction: row;
+    align-items: center;
+    background-color: var(--overlay);
+    border-radius: var(--radius-sm);
+    padding: var(--gap-2) var(--gap-3);
+    margin-bottom: var(--gap-1);
+}
+
+.bcast-stage { font-size: var(--t-title); -unity-font-style: bold; letter-spacing: 3px; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8); }
+.bcast-lead { font-size: var(--t-small); color: var(--ink-dim); text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8); }
+.bcast-clock { font-size: var(--t-clock); -unity-font-style: bold; -unity-text-align: middle-right; text-shadow: 0 2px 5px rgba(0, 0, 0, 0.8); }
+
+.order {
+    background-color: var(--overlay-strip);
+    border-radius: var(--radius-sm);
+    padding: var(--gap-1);
+    width: 62%;
+}
+
+.order-row {
+    flex-direction: row;
+    align-items: center;
+    height: 52px;
+    padding-left: var(--gap-1);
+    padding-right: var(--gap-1);
+    margin-bottom: 2px;
+    border-radius: 6px;
+    background-color: var(--row);
+    /* A position change slides rather than snaps; see BroadcastView.Reorder. */
+    transition-property: translate, background-color, opacity;
+    transition-duration: 0.22s;
+    transition-timing-function: ease-in-out;
+}
+
+.order-row--lead { background-color: var(--row-lead); }
+.order-row--gained { background-color: rgba(46, 191, 140, 0.28); }
+.order-row--lost { background-color: rgba(255, 108, 92, 0.22); }
+
+.order-rank { width: 46px; font-size: var(--t-small); -unity-font-style: bold; color: var(--ink-dim); }
+.order-name {
+    flex-grow: 1;
+    font-size: var(--t-small);
+    -unity-font-style: bold;
+    /* An athlete colour is chosen to read against asphalt, not against a bright sky. The shadow is what
+       keeps a green or a yellow name legible when the shot cuts to one looking up at the roofline. */
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.85);
+}
+.order-gap { width: 200px; font-size: var(--t-small); -unity-text-align: middle-right; color: var(--ink-dim); }
+
+.splits {
+    background-color: var(--overlay-strip);
+    border-radius: var(--radius-sm);
+    padding: var(--gap-1);
+    width: 36%;
+    margin-left: var(--gap-1);
+}
+
+.split-row { font-size: var(--t-micro); color: var(--ink-dim); height: 34px; }
+
+/* The split that has just been set flashes once and settles. */
+.split-row--new { color: var(--ink); -unity-font-style: bold; }
+
+.lower-third {
+    background-color: var(--overlay);
+    border-radius: var(--radius-sm);
+    padding: var(--gap-2) var(--gap-3);
+    /* Wipes in from the left rather than fading: it is a graphic being pushed on, not a ghost. */
+    transition-property: opacity, translate;
+    transition-duration: 0.24s;
+    transition-timing-function: ease-out;
+}
+
+.lower-third--out { opacity: 0; translate: -40px 0; }
+.lower-third--in { opacity: 1; translate: 0 0; }
+.lower-name { font-size: var(--t-title); -unity-font-style: bold; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.85); }
+.lower-detail { font-size: var(--t-small); color: var(--ink-dim); }
+
+/* The countdown, dead centre, scaling down on each beep. */
+.countdown {
+    position: absolute;
+    left: 0; right: 0;
+    top: 34%;
+    font-size: 220px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    color: var(--ink);
+    transition-property: scale, opacity;
+    transition-duration: 0.35s;
+    transition-timing-function: ease-out;
+}
+
+.countdown--beat { scale: 1.35 1.35; opacity: 1; }
+.countdown--rest { scale: 0.9 0.9; opacity: 0.55; }
+.countdown--off { opacity: 0; scale: 0.6 0.6; }
+
+/* ------------------------------------------------------------------ stats card */
+
+.stats { width: 100%; }
+.stat-line { flex-direction: row; justify-content: space-between; margin-bottom: var(--gap-1); }
+.stat-key { font-size: var(--t-small); color: var(--ink-dim); }
+.stat-value { font-size: var(--t-small); -unity-font-style: bold; }
+
+/* ------------------------------------------------------------------ control bar */
+
+.control-bar {
+    flex-direction: row;
+    align-items: center;
+    padding: var(--gap-2);
+}
+
+.control-bar .btn { flex-grow: 1; margin-left: var(--gap-1); margin-right: var(--gap-1); }
+
+/* ------------------------------------------------------------------ modal */
+
+.modal-scrim {
+    position: absolute;
+    left: 0; right: 0; top: 0; bottom: 0;
+    background-color: var(--scrim);
+    align-items: center;
+    justify-content: center;
+    transition-property: opacity;
+    transition-duration: 0.2s;
+}
+
+.modal {
+    width: 92%;
+    max-height: 84%;
+    background-color: var(--surface);
+    border-radius: var(--radius);
+    border-width: 1px;
+    border-color: var(--surface-line);
+    padding: var(--gap-4);
+    transition-property: scale, opacity;
+    transition-duration: 0.22s;
+    transition-timing-function: ease-out;
+}
+
+.modal--out { scale: 0.94 0.94; opacity: 0; }
+.modal--in { scale: 1 1; opacity: 1; }
+
+.result-row {
+    flex-direction: row;
+    align-items: center;
+    height: 78px;
+    padding-left: var(--gap-2);
+    padding-right: var(--gap-2);
+    border-radius: 6px;
+    margin-bottom: var(--gap-1);
+    background-color: var(--row);
+}
+
+.result-row--podium { background-color: var(--row-lead); }
+.result-rank { width: 72px; font-size: var(--t-title); -unity-font-style: bold; }
+.result-name { flex-grow: 1; font-size: var(--t-body); -unity-font-style: bold; }
+.result-time { width: 280px; font-size: var(--t-body); -unity-text-align: middle-right; }
+
+/* ------------------------------------------------------------------ setup menu */
+
+.setup { padding: var(--gap-4); flex-grow: 1; }
+
+.event-grid { flex-direction: row; flex-wrap: wrap; margin-bottom: var(--gap-3); }
+
+.event-btn {
+    flex-grow: 1;
+    flex-basis: 40%;
+    margin: var(--gap-1);
+    min-height: 104px;
+    background-color: var(--surface-2);
+    border-radius: var(--radius-sm);
+    border-width: 2px;
+    border-color: rgba(0, 0, 0, 0);
+    font-size: var(--t-small);
+    -unity-font-style: bold;
+    color: var(--ink);
+    transition-property: background-color, border-color, scale;
+    transition-duration: 0.12s;
+}
+
+.event-btn:hover { background-color: rgba(46, 191, 140, 0.14); }
+.event-btn--selected {
+    background-color: rgba(46, 191, 140, 0.22);
+    border-color: var(--accent);
+}
+
+.runner-row {
+    flex-direction: row;
+    align-items: center;
+    background-color: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: var(--gap-2);
+    margin-bottom: var(--gap-2);
+}
+
+.runner-name { flex-grow: 1; font-size: var(--t-body); }
+.runner-count {
+    width: 96px;
+    font-size: var(--t-title);
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+.runner-swatch {
+    width: 12px;
+    height: 56px;
+    border-radius: 6px;
+    margin-right: var(--gap-2);
+}
+
+/* ------------------------------------------------------------------ diagnostics */
+
+.telemetry {
+    position: absolute;
+    background-color: rgba(4, 6, 11, 0.86);
+    border-radius: var(--radius-sm);
+    border-width: 1px;
+    border-color: var(--surface-line);
+    padding: var(--gap-2);
+    width: 560px;
+}
+
+.telemetry-title {
+    font-size: var(--t-micro);
+    letter-spacing: 3px;
+    color: var(--accent);
+    -unity-font-style: bold;
+    margin-bottom: var(--gap-1);
+}
+
+.telemetry-row { flex-direction: row; justify-content: space-between; height: 30px; }
+.telemetry-key { font-size: var(--t-micro); color: var(--ink-dim); }
+.telemetry-value { font-size: var(--t-micro); -unity-font-style: bold; -unity-text-align: middle-right; }
+.telemetry-value--good { color: var(--accent); }
+.telemetry-value--warn { color: var(--warn); }
+.telemetry-value--bad { color: var(--danger); }
+
+/* The frame-time graph is drawn with generateVisualContent, so this only has to reserve the space. */
+.telemetry-graph {
+    height: 120px;
+    margin-top: var(--gap-1);
+    background-color: rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+}

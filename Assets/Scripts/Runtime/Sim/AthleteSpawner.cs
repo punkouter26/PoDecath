@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
+using PoDecath.Audio;
 using PoDecath.Cam;
+using PoDecath.Env;
+using PoDecath.Fx;
 
 namespace PoDecath.Sim
 {
@@ -33,6 +36,18 @@ namespace PoDecath.Sim
                + "colour multiplies the base map rather than replacing it, so values in between keep the "
                + "texture readable while still telling policies apart.")]
         public float skinTintStrength = 0f;
+        [Tooltip("Baked by PoDecath/Bake Audio Clips. Gives every athlete its own footsteps; leave it empty "
+               + "for a field that runs in silence.")]
+        public AudioBank audioBank;
+        [Tooltip("Materials for the trails, blob shadows and dust. Without it athletes get no presentation.")]
+        public VfxBank vfxBank;
+        [Tooltip("Ribbon behind each athlete in its own colour; the only thing that tells a field of "
+               + "identically skinned Matts apart, since the house rule forbids tinting them.")]
+        public bool trails = true;
+        [Tooltip("Soft disc under each athlete. Essential on mobile, a contact shadow on desktop.")]
+        public bool blobShadows = true;
+        [Tooltip("A puff off every heavy footfall, driven by the same contact detection as the sound.")]
+        public bool footDust = true;
 
         [System.Serializable]
         class PolicyJson { public float action_scale = 0.5f; public int control_decimation = 4; public int physics_hz = 200; }
@@ -61,6 +76,8 @@ namespace PoDecath.Sim
                     a.name = $"{def.displayName} {a.number}";
                     if (a.go != null) a.go.name = a.name;
                 }
+                AddFootsteps(a);
+                AddPresentation(a, number - 1);
                 if (dash != null) dash.Register(a);
             }
             if (cameraRig != null && dash != null && dash.Reference != null)
@@ -96,6 +113,63 @@ namespace PoDecath.Sim
                 list.Add(def);
             }
             return list;
+        }
+
+        /// <summary>
+        /// Gives one athlete its own feet, on the body that actually moves — the articulation root for a
+        /// physics athlete, the runner object for the kinematic bot — so a step is heard from where the
+        /// runner is on the deck rather than from the middle of the stadium.
+        ///
+        /// The dust comes off the same detection: <see cref="FootstepAudio"/> raises an event per step and
+        /// <see cref="FootstepDust"/> listens, so the puff and the sound are always on the same frame.
+        /// </summary>
+        void AddFootsteps(DashEvent.Athlete a)
+        {
+            GameObject host = a.IsRL && a.rig.root != null ? a.rig.root.gameObject : a.go;
+            if (host == null) return;
+            bool haveSound = audioBank != null && audioBank.HasFootfalls;
+            if (!haveSound && !footDust) return;
+
+            var steps = host.AddComponent<FootstepAudio>();
+            steps.bank = haveSound ? audioBank : null;
+            steps.rig = a.rig;
+            steps.heuristic = a.heuristic;
+            if (footDust) host.AddComponent<FootstepDust>().steps = steps;
+        }
+
+        /// <summary>
+        /// The presentation an athlete carries with it: a trail ribbon in its own colour, a soft disc on
+        /// the deck under it, and dust off its feet.
+        ///
+        /// The trail is the answer to a constraint rather than a decoration. Athletes keep the textures
+        /// they were imported with (see CLAUDE.md), so a field of eight identical Matts cannot be told
+        /// apart by looking at them; the ribbon puts each one's colour on screen without tinting a single
+        /// pixel of skin, and shows the line they took through the bend into the bargain.
+        ///
+        /// Only the first few athletes get a ribbon on the mobile tier — <see cref="RenderTier.TrailedAthletes"/> —
+        /// because sixteen trail renderers is sixteen dynamic meshes rebuilt every frame.
+        /// </summary>
+        void AddPresentation(DashEvent.Athlete a, int index)
+        {
+            if (vfxBank == null) return;
+            GameObject host = a.IsRL && a.rig.root != null ? a.rig.root.gameObject : a.go;
+            if (host == null) return;
+
+            if (trails && index < RenderTier.TrailedAthletes && vfxBank.trail != null)
+            {
+                var trail = host.AddComponent<AthleteTrail>();
+                trail.rig = a.rig;
+                trail.heuristic = a.heuristic;
+                trail.material = vfxBank.trail;
+                trail.color = a.color;
+            }
+            if (blobShadows && vfxBank.blobShadow != null)
+            {
+                var blob = host.AddComponent<BlobShadow>();
+                blob.rig = a.rig;
+                blob.heuristic = a.heuristic;
+                blob.material = vfxBank.blobShadow;
+            }
         }
 
         DashEvent.Athlete SpawnRL(AthleteDefinition def, int layer, PolicyJson pj)

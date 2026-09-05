@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2f674a311d495044dbbe10eceef6309e, type: 3}
+  m_Name: AudioBank
+  m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Audio.AudioBank
+  crowdBed: {fileID: 8300000, guid: 81f32b1d099fc164c9e53cd5c7d3206a, type: 3}
+  crowdSwell: {fileID: 8300000, guid: 2f2a941208c7d934698d6c35b20e76ff, type: 3}
+  crowdGroan: {fileID: 8300000, guid: 7e22c31a92e144b4882707e78b2befe7, type: 3}
+  crowdApplause: {fileID: 8300000, guid: e6ba5671f7d57b944bc756bfdc4743b5, type: 3}
+  crowdChant: {fileID: 8300000, guid: 96aed84a47309b046bc2bb0717aba6ca, type: 3}
+  windBed: {fileID: 8300000, guid: 5c321a63cb136ef49bd734b2d2689773, type: 3}
+  pistol: {fileID: 8300000, guid: 3473b556177096f48ad2285df9d51b81, type: 3}
+  countBeep: {fileID: 8300000, guid: 70a7a1facdef3e34f858997f4cf58362, type: 3}
+  lapBell: {fileID: 8300000, guid: 5d894c42eb0262b4aa27fa798c7bd962, type: 3}
+  hurdleClatter: {fileID: 8300000, guid: b0ef3c41cf66f674193a3516429567b6, type: 3}
+  hurdleClip: {fileID: 8300000, guid: 52805ebcd4c528546ade58aa5287b1c7, type: 3}
+  sandThud: {fileID: 8300000, guid: c051ba09ac7a9264c832ccec7650b5f5, type: 3}
+  footfalls:
+  - {fileID: 8300000, guid: 70513fae5bcacc842bd8ff05189aa476, type: 3}
+  - {fileID: 8300000, guid: 4f18f4e5af57549458d1a8130461ddeb, type: 3}
+  - {fileID: 8300000, guid: 4116d22678e7e604dba8e07f8fe2491a, type: 3}
+  - {fileID: 8300000, guid: 82bf2d315bee9a34aa9332243b8d733c, type: 3}
+  footfallsSand:
+  - {fileID: 8300000, guid: f8c344a12afba7a4f9d83506f3769fdd, type: 3}
+  - {fileID: 8300000, guid: 5afa4ea7c695ea742a2cb29c57f00e0d, type: 3}
+  - {fileID: 8300000, guid: b83b1eab9101f284c85221da8921ffa7, type: 3}
+  footfallsRubber:
+  - {fileID: 8300000, guid: 8ac1bf319e20c3c4c8cd12d493ca4f04, type: 3}
+  - {fileID: 8300000, guid: f36caaf25a827a04ca0a933353814ef6, type: 3}
+  - {fileID: 8300000, guid: a8465510ff90c864aa985b7f082e56c3, type: 3}
+  breath: {fileID: 8300000, guid: e49d062e0e9f726428a4a1dad92e2344, type: 3}
+  whoosh: {fileID: 8300000, guid: 17232dc4c3d3c6c4bb4144b3b141bb52, type: 3}
+  sting: {fileID: 8300000, guid: d06b410e0f63ad047bacaee2475a4be7, type: 3}

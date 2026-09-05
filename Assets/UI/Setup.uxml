@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The event setup menu: pick the event, then pick who runs it.
+
+    Both grids are built in SetupView from the scenes and athlete definitions the project actually has, so
+    an event that has not been built and a policy that has not been trained simply do not appear.
+-->
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/Theme.uss" />
+
+    <ui:VisualElement name="root" class="root">
+        <ui:VisualElement name="safe" class="safe">
+            <ui:VisualElement class="setup">
+
+                <ui:Label class="label-micro" text="PODECATH" />
+                <ui:Label name="title" class="label-display" text="EVENT SETUP" />
+                <ui:Label name="hint" class="label-small muted" text="" style="margin-bottom: 32px;" />
+
+                <ui:Label class="label-micro" text="EVENT" style="margin-bottom: 8px;" />
+                <ui:VisualElement name="events" class="event-grid" />
+
+                <ui:Label class="label-micro" text="FIELD" style="margin-bottom: 8px;" />
+                <ui:ScrollView name="runners-scroll" style="flex-grow: 1;">
+                    <ui:VisualElement name="runners" />
+                </ui:ScrollView>
+
+                <ui:VisualElement class="row" style="margin-top: 16px;">
+                    <ui:Label name="total" class="label-small muted" text="Total 0 / 16" style="flex-grow: 1;" />
+                </ui:VisualElement>
+
+                <ui:Button name="start" class="btn btn--primary" text="START" style="margin-top: 16px; min-height: 112px; font-size: 40px;" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

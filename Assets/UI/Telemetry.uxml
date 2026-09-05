@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The diagnostics panel. Rows are built in TelemetryOverlay so that a metric the platform cannot report
+    is left out rather than shown as a permanent zero.
+-->
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/Theme.uss" />
+
+    <ui:VisualElement name="root" class="root hidden" picking-mode="Ignore">
+        <ui:VisualElement name="panel" class="telemetry" style="top: 24px; left: 24px;">
+            <ui:Label name="title" class="telemetry-title" text="TELEMETRY" />
+            <ui:VisualElement name="rows" />
+            <ui:VisualElement name="graph" class="telemetry-graph" />
+            <ui:Label name="footer" class="telemetry-key" text="" style="margin-top: 8px;" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

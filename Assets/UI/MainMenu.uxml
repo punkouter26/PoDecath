@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The development main menu: which checkpoint to run, which arena to run it in, and the frame-rate and
+    quality-tier settings. This is the door into the Arena evaluation scene, not into the game — the game
+    opens on RaceSetup.
+-->
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/Theme.uss" />
+
+    <ui:VisualElement name="root" class="root">
+        <ui:VisualElement name="safe" class="safe">
+            <ui:VisualElement class="setup" style="justify-content: center;">
+
+                <ui:Label class="label-micro" text="PODECATH" />
+                <ui:Label class="label-display" text="EVALUATION" />
+                <ui:Label class="label-small muted"
+                          text="Physics creature evaluation. Isaac Lab and MuJoCo policies on Unity ArticulationBody."
+                          style="margin-bottom: 48px; white-space: normal;" />
+
+                <ui:Label class="label-micro" text="POLICY CHECKPOINT" style="margin-bottom: 8px;" />
+                <ui:DropdownField name="policy" class="label-small" style="margin-bottom: 24px;" />
+
+                <ui:Label class="label-micro" text="ARENA" style="margin-bottom: 8px;" />
+                <ui:DropdownField name="arena" class="label-small" style="margin-bottom: 24px;" />
+
+                <ui:Label class="label-micro" text="QUALITY TIER" style="margin-bottom: 8px;" />
+                <ui:DropdownField name="tier" class="label-small" style="margin-bottom: 24px;" />
+
+                <ui:Toggle name="fps60" label="Target 60 FPS (off = 30 FPS)" class="label-small" style="margin-bottom: 32px;" />
+
+                <ui:Button name="start" class="btn btn--primary" text="START EVALUATION"
+                           style="min-height: 128px; font-size: 40px;" />
+
+                <ui:Label name="info" class="label-micro" text="" style="margin-top: 24px; white-space: normal;" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

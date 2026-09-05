@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ff4908328c2a184fbcdf543670f894d, type: 3}
+  m_Name: VfxBank
+  m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Fx.VfxBank
+  dust: {fileID: 2100000, guid: b7359c0b53fbbdc49a5e6b4426608d6e, type: 2}
+  sand: {fileID: 2100000, guid: 5853d9f0ef2969b429e1a6c81d3d7d4e, type: 2}
+  spark: {fileID: 2100000, guid: cde8e50b070c42742a2a2df45543f749, type: 2}
+  smoke: {fileID: 2100000, guid: 4584ce5c3d2201940979619bf2046e8d, type: 2}
+  confetti: {fileID: 2100000, guid: cd6258883b399c84d83b59f614ca0629, type: 2}
+  trail: {fileID: 2100000, guid: b387d71cebcc04b4e972ba1aa9189e2c, type: 2}
+  blobShadow: {fileID: 2100000, guid: 745ecc9802d557841bd4981b861af1ac, type: 2}
+  sandMark: {fileID: 2100000, guid: ca78dea247ed81d499d6ddc0c650bb2a, type: 2}
