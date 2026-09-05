@@ -54,10 +54,11 @@ def quat_mul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 
 class GetUpEnv(RunToTargetEnv):
-    # Every starting pose must be tilted further than this or it satisfies the standing test at step zero,
-    # and the task's headline metric ends up counting episodes that never began on the ground. It is
-    # acos(stand_upright) in degrees, and the curriculum's easy end is kept clear of it.
-    MIN_START_TILT_DEG = 30.0
+    # Margin, in degrees, between the shallowest starting pose and the pose that would already satisfy the
+    # standing test. Kept as a margin rather than an absolute floor because the floor depends on
+    # stand_upright: at 0.9 the boundary is acos(0.9) = 25.8 degrees, but raise or lower that threshold and
+    # the boundary moves with it. A hard-coded floor would silently stop protecting anything.
+    START_TILT_MARGIN_DEG = 5.0
 
     def __init__(self, xml_path: str, num_envs: int,
                  episode_len_s: float = 6.0,
@@ -72,13 +73,17 @@ class GetUpEnv(RunToTargetEnv):
                  **kw):
         # Set before super().__init__, because RunToTargetEnv's constructor calls reset(), which calls the
         # overrides below. Same pattern RunTrackEnv uses.
-        self.tilt_lo = math.radians(max(tilt_range[0], self.MIN_START_TILT_DEG))
-        self.tilt_hi = math.radians(max(tilt_range[1], self.MIN_START_TILT_DEG + 10.0))
+        self.stand_upright = stand_upright
+        # Every starting pose has to be tilted past the standing test, or an episode begins already standing
+        # and the task's headline metric counts bodies that were never on the ground. That boundary is
+        # acos(stand_upright), so it is computed from it rather than assumed.
+        floor_deg = math.degrees(math.acos(min(0.999, max(-0.999, stand_upright)))) + self.START_TILT_MARGIN_DEG
+        self.tilt_lo = math.radians(max(tilt_range[0], floor_deg))
+        self.tilt_hi = math.radians(max(tilt_range[1], floor_deg + 10.0))
         self.tilt_lo_final = math.radians(tilt_range_final[0])
         self.tilt_hi_final = math.radians(tilt_range_final[1])
         self.curriculum_hold = curriculum_hold
         self.curriculum_step = math.radians(curriculum_step)
-        self.stand_upright = stand_upright
         self.stand_height_frac = stand_height_frac
         self.hold_seconds = hold_seconds
         self.upright_hold = None
