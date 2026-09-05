@@ -135,7 +135,7 @@ namespace PoDecath.Cam
             float leaderS = leader != null ? ArcOf(leader) : _startS;
             PlaceCameras(leaderS);
 
-            Shot want = Choose(leader, finished);
+            Shot want = Choose(leader, finished, leaderS);
             _shotAge += Time.deltaTime;
             if (want != Current && (cutNow || _shotAge >= minShotSeconds))
             {
@@ -145,7 +145,7 @@ namespace PoDecath.Cam
             Apply();
         }
 
-        Shot Choose(DashEvent.Athlete leader, int finished)
+        Shot Choose(DashEvent.Athlete leader, int finished, float leaderS)
         {
             if (race.Current == DashEvent.Phase.Countdown || race.Current == DashEvent.Phase.Idle) return Shot.StartLine;
             if (race.Current == DashEvent.Phase.Finished) return Shot.Finish;
@@ -156,7 +156,7 @@ namespace PoDecath.Cam
             if (f < 0.07f) return Shot.OffTheGun;            // away from the line
             if (finished > 0 || f > 0.94f) return Shot.Finish;
             if (f > 0.86f) return Shot.HeadOn;               // home straight, running at camera
-            if (InBend(ArcOf(leader))) return Shot.Bend;
+            if (InBend(leaderS)) return Shot.Bend;
             if (f > 0.35f && f < 0.55f) return Shot.Wide;     // settled middle: show the whole field
             return Shot.Rail;
         }
@@ -306,11 +306,19 @@ namespace PoDecath.Cam
             return p + Vector3.up * 0.25f;   // aim at the chest, not the hips
         }
 
+        /// <summary>
+        /// Arc length along the loop. Every athlete on the track already keeps one — an RL runner in its
+        /// TrackFollower, the heuristic bot in the arc it integrates itself — so read it rather than
+        /// searching for it. Only an athlete on neither falls through to a projection, and that one gets
+        /// the global scan: <see cref="TrackPath.Project"/> searches a few metres around the value handed
+        /// to it, so seeding it from the start line would park the moving cameras on the grid all race.
+        /// </summary>
         float ArcOf(DashEvent.Athlete a)
         {
             if (a.follower != null) return a.follower.S;
+            if (a.heuristic != null && a.heuristic.path == path) return a.heuristic.S;
             Vector3 p = a.IsRL ? a.rig.BasePosition : (a.go != null ? a.go.transform.position : Vector3.zero);
-            return path.Project(p, _startS);
+            return path.ProjectGlobal(p);
         }
 
         bool InBend(float s)

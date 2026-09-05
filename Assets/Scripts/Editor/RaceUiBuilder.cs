@@ -223,29 +223,27 @@ namespace PoDecath.EditorTools
 
             var ctrlGo = new GameObject("RaceSetup");
             var ctrl = ctrlGo.AddComponent<RaceSetupController>();
-            ctrl.raceSceneName = "RooftopRace";
             ctrl.hintText = hint;
             ctrl.selectedEventColor = AccentColor;
             ctrl.unselectedEventColor = ButtonColor;
 
-            // Event picker: one button per event, side by side above the field.
+            // Every event on offer goes to the controller — that is where START reads the scene name and
+            // the hint from, whether or not there is anything to pick between.
+            foreach (EventEntry e in events)
+                ctrl.events.Add(new RaceSetupController.EventChoice { label = e.label, sceneName = e.sceneName, hint = e.hint });
+
+            // The picker is only that list's UI: one button per event, side by side above the field.
             if (events.Count > 1)
             {
                 RectTransform picker = PoDecathSceneBuilder.CreatePanel("EventPicker", panel, new Color(0, 0, 0, 0));
                 PoDecathSceneBuilder.SetPreferredHeight(picker.gameObject, 150);
-                // A horizontal group that force-expands its children reports flexibleHeight 1 upward, and
-                // the panel's vertical layout then hands it every spare pixel: pin it to its preferred size.
-                picker.GetComponent<LayoutElement>().flexibleHeight = 0f;
                 var phlg = picker.gameObject.AddComponent<HorizontalLayoutGroup>();
                 phlg.spacing = 16;
                 phlg.childAlignment = TextAnchor.MiddleCenter;
                 phlg.childControlHeight = true; phlg.childControlWidth = true;
                 phlg.childForceExpandHeight = true; phlg.childForceExpandWidth = true;
-                foreach (EventEntry e in events)
-                {
-                    Button b = PoDecathSceneBuilder.CreateButton($"Event_{e.sceneName}", picker, e.label, 34, ButtonColor);
-                    ctrl.events.Add(new RaceSetupController.EventChoice { label = e.label, sceneName = e.sceneName, hint = e.hint, button = b });
-                }
+                for (int i = 0; i < events.Count; i++)
+                    ctrl.events[i].button = PoDecathSceneBuilder.CreateButton($"Event_{events[i].sceneName}", picker, events[i].label, 34, ButtonColor);
                 PoDecathSceneBuilder.AddSpacer(panel, 6);
             }
 

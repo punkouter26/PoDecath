@@ -67,6 +67,7 @@ namespace PoDecath.EditorTools
             bool raceMode = mode == Mode.Race;
             bool jumpMode = mode == Mode.LongJump;
             bool fieldMode = raceMode || jumpMode;                  // a picked field, broadcast gallery, results modal
+            bool devScene = mode == Mode.Dash;                      // the only scene that keeps the hands-on HUD
             PoDecathSceneBuilder.EnsureLayer(CreatureLayer, 8);
             int creatureLayer = LayerMask.NameToLayer(CreatureLayer);
             if (creatureLayer > 0) Physics.IgnoreLayerCollision(creatureLayer, creatureLayer, true);   // no self-collision, like the MJCF
@@ -244,8 +245,8 @@ namespace PoDecath.EditorTools
             {
                 // A field of eight decides its own outcome; the modal ends the race instead of an auto-restart.
                 var lapEvent = (LapEvent)dash;
-                lapEvent.columns = 2;      // +-0.54 m lanes: the offsets that survive the 8.8 m bend
-                lapEvent.rowSpacing = 1.5f;   // 8 rows x 1.5 m = 10.5 m, inside the 22.4 m straight
+                lapEvent.maxLanes = 2;        // +-0.54 m lanes: the offsets that survive the 8.8 m bend
+                lapEvent.rowSpacing = 1.5f;   // 4 rows x 1.5 m = 4.5 m, inside the 22.4 m straight
                 lapEvent.maxRaceSeconds = 120f;
                 dash.autoRestart = false;
             }
@@ -268,7 +269,7 @@ namespace PoDecath.EditorTools
             PoDecathSceneBuilder.CreateEventSystem();
             Canvas canvas = PoDecathSceneBuilder.CreateCanvas("HUDCanvas");
             RectTransform safe = PoDecathSceneBuilder.CreateSafeArea(canvas.transform);
-            PoDecathSceneBuilder.BuildHud(safe, null, null, camRig, null, handsOff: fieldMode || lapMode);   // stats card + Restart only
+            PoDecathSceneBuilder.BuildHud(safe, null, null, camRig, null, handsOff: !devScene);   // stats card + Restart only
             var hud = safe.GetComponent<GameplayHUD>();
             hud.dash = dash;
             hud.menuSceneName = "MainMenu";

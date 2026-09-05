@@ -64,6 +64,9 @@ namespace PoDecath.Sim
         float _s;
         float _lateral;
 
+        /// <summary>Arc length along <see cref="path"/>, wrapped into one lap like <see cref="TrackFollower.S"/>.</summary>
+        public float S => path != null ? Mathf.Repeat(_s, path.LapLength) : _s;
+
         public void ResetOnTrack(TrackPath p, float s, float lateral)
         {
             path = p;

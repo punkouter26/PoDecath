@@ -632,6 +632,9 @@ namespace PoDecath.EditorTools
             if (le == null) le = go.AddComponent<LayoutElement>();
             le.preferredHeight = height;
             le.minHeight = height;
+            // A child layout group that force-expands reports flexibleHeight 1 upward, and the parent's
+            // vertical layout then hands it every spare pixel. A fixed height means fixed.
+            le.flexibleHeight = 0f;
         }
     }
 }

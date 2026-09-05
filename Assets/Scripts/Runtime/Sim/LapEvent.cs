@@ -7,9 +7,9 @@ namespace PoDecath.Sim
     /// heuristic bot follows the path kinematically. Distance is progress along the track, so
     /// raceDistance = laps x lap length. Everything else (countdown, falls, results, restart) is DashEvent.
     ///
-    /// The field lines up on a staggered grid: <see cref="columns"/> abreast, further rows set back along
-    /// the track. The deck is only 5.3 m wide and the lane pitch is solved for five abreast, so eight in a
-    /// row would start off the roof. Each runner still covers a full lap measured from its own start point
+    /// The field lines up on DashEvent's staggered grid — <see cref="DashEvent.maxLanes"/> abreast, further
+    /// rows set back along the track. The deck is only 5.3 m wide and the lane pitch is solved for five
+    /// abreast, so eight in a row would start off the roof. Each runner still covers a full lap measured from its own start point
     /// (TrackFollower.Progress counts from wherever it was reset), so the stagger costs nobody distance.
     /// </summary>
     public class LapEvent : DashEvent
@@ -21,31 +21,16 @@ namespace PoDecath.Sim
         [Tooltip("Carrot distance for RL athletes. Training used 6 m, but 9 m smooths the bend entry: 5/5 clean laps vs 1/4 at 6 m.")]
         public float lookahead = 9f;
 
-        [Header("Starting grid")]
-        [Tooltip("Runners abreast per row. Two keeps every runner within 0.54 m of the centre line, which is "
-               + "the band the policies were trained on: measured over a field of eight, every runner at "
-               + "+-0.54 m finished and every runner at +-1.61 m fell, because a 1.6 m offset turns the 8.8 m "
-               + "bend into a 7.2 m one.")]
-        public int columns = 2;
-        [Tooltip("Gap along the track between grid rows.")]
-        public float rowSpacing = 1.5f;
-
         void Awake()
         {
             if (path != null) raceDistance = laps * path.LapLength;
         }
 
-        int Columns => Mathf.Max(1, columns);
-        int GridColumn(Athlete a) => a.lane % Columns;
-        int GridRow(Athlete a) => a.lane / Columns;
-        int RowCount => Mathf.Max(1, Mathf.CeilToInt(Athletes.Count / (float)Columns));
-
-        /// <summary>Lateral offset of this grid slot; the row is centred on the deck regardless of how many ran.</summary>
-        float LaneOffset(Athlete a)
-        {
-            int cols = Mathf.Min(Columns, Mathf.Max(1, Athletes.Count));
-            return -((GridColumn(a) - (cols - 1) * 0.5f) * laneSpacing);
-        }
+        // The grid itself is DashEvent's (maxLanes abreast, rowSpacing between rows); the lap only maps a
+        // slot onto the loop. Set maxLanes to 2 here: that keeps every runner within 0.54 m of the centre
+        // line, the band the policies were trained on. Measured over a field of eight, every runner at
+        // +-0.54 m finished and every runner at +-1.61 m fell, because a 1.6 m offset turns the 8.8 m bend
+        // into a 7.2 m one.
 
         /// <summary>
         /// Arc length this runner starts from. Its lap is measured from here, so the stagger costs nobody
@@ -54,9 +39,12 @@ namespace PoDecath.Sim
         /// the rear of an eight-strong field at s = -2.5 m, which wraps onto the closing bend, and a policy
         /// asked to set off from a standing start mid-curve falls inside a couple of metres.
         /// </summary>
-        float StartArc(Athlete a) => startS + (RowCount - 1 - GridRow(a)) * rowSpacing;
+        float StartArc(Athlete a) => startS + RowAdvance(a.lane);
 
-        protected override Vector3 SpawnPosition(Athlete a) => path != null ? path.Position(StartArc(a), LaneOffset(a)) : base.SpawnPosition(a);
+        /// <summary>TrackPath counts lateral offset the opposite way round from the straight's own axis.</summary>
+        float TrackLateral(Athlete a) => -LaneOffset(a.lane);
+
+        protected override Vector3 SpawnPosition(Athlete a) => path != null ? path.Position(StartArc(a), TrackLateral(a)) : base.SpawnPosition(a);
 
         protected override Quaternion SpawnRotation(Athlete a)
         {
@@ -68,8 +56,8 @@ namespace PoDecath.Sim
         protected override void SetCourseTarget(Athlete a)
         {
             if (path == null) { base.SetCourseTarget(a); return; }
-            if (a.follower != null) { a.follower.lookahead = lookahead; a.follower.ResetAt(StartArc(a), LaneOffset(a)); }
-            else a.command?.SetTarget(path.Position(StartArc(a) + lookahead, LaneOffset(a)));
+            if (a.follower != null) { a.follower.lookahead = lookahead; a.follower.ResetAt(StartArc(a), TrackLateral(a)); }
+            else a.command?.SetTarget(path.Position(StartArc(a) + lookahead, TrackLateral(a)));
         }
 
         protected override float MeasureDistance(Athlete a, Vector3 pos)
@@ -83,7 +71,7 @@ namespace PoDecath.Sim
 
         protected override void ResetHeuristic(Athlete a, Vector3 p)
         {
-            if (path != null) a.heuristic.ResetOnTrack(path, StartArc(a), LaneOffset(a));
+            if (path != null) a.heuristic.ResetOnTrack(path, StartArc(a), TrackLateral(a));
             else base.ResetHeuristic(a, p);
         }
     }

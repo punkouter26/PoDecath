@@ -43,15 +43,18 @@ namespace PoDecath.UI
         }
 
         public List<RunnerRow> rows = new List<RunnerRow>();
-        [Tooltip("Events on offer; empty means the single race scene below.")]
+        [Tooltip("Events on offer, built by PoDecath/Build Race Scenes. The selected one owns the scene "
+               + "START loads and the hint under the title.")]
         public List<EventChoice> events = new List<EventChoice>();
         public Color selectedEventColor = new Color(0.18f, 0.75f, 0.55f, 1f);
         public Color unselectedEventColor = new Color(0.16f, 0.18f, 0.24f, 0.95f);
         public Text totalText;
         public Text hintText;
         public Button startButton;
-        public string raceSceneName = "RooftopRace";
         int _event;
+
+        /// <summary>The scene START loads: whichever event is selected.</summary>
+        string SceneName => events.Count > 0 ? events[_event].sceneName : null;
 
         int Max => RaceRoster.MaxRunners;
 
@@ -100,14 +103,9 @@ namespace PoDecath.UI
         /// <summary>Picks which scene the START button loads and re-words the hint for it.</summary>
         void SelectEvent(int index)
         {
-            if (events.Count == 0)
-            {
-                if (hintText != null) hintText.text = $"Pick 1 to {Max} runners. They race one lap of the rooftop track.";
-                return;
-            }
+            if (events.Count == 0) return;   // no race scene was built; StartRace says so
             _event = Mathf.Clamp(index, 0, events.Count - 1);
             EventChoice chosen = events[_event];
-            if (!string.IsNullOrEmpty(chosen.sceneName)) raceSceneName = chosen.sceneName;
             if (hintText != null) hintText.text = string.IsNullOrEmpty(chosen.hint) ? $"Pick 1 to {Max} athletes." : chosen.hint;
             for (int i = 0; i < events.Count; i++)
             {
@@ -150,10 +148,15 @@ namespace PoDecath.UI
 
         public void StartRace()
         {
+            if (string.IsNullOrEmpty(SceneName))
+            {
+                Debug.LogError("[PoDecath] No event scene to load; run PoDecath/Build Race Scenes.", this);
+                return;
+            }
             RaceRoster.Set(BuildGridOrder());
             SessionSettings.ApplyQuality();
             Time.timeScale = 1f;
-            SceneManager.LoadScene(raceSceneName);
+            SceneManager.LoadScene(SceneName);
         }
 
         /// <summary>Round-robin over the types, so each grid row gets a mix rather than one policy per row.</summary>
