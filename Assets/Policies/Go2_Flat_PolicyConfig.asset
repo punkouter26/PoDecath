@@ -1,0 +1,109 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a01b12dbf88fc654cb100c8aed0516b2, type: 3}
+  m_Name: Go2_Flat_PolicyConfig
+  m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Sim.PolicyConfig
+  joints:
+  - name: FL_hip_joint
+    defaultPos: 0.1
+    lower: -1.0472
+    upper: 1.0472
+    sign: -1
+  - name: FR_hip_joint
+    defaultPos: -0.1
+    lower: -1.0472
+    upper: 1.0472
+    sign: -1
+  - name: RL_hip_joint
+    defaultPos: 0.1
+    lower: -1.0472
+    upper: 1.0472
+    sign: -1
+  - name: RR_hip_joint
+    defaultPos: -0.1
+    lower: -1.0472
+    upper: 1.0472
+    sign: -1
+  - name: FL_thigh_joint
+    defaultPos: 0.8
+    lower: -1.5708
+    upper: 3.4907
+    sign: -1
+  - name: FR_thigh_joint
+    defaultPos: 0.8
+    lower: -1.5708
+    upper: 3.4907
+    sign: -1
+  - name: RL_thigh_joint
+    defaultPos: 1
+    lower: -0.5236
+    upper: 4.5379
+    sign: -1
+  - name: RR_thigh_joint
+    defaultPos: 1
+    lower: -0.5236
+    upper: 4.5379
+    sign: -1
+  - name: FL_calf_joint
+    defaultPos: -1.5
+    lower: -2.7227
+    upper: -0.8378
+    sign: -1
+  - name: FR_calf_joint
+    defaultPos: -1.5
+    lower: -2.7227
+    upper: -0.8378
+    sign: -1
+  - name: RL_calf_joint
+    defaultPos: -1.5
+    lower: -2.7227
+    upper: -0.8378
+    sign: -1
+  - name: RR_calf_joint
+    defaultPos: -1.5
+    lower: -2.7227
+    upper: -0.8378
+    sign: -1
+  includeBaseLinearVelocity: 1
+  includeBaseAngularVelocity: 1
+  includeProjectedGravity: 1
+  includeVelocityCommand: 1
+  includeJointPositions: 1
+  includeJointVelocities: 1
+  includeLastActions: 1
+  heightScanSizeX: 0
+  heightScanSizeY: 0
+  heightScanResolution: 0.1
+  heightScanOffset: 0.5
+  heightScanMaxDistance: 2
+  linearVelocityScale: 1
+  angularVelocityScale: 1
+  jointPositionScale: 1
+  jointVelocityScale: 1
+  observationClip: 100
+  actionScale: 0.25
+  actionClip: 100
+  clampTargetsToJointLimits: 1
+  physicsHz: 200
+  controlDecimation: 4
+  solverIterations: 8
+  solverVelocityIterations: 2
+  stiffness: 25
+  damping: 0.5
+  forceLimit: 23.7
+  jointFriction: 0
+  footStaticFriction: 1
+  footDynamicFriction: 1
+  spawnHeight: 0.4
+  minBaseHeight: 0.12
+  minUprightDot: 0.3
+  episodeSeconds: 20

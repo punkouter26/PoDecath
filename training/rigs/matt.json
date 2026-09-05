@@ -1,0 +1,54 @@
+{
+  "source": "C:/Users/punko/Downloads/MattForMojucoUnityPlugin.glb",
+  "armature": "Armature",
+  "frame": "blender_z_up (x = character left, -y = forward, z = up)",
+  "height_m": 1.74,
+  "mass_kg": 75.0,
+  "gains": {
+    "abdomen": [150.0, 7.0, 150.0],
+    "hip": [200.0, 10.0, 220.0],
+    "knee": [200.0, 10.0, 220.0],
+    "ankle": [80.0, 4.0, 100.0],
+    "shoulder": [50.0, 2.5, 60.0],
+    "elbow": [40.0, 2.0, 50.0]
+  },
+  "bones": [
+    {"name": "Hips",          "parent": null,           "head": [0.0,    -0.011, 0.9],   "tail": [0.0,    -0.011, 0.996]},
+    {"name": "Spine",         "parent": "Hips",         "head": [0.0,    -0.011, 1.019], "tail": [0.0,    -0.011, 1.133]},
+    {"name": "Spine1",        "parent": "Spine",        "head": [0.0,    -0.011, 1.133], "tail": [0.0,    0.009,  1.294]},
+    {"name": "Spine2",        "parent": "Spine1",       "head": [0.0,    0.009,  1.294], "tail": [0.0,    0.045,  1.47]},
+    {"name": "Neck",          "parent": "Spine2",       "head": [0.0,    0.047,  1.481], "tail": [0.0,    0.017,  1.607]},
+    {"name": "Head",          "parent": "Neck",         "head": [0.0,    0.017,  1.607], "tail": [0.0,    0.015,  1.736]},
+    {"name": "LeftShoulder",  "parent": "Spine2",       "head": [0.054,  0.039,  1.463], "tail": [0.21,   0.039,  1.463]},
+    {"name": "LeftArm",       "parent": "LeftShoulder", "head": [0.21,   0.039,  1.463], "tail": [0.466,  0.049,  1.463]},
+    {"name": "LeftForeArm",   "parent": "LeftArm",      "head": [0.466,  0.049,  1.463], "tail": [0.722,  0.036,  1.463]},
+    {"name": "LeftHand",      "parent": "LeftForeArm",  "head": [0.722,  0.036,  1.463], "tail": [0.768,  0.035,  1.463]},
+    {"name": "LeftHandMiddle3", "parent": "LeftHand",   "head": [0.878,  0.028,  1.468], "tail": [0.903,  0.027,  1.466]},
+    {"name": "RightShoulder", "parent": "Spine2",       "head": [-0.054, 0.039,  1.463], "tail": [-0.21,  0.039,  1.463]},
+    {"name": "RightArm",      "parent": "RightShoulder","head": [-0.21,  0.039,  1.463], "tail": [-0.466, 0.049,  1.463]},
+    {"name": "RightForeArm",  "parent": "RightArm",     "head": [-0.466, 0.049,  1.463], "tail": [-0.722, 0.036,  1.463]},
+    {"name": "RightHand",     "parent": "RightForeArm", "head": [-0.722, 0.036,  1.463], "tail": [-0.768, 0.035,  1.463]},
+    {"name": "RightHandMiddle3", "parent": "RightHand", "head": [-0.878, 0.028,  1.468], "tail": [-0.903, 0.027,  1.466]},
+    {"name": "LeftUpLeg",     "parent": "Hips",         "head": [0.096,  -0.011, 0.89],  "tail": [0.096,  -0.015, 0.481]},
+    {"name": "LeftLeg",       "parent": "LeftUpLeg",    "head": [0.096,  -0.015, 0.481], "tail": [0.096,  0.013,  0.085]},
+    {"name": "LeftFoot",      "parent": "LeftLeg",      "head": [0.096,  0.013,  0.085], "tail": [0.096,  -0.122, 0.016]},
+    {"name": "LeftToeBase",   "parent": "LeftFoot",     "head": [0.096,  -0.122, 0.016], "tail": [0.096,  -0.274, 0.025]},
+    {"name": "RightUpLeg",    "parent": "Hips",         "head": [-0.096, -0.011, 0.89],  "tail": [-0.096, -0.015, 0.481]},
+    {"name": "RightLeg",      "parent": "RightUpLeg",   "head": [-0.096, -0.015, 0.481], "tail": [-0.096, 0.013,  0.085]},
+    {"name": "RightFoot",     "parent": "RightLeg",     "head": [-0.096, 0.013,  0.085], "tail": [-0.096, -0.122, 0.016]},
+    {"name": "RightToeBase",  "parent": "RightFoot",    "head": [-0.096, -0.122, 0.016], "tail": [-0.096, -0.274, 0.025]}
+  ],
+  "map": {
+    "pelvis": "Hips", "spine": "Spine", "torso": "Spine2", "neck": "Neck", "head": "Head",
+    "thigh_l": "LeftUpLeg", "shin_l": "LeftLeg", "foot_l": "LeftFoot", "toe_l": "LeftToeBase",
+    "thigh_r": "RightUpLeg", "shin_r": "RightLeg", "foot_r": "RightFoot", "toe_r": "RightToeBase",
+    "upper_arm_l": "LeftArm", "forearm_l": "LeftForeArm", "hand_l": "LeftHand", "hand_tip_l": "LeftHandMiddle3",
+    "upper_arm_r": "RightArm", "forearm_r": "RightForeArm", "hand_r": "RightHand", "hand_tip_r": "RightHandMiddle3"
+  },
+  "unity_bone_map": {
+    "pelvis": "Hips", "torso": "Spine2", "upper_arm_l": "LeftArm", "forearm_l": "LeftForeArm",
+    "upper_arm_r": "RightArm", "forearm_r": "RightForeArm",
+    "thigh_l": "LeftUpLeg", "shin_l": "LeftLeg", "foot_l": "LeftFoot",
+    "thigh_r": "RightUpLeg", "shin_r": "RightLeg", "foot_r": "RightFoot"
+  }
+}

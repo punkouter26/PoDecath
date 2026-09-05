@@ -1,0 +1,35 @@
+{
+  "source": "C:/Users/punko/Downloads/Boy_Character_mujoco.glb",
+  "armature": "Rig",
+  "frame": "blender_z_up (x = character left, -y = forward, z = up)",
+  "height_m": 1.35,
+  "mass_kg": 36.0,
+  "bones": [
+    {"name": "hips",        "parent": null,          "head": [0.0,    0.0,    0.76],  "tail": [0.0,    0.0,    0.847]},
+    {"name": "spine",       "parent": "hips",        "head": [0.0,    0.0,    0.9],   "tail": [0.0,    0.0,    1.03]},
+    {"name": "chest",       "parent": "spine",       "head": [0.0,    0.0,    1.03],  "tail": [0.0,    0.0,    1.154]},
+    {"name": "neck",        "parent": "chest",       "head": [0.0,    0.0,    1.165], "tail": [-0.011, 0.051,  1.25]},
+    {"name": "head",        "parent": "neck",        "head": [-0.011, 0.051,  1.25],  "tail": [-0.011, 0.051,  1.35]},
+    {"name": "shoulder.L",  "parent": "chest",       "head": [0.03,   0.0,    1.15],  "tail": [0.165,  0.0,    1.165]},
+    {"name": "upper_arm.L", "parent": "shoulder.L",  "head": [0.165,  0.0,    1.165], "tail": [0.415,  -0.005, 1.153]},
+    {"name": "forearm.L",   "parent": "upper_arm.L", "head": [0.415,  -0.005, 1.153], "tail": [0.635,  -0.01,  1.145]},
+    {"name": "hand.L",      "parent": "forearm.L",   "head": [0.635,  -0.01,  1.145], "tail": [0.855,  -0.017, 1.138]},
+    {"name": "shoulder.R",  "parent": "chest",       "head": [-0.03,  0.0,    1.15],  "tail": [-0.165, 0.0,    1.165]},
+    {"name": "upper_arm.R", "parent": "shoulder.R",  "head": [-0.165, 0.0,    1.165], "tail": [-0.415, -0.005, 1.153]},
+    {"name": "forearm.R",   "parent": "upper_arm.R", "head": [-0.415, -0.005, 1.153], "tail": [-0.635, -0.01,  1.145]},
+    {"name": "hand.R",      "parent": "forearm.R",   "head": [-0.635, -0.01,  1.145], "tail": [-0.855, -0.017, 1.138]},
+    {"name": "thigh.L",     "parent": "hips",        "head": [0.085,  0.0,    0.78],  "tail": [0.09,   0.0,    0.42]},
+    {"name": "shin.L",      "parent": "thigh.L",     "head": [0.09,   0.0,    0.42],  "tail": [0.09,   0.01,   0.075]},
+    {"name": "foot.L",      "parent": "shin.L",      "head": [0.09,   0.01,   0.075], "tail": [0.09,   -0.319, -0.03]},
+    {"name": "thigh.R",     "parent": "hips",        "head": [-0.085, 0.0,    0.78],  "tail": [-0.09,  0.0,    0.42]},
+    {"name": "shin.R",      "parent": "thigh.R",     "head": [-0.09,  0.0,    0.42],  "tail": [-0.09,  0.01,   0.075]},
+    {"name": "foot.R",      "parent": "shin.R",      "head": [-0.09,  0.01,   0.075], "tail": [-0.09,  -0.319, -0.03]}
+  ],
+  "map": {
+    "pelvis": "hips", "torso": "chest", "head": "head",
+    "thigh_l": "thigh.L", "shin_l": "shin.L", "foot_l": "foot.L",
+    "thigh_r": "thigh.R", "shin_r": "shin.R", "foot_r": "foot.R",
+    "upper_arm_l": "upper_arm.L", "forearm_l": "forearm.L", "hand_l": "hand.L",
+    "upper_arm_r": "upper_arm.R", "forearm_r": "forearm.R", "hand_r": "hand.R"
+  }
+}
