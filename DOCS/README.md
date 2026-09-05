@@ -42,7 +42,8 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
 | Rooftop kart track (ProBuilder) | `KartTrackBuilder.cs` via menu `PoDecath/Build Rooftop Scene` | done |
 | 100 m dash event with RED heuristic bot and GREEN RL bot | `DashEvent.cs`, `AthleteSpawner.cs`, `HeuristicRunner.cs` | done |
 | Lap race around the roof loop (carrot follower + lap policy) | `TrackPath.cs`, `TrackFollower.cs`, `LapEvent.cs`, `training/envs/run_track.py`, menu `PoDecath/Build Rooftop Lap Scene` | done: 100 m lap in 25 s, no falls |
-| Balance / get-up policy | `training/envs/get_up.py` | placeholder |
+| Balance / get-up policy: fallen-pose resets on a widening tilt curriculum, reward on uprightness then height then a one-second hold, timeout-only termination | `training/envs/get_up.py`, `train_run.py --task getup` | trained; exports `Assets/Policies/athlete_getup.onnx` |
+| Recovery at runtime: a fallen athlete switches to the get-up policy and rejoins the race instead of taking a DNF; gives up after a timeout so a wedged body cannot stall the event | `RecoveryController.cs`, `PolicyRunner.recoveryModel`, `DashEvent.DetectFall` | done |
 | Long jump on an infield deck inside the loop (ProBuilder runway, board, recessed sand pit; sequential attempts, 3 rounds, best mark; broadcast cuts + results modal; picked from the setup menu) | `LongJumpBuilder.cs`, `LongJumpPit.cs`, `LongJumpEvent.cs`, menu `PoDecath/Build Long Jump Scene` | done: scene `Assets/Scenes/RooftopLongJump.unity`; take-off impulse scripted until a jump policy exists |
 | Lap distances: 400 m (4 laps) and 1500 m (15 laps), picked on the menu; one scene, `SessionSettings.Laps` | `LapEvent`, `RaceSetupController` | done |
 | Hurdles: 0.762 m bars on 9 kg toppling frames along the straights, knocks booked per runner | `HurdleSet.cs`, `Hurdle.cs` | playable; no policy clears one yet |
@@ -81,6 +82,11 @@ DOCS/                           this summary and the roadmap
 
 - Train: `cd training && .venv/Scripts/python.exe train_run.py --num-envs 4096 --iters 1500`
   (TensorBoard opens on http://localhost:6006; stale runs are cleared first).
+- Train the get-up (exports `Assets/Policies/athlete_getup.onnx`):
+  `.venv/Scripts/python.exe train_run.py --task getup --num-envs 4096 --iters 3000 --desired-kl 0.02 --entropy-coef 0.012`
+  The curriculum and the raised entropy are not optional garnish: trained against the full range of fallen
+  poses at a default entropy, the policy converges on lying down well — return climbs while it never once
+  holds a stand. Watch `env/hold_frac` in TensorBoard; that is the metric that means anything here.
 - Train laps (fine-tune from the sprint policy; exports `Assets/Policies/athlete_track.onnx`):
   `.venv/Scripts/python.exe train_run.py --task track --resume checkpoints/run_to_target/latest.pt --iters 2300 --target-speed 4.0`
 - Evaluate: `.venv/Scripts/python.exe eval_100m.py --runs 5`

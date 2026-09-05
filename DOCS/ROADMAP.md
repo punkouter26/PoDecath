@@ -16,7 +16,7 @@ scaffolded as a placeholder so later phases plug into the same athlete, event an
 | 7 | Discus | throw (placeholder) | placeholder | placeholder |
 | 8 | Pole vault | placeholder | placeholder | placeholder |
 | 9 | Javelin | throw (placeholder) | placeholder | placeholder |
-| 10 | 1500 m | `run_track`, 15 laps | `LapEvent`, `laps` = 15 from the event picker | playable; no get-up policy, so a fall ends a runner's race |
+| 10 | 1500 m | `run_track`, 15 laps | `LapEvent`, `laps` = 15 from the event picker | playable; a fall now hands the body to the get-up policy rather than ending the race, and is only a DNF if the recovery gives up |
 
 Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
 
@@ -25,7 +25,7 @@ Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
 | Behaviour | Training env | Notes |
 |---|---|---|
 | Run to target | `training/envs/run_to_target.py` | done, Phase 1 |
-| Balance / get up after a fall | `training/envs/get_up.py` | placeholder env stub; reuse PPO + export path |
+| Balance / get up after a fall | `training/envs/get_up.py` | real env, trained with `--task getup`: fallen-pose resets on a widening tilt curriculum, reward on uprightness then height then a one-second hold, timeout-only termination. Keeps the run-to-target observation contract with the command zeroed, so `athlete_getup.onnx` drops into `PolicyRunner` unchanged and `RecoveryController` switches to it on a fall |
 | Kart driving (rooftop track) | placeholder | karts are not part of Phase 1 |
 
 ## Bots roster (house rules)
@@ -45,12 +45,16 @@ Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
 
 ## Known gaps
 
-- Get-up policy not trained yet; a fallen RL athlete is marked DNF and the race restarts.
+- Get-up policy trained (`--task getup`). A fallen RL athlete now switches to it and tries to rejoin the
+  race; it is only a DNF once `RecoveryController` gives up. How well it actually recovers is a question
+  about the policy, not the plumbing — watch `env/hold_frac` on the training run.
 - **No athlete can clear a hurdle.** The hurdles event is playable and physical — 0.762 m bars on 9 kg
   frames that topple when hit, knocks counted per runner and shown on the results board — but every
-  policy runs straight into them, and without a get-up policy that is a DNF. Measured over a 3-strong
-  RL field: all three down inside 25 m, 3 of 7 hurdles knocked over. A take-off policy trained on this
-  course is the fix; the course is now there to train against.
+  policy runs straight into them. Measured over a 3-strong RL field before the get-up policy existed: all
+  three down inside 25 m, 3 of 7 hurdles knocked over — and every one of those was a DNF. With recovery
+  wired, a runner that goes down over a hurdle can now get up and carry on, which turns the event from
+  unfinishable into merely very slow. A take-off policy trained on this course is still the real fix; the
+  course is there to train against.
 - Audio is entirely synthesised (`PoDecath/Bake Audio Clips` -> `Assets/Audio/`). It is a complete,
   reproducible placeholder set, not a sample library; every clip can be replaced on the `AudioBank`.
 - Long jump take-off is scripted: `LongJumpEvent.takeoffRise` adds one vertical velocity to the base at the

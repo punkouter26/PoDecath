@@ -69,6 +69,9 @@ def main() -> None:
     ap.add_argument("--save-every", type=int, default=50)
     ap.add_argument("--tb-port", type=int, default=6006)
     ap.add_argument("--lr", type=float, default=1e-3, help="initial PPO learning rate")
+    ap.add_argument("--entropy-coef", type=float, default=0.005,
+                    help="Entropy bonus. Raise it for a task with a comfortable local optimum to sit in; "
+                         "the get-up policy will otherwise converge on lying down well.")
     ap.add_argument("--desired-kl", type=float, default=0.01,
                     help="KL the adaptive learning rate steers toward. Raise it for a task whose reward is "
                          "noisy enough that the controller otherwise pins the rate at its floor.")
@@ -95,7 +98,8 @@ def main() -> None:
         launch_tensorboard(tb_root, args.tb_port)
 
     env = env_cls(args.xml, args.num_envs, device=device, seed=args.seed, target_speed=args.target_speed)
-    cfg = PPOConfig(steps_per_env=args.steps, lr=args.lr, desired_kl=args.desired_kl)
+    cfg = PPOConfig(steps_per_env=args.steps, lr=args.lr, desired_kl=args.desired_kl,
+                    entropy_coef=args.entropy_coef)
     ppo = PPO(env.obs_dim, env.A, args.num_envs, device, cfg)
     ck_dir = os.path.join(HERE, "checkpoints", TASK)
     os.makedirs(ck_dir, exist_ok=True)

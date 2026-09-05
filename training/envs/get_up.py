@@ -12,10 +12,16 @@ there is nowhere to go. Unity feeds the same zeros when it switches an athlete t
 
 What is genuinely different is the three things that define the task:
 
-  * **Where an episode starts.** Not standing. A random pose somewhere between "stumbling, 40 degrees off
-    vertical" and "flat on its back", with the limbs scattered and some of them already tumbling. The spread
-    is the curriculum: the nearly-upright starts pay out immediately and teach the policy what upright is
-    worth, and the flat-on-the-back ones are the actual job.
+  * **Where an episode starts.** Not standing — and not, at first, flat on its back either. Starting poses
+    are drawn from a tilt range that begins narrow (a stumble it can still catch) and widens toward "flat
+    on the deck" only as the policy proves it can hold a stand.
+
+    That curriculum is not decoration. Trained against the full range from the first step, this task has a
+    local optimum that is very easy to find and very hard to leave: lie still in the most upright, highest
+    posture the body can manage and collect the continuous shaping forever. A run left in it for 400
+    iterations climbed its return from 124 to 584 while never once holding a stand, and its action noise
+    collapsed from 0.80 to 0.45 — converging, confidently, on lying down well. The narrow start makes
+    standing reachable by accident before the policy has committed to anything else.
 
   * **What is rewarded.** Height and uprightness, then stillness once it is up. A get-up policy that stands
     and immediately falls over again has not solved anything, so the standing bonus is a hold: it has to
@@ -48,9 +54,17 @@ def quat_mul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 
 class GetUpEnv(RunToTargetEnv):
+    # Every starting pose must be tilted further than this or it satisfies the standing test at step zero,
+    # and the task's headline metric ends up counting episodes that never began on the ground. It is
+    # acos(stand_upright) in degrees, and the curriculum's easy end is kept clear of it.
+    MIN_START_TILT_DEG = 30.0
+
     def __init__(self, xml_path: str, num_envs: int,
                  episode_len_s: float = 6.0,
-                 tilt_range=(40.0, 180.0),
+                 tilt_range=(35.0, 75.0),
+                 tilt_range_final=(40.0, 180.0),
+                 curriculum_hold: float = 0.06,
+                 curriculum_step: float = 8.0,
                  stand_upright: float = 0.9,
                  stand_height_frac: float = 0.82,
                  hold_seconds: float = 1.0,
@@ -58,8 +72,12 @@ class GetUpEnv(RunToTargetEnv):
                  **kw):
         # Set before super().__init__, because RunToTargetEnv's constructor calls reset(), which calls the
         # overrides below. Same pattern RunTrackEnv uses.
-        self.tilt_lo = math.radians(tilt_range[0])
-        self.tilt_hi = math.radians(tilt_range[1])
+        self.tilt_lo = math.radians(max(tilt_range[0], self.MIN_START_TILT_DEG))
+        self.tilt_hi = math.radians(max(tilt_range[1], self.MIN_START_TILT_DEG + 10.0))
+        self.tilt_lo_final = math.radians(tilt_range_final[0])
+        self.tilt_hi_final = math.radians(tilt_range_final[1])
+        self.curriculum_hold = curriculum_hold
+        self.curriculum_step = math.radians(curriculum_step)
         self.stand_upright = stand_upright
         self.stand_height_frac = stand_height_frac
         self.hold_seconds = hold_seconds
@@ -78,9 +96,31 @@ class GetUpEnv(RunToTargetEnv):
 
         self.hold_steps = max(1, int(round(hold_seconds / self.dt)))
         self.prev_height = self.xpos[:, self.pelvis, 2].clone()
+
+        self._stagger()
         self._acc.update({k: torch.zeros((), device=self.device) for k in
                           ("stand_sum", "hold_sum", "height_sum", "stood_sum", "stand_time_sum")})
         self._last_episode = {}
+
+    def _stagger(self) -> None:
+        """
+        Spreads the episode clock across the population.
+
+        Without this every environment resets on the same step forever, because they all start together and
+        the only thing that ends an episode here is a fixed six-second timer. That is bad twice over: every
+        PPO minibatch sees the same slice of the task rather than a spread of it, and any metric averaged
+        over a training iteration aliases against the episode period — a stand_frac sampled every ten
+        iterations against a 12.5-iteration episode reports a number that is mostly about which part of the
+        episode the population happens to be in, which is exactly how a run came to look like it was
+        standing 22% of the time when it was not standing at all.
+        """
+        self.step_count = torch.randint(0, self.max_steps, (self.N,), device=self.device,
+                                        generator=self.rng).float()
+
+    def reset(self) -> torch.Tensor:
+        obs = super().reset()
+        self._stagger()   # super().reset() puts every clock back to zero; spread them out again
+        return obs
 
     # ---- starting poses ------------------------------------------------------------------------
 
@@ -248,6 +288,22 @@ class GetUpEnv(RunToTargetEnv):
         self._obs = self.compute_obs()
         return self._obs, reward, done, timeout
 
+    def advance_curriculum(self, hold_frac: float) -> None:
+        """
+        Widens the range of starting poses once the policy can hold a stand from the current one.
+
+        Driven by hold_frac rather than stood_frac on purpose: touching upright for one frame on the way
+        past is not evidence of anything, and it is exactly what a policy farming the shaping does anyway.
+        Holding a stand for a second is the thing that has to be true before harder poses are worth setting.
+
+        It only ever widens. A curriculum that narrows again when a harder pose knocks the metric down would
+        oscillate, and the policy would spend the run relearning what it already knew.
+        """
+        if hold_frac < self.curriculum_hold:
+            return
+        self.tilt_hi = min(self.tilt_hi_final, self.tilt_hi + self.curriculum_step)
+        self.tilt_lo = min(self.tilt_lo_final, self.tilt_lo + self.curriculum_step * 0.5)
+
     def get_stats(self):
         a = {k: v.item() for k, v in self._acc.items()}
         n = max(1.0, a["done_n"])
@@ -273,7 +329,11 @@ class GetUpEnv(RunToTargetEnv):
             "fall_rate": 1.0 - a["stood_sum"] / n,
             "reach_frac": a["stand_sum"] / s,
             "v_toward": 0.0,
+            # Where the curriculum has got to, in degrees. Flat on the deck is 180.
+            "tilt_lo_deg": math.degrees(self.tilt_lo),
+            "tilt_hi_deg": math.degrees(self.tilt_hi),
         }
+        self.advance_curriculum(out["hold_frac"])
         if not episodes_done:
             for k in ("ep_return", "ep_len_s", "stood_frac", "stand_time_s", "fall_rate"):
                 out[k] = self._last_episode.get(k, 0.0)
