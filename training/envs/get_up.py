@@ -244,9 +244,15 @@ class GetUpEnv(RunToTargetEnv):
         r_height = 4.0 * (h_frac.clamp_max(1.0) ** 2)
         r_rise = 8.0 * rise
         r_stand = 2.0 * stand_f
-        # The hold is the actual objective: standing up and falling straight back down solves nothing, so
-        # the largest single term only arrives once the body has been up for a second.
-        r_hold = 5.0 * held.float()
+        # The hold is the actual objective: standing up and falling straight back down solves nothing.
+        #
+        # But it is paid as a ramp, not as a prize at the end. Written as a bonus that lands only once the
+        # body has been up for a full second, it is a cliff the policy has to clear in one leap — and a
+        # reward that is never once sampled contributes exactly no gradient. Measured at iteration 1430: the
+        # body reached a standing pose in 79% of episodes and held it for six steps, an eighth of what the
+        # bonus demanded, so the largest term in the function had never paid out at all. Grading it means
+        # every extra step upright is worth something and there is a slope to climb toward the second.
+        r_hold = 5.0 * (self.upright_hold / self.hold_steps).clamp(0.0, 1.0)
 
         # Everything below is a damping term and every one of them is gated on already being up. Penalising
         # motion while the body is still on the ground is telling it not to do the one thing being asked of
