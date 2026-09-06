@@ -58,6 +58,11 @@ namespace PoDecath.EditorTools
         const string KeyBestHold = "PoDecath.GetUpProbe.BestHold";
         const string KeyT0 = "PoDecath.GetUpProbe.T0";
         const string KeyLastT = "PoDecath.GetUpProbe.LastT";
+        const string KeySteps0 = "PoDecath.GetUpProbe.Steps0";
+        const string KeySteps = "PoDecath.GetUpProbe.Steps";
+        const string KeyActSum = "PoDecath.GetUpProbe.ActSum";
+        const string KeyActN = "PoDecath.GetUpProbe.ActN";
+        const string KeyModelName = "PoDecath.GetUpProbe.ModelName";
 
         static readonly string LogDir = Path.Combine(ProjectRoot, "training", "logs");
         static string ConfigPath => Path.Combine(LogDir, "getup_probe_config.json");
@@ -78,6 +83,14 @@ namespace PoDecath.EditorTools
             public string model = "Assets/Policies/athlete_getup.onnx";
             public double seconds = 8.0;
             public string label = "";
+            /// <summary>
+            /// Drive the recovery through <see cref="RecoveryController"/> instead of switching the
+            /// policy on directly. This is the integration test: it answers "does a fallen athlete
+            /// rejoin the race", where the default mode only answers "can the policy stand it up".
+            /// Those are different questions, and the project spent a while with the first one
+            /// answered yes and the second one answered no.
+            /// </summary>
+            public bool use_recovery_controller = false;
         }
 
         static Config _cfg;
@@ -85,6 +98,7 @@ namespace PoDecath.EditorTools
         static CreatureRig _rig;
         static float _standHeight = 0.95f;   // pelvis height above the local floor when standing
         static float _floorY;                // world Y of the deck under the athlete
+        static RecoveryController _recovery;
         static StreamWriter _csv;
 
         // Anything that would reset, respawn or re-police the body while the probe is running. The lap
@@ -92,6 +106,10 @@ namespace PoDecath.EditorTools
         // which silently turned the first run of this probe into a measurement of a standing athlete.
         static readonly string[] InterferingComponents =
             { "LapEvent", "DashEvent", "LongJumpEvent", "EpisodeManager", "RecoveryController" };
+
+        // In controller mode the recovery controller is the thing under test, so it stays on.
+        static readonly string[] InterferingWithController =
+            { "LapEvent", "DashEvent", "LongJumpEvent", "EpisodeManager" };
 
         static GetUpTransferProbe()
         {
@@ -124,6 +142,12 @@ namespace PoDecath.EditorTools
             SessionState.SetFloat(KeyPeak, -1f);
             SessionState.SetFloat(KeyHold, 0f);
             SessionState.SetFloat(KeyBestHold, 0f);
+            // Reset the diagnostics too, or a failed run reports the previous run's active model.
+            SessionState.SetInt(KeySteps, 0);
+            SessionState.SetInt(KeySteps0, 0);
+            SessionState.SetFloat(KeyActSum, 0f);
+            SessionState.SetInt(KeyActN, 0);
+            SessionState.SetString(KeyModelName, "(none)");
             SessionState.SetFloat(KeyT0, 0f);
             SessionState.SetFloat(KeyLastT, 0f);
             WriteStatus("running", null);
@@ -176,6 +200,12 @@ namespace PoDecath.EditorTools
                             if (!Acquire()) return;
                             SilenceInterference();
                             MeasureStandingReference();
+                            // Park the runner while the body settles, which is what a real fall does:
+                            // the event switches a fallen runner off and RecoveryController switches it
+                            // back on. Leaving it on meant the *running* policy spent the settle window
+                            // driving the athlete back onto its feet, so the probe never saw a fallen
+                            // body to measure.
+                            _runner.enabled = false;
                             PlaceSupine();
                             SessionState.SetInt(KeySettle, 0);
                             Phase = "settling";
@@ -201,6 +231,14 @@ namespace PoDecath.EditorTools
                             SessionState.SetFloat(KeyStartUp, startUp);
                             SessionState.SetFloat(KeyT0, Time.fixedTime);
                             SessionState.SetFloat(KeyLastT, Time.fixedTime);
+                            // Baseline the policy's own step counter so the summary can say whether the
+                            // network actually ran. Without this the probe cannot tell a policy that
+                            // tried and failed from one that never drove the joints at all -- and those
+                            // two produce the same uprightness trace.
+                            SessionState.SetInt(KeySteps0, _runner.PolicySteps);
+                            SessionState.SetString(KeyModelName, _runner.ActiveModelName);
+                            SessionState.SetFloat(KeyActSum, 0f);
+                            SessionState.SetInt(KeyActN, 0);
                             _runner.UseRecovery = true;
                             if (_runner.commandSource != null)
                                 _runner.commandSource.enabled = false;   // a get-up is trained on a zero command
@@ -213,6 +251,31 @@ namespace PoDecath.EditorTools
                     case "probing":
                         {
                             if (!Acquire()) return;
+
+                            // Every tick, not once, and both flags.
+                            //
+                            // UseRecovery: PolicyRunner.Initialize() clears it, and Acquire()
+                            // re-initialises whenever a domain reload drops the static references --
+                            // which silently handed the first runs of this probe back to the *running*
+                            // policy.
+                            //
+                            // enabled: the events own the runner's on/off switch. DashEvent parks every
+                            // runner with `enabled = false` while it sets the field up and only switches
+                            // the RL athletes on when the countdown ends. SilenceInterference disables
+                            // the event before that ever happens, so unless the probe turns the runner
+                            // on itself the body just lies there and the trace is passive settling.
+                            if (_cfg.use_recovery_controller)
+                            {
+                                // Ask once, then keep hands off: the controller owns both flags now.
+                                if (_recovery != null && _recovery.Current == RecoveryController.State.Running)
+                                    _recovery.TryRecover();
+                            }
+                            else
+                            {
+                                _runner.UseRecovery = true;
+                                _runner.enabled = true;
+                            }
+
                             Step();
                             Bump(KeyFrames);
 
@@ -227,6 +290,17 @@ namespace PoDecath.EditorTools
                             float up = _rig.UprightDot;
                             float h = _rig.BasePosition.y - _floorY;   // above the deck, not above the world
 
+                            SessionState.SetInt(KeySteps, _runner.PolicySteps - SessionState.GetInt(KeySteps0, 0));
+                            SessionState.SetString(KeyModelName, _runner.ActiveModelName);
+                            float[] act = _runner.LastAction;
+                            if (act != null && act.Length > 0)
+                            {
+                                float mag = 0f;
+                                for (int a = 0; a < act.Length; a++) mag += Mathf.Abs(act[a]);
+                                SessionState.SetFloat(KeyActSum, SessionState.GetFloat(KeyActSum, 0f) + mag / act.Length);
+                                SessionState.SetInt(KeyActN, SessionState.GetInt(KeyActN, 0) + 1);
+                            }
+
                             if (up > SessionState.GetFloat(KeyPeak, -1f))
                                 SessionState.SetFloat(KeyPeak, up);
 
@@ -240,7 +314,21 @@ namespace PoDecath.EditorTools
                                 "{0:0.####},{1:0.#####},{2:0.#####},{3}", t, up, h, standing ? 1 : 0));
 
                             if (t >= _cfg.seconds)
-                                Finish("completed", null);
+                            {
+                                int steps = SessionState.GetInt(KeySteps, 0);
+                                string active = SessionState.GetString(KeyModelName, "?");
+                                string want = Path.GetFileNameWithoutExtension(_cfg.model);
+                                if (steps <= 0)
+                                    Finish("error", $"the policy never ran ({steps} steps): this trace is "
+                                                  + "passive ragdoll settling, not a get-up attempt");
+                                else if (active != want && !_cfg.use_recovery_controller)
+                                    Finish("error", $"wrong policy drove the body: active '{active}', "
+                                                  + $"expected '{want}'");
+                                // In controller mode ending on the *running* policy is the win: it means
+                                // RecoveryController got the athlete up and handed it back to the race.
+                                else
+                                    Finish("completed", null);
+                            }
                             return;
                         }
                 }
@@ -273,7 +361,14 @@ namespace PoDecath.EditorTools
             if (_runner != null && _rig != null) return true;
 
             var runners = UnityEngine.Object.FindObjectsByType<PolicyRunner>(FindObjectsSortMode.None);
-            _runner = runners.FirstOrDefault(r => r.rig != null && r.rig.IsBound);
+            var bound = runners.Where(r => r.rig != null && r.rig.IsBound).ToList();
+            // In controller mode the athlete under test is specifically one that has a
+            // RecoveryController on it. A lap scene holds more than one rig and the first bound runner
+            // is not necessarily the one the spawner gave a controller to.
+            _runner = (_cfg.use_recovery_controller
+                          ? bound.FirstOrDefault(r => r.GetComponent<RecoveryController>() != null)
+                          : null)
+                      ?? bound.FirstOrDefault();
             if (_runner == null)
             {
                 if (SessionState.GetInt(KeyFrames, 0) > WarmupFrames * 4)
@@ -282,6 +377,7 @@ namespace PoDecath.EditorTools
             }
 
             _rig = _runner.rig;
+            _recovery = _runner.GetComponent<RecoveryController>();
 
             var asset = AssetDatabase.LoadAssetAtPath<Unity.InferenceEngine.ModelAsset>(_cfg.model);
             if (asset == null)
@@ -313,11 +409,30 @@ namespace PoDecath.EditorTools
         static void MeasureStandingReference()
         {
             Vector3 p = _rig.BasePosition;
+
+            // Cast past the athlete, not into it. A ray dropped from just above the pelvis hits the
+            // rig's own hip and thigh colliders within centimetres, which put the "floor" about 0.6 m
+            // too high: every height in the trace came out negative and the standing test -- height at
+            // least 80% of standing -- could never pass. The result read as "gets upright but never
+            // stands" when what it actually measured was the floor being in the wrong place.
+            int creature = LayerMask.NameToLayer("Creature");
+            int mask = creature >= 0 ? ~(1 << creature) : ~0;
+
             _floorY = p.y - 1.0f;
-            if (Physics.Raycast(p + Vector3.up * 0.2f, Vector3.down, out RaycastHit hit, 50f,
-                                ~0, QueryTriggerInteraction.Ignore))
+            if (Physics.Raycast(p + Vector3.up * 0.5f, Vector3.down, out RaycastHit hit, 60f,
+                                mask, QueryTriggerInteraction.Ignore))
                 _floorY = hit.point.y;
-            _standHeight = Mathf.Max(0.2f, p.y - _floorY);
+            _standHeight = p.y - _floorY;
+
+            // A standing humanoid's pelvis is around 0.9 m up. Anything far from that means the ray
+            // found the wrong surface, and every height in this run would be meaningless.
+            if (_standHeight < 0.4f || _standHeight > 1.6f)
+            {
+                Finish("error", $"implausible standing height {_standHeight:0.###} m " +
+                                $"(pelvis {p.y:0.##}, floor {_floorY:0.##}) -- heights would be meaningless");
+                return;
+            }
+            Debug.Log($"[GetUpProbe] standing pelvis {_standHeight:0.###} m above deck y={_floorY:0.##}");
         }
 
         /// <summary>
@@ -327,10 +442,17 @@ namespace PoDecath.EditorTools
         static void SilenceInterference()
         {
             int n = 0;
+            string[] list = (_cfg != null && _cfg.use_recovery_controller)
+                ? InterferingWithController : InterferingComponents;
             foreach (var mb in UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None))
             {
                 if (mb == null || !mb.enabled) continue;
-                if (Array.IndexOf(InterferingComponents, mb.GetType().Name) < 0) continue;
+                if (Array.IndexOf(list, mb.GetType().Name) < 0) continue;
+                // Disabling a MonoBehaviour stops its Update, not its coroutines. The race events run
+                // their whole setup -- countdown, athletes placed on the start line -- from a coroutine,
+                // which cheerfully carried on and stood the athlete back up moments after the probe had
+                // laid it down.
+                mb.StopAllCoroutines();
                 mb.enabled = false;
                 n++;
             }
@@ -345,10 +467,25 @@ namespace PoDecath.EditorTools
         /// </summary>
         static void PlaceSupine()
         {
+            // Construct the pose, do not hope physics settles into one.
+            //
+            // Rotating the standing pose 90 degrees about its own lateral axis and dropping it from
+            // 0.35 m gave a different resting pose every run -- uprightness 0.07 once and 0.575 the
+            // next, the second of which is not a fallen athlete at all. The starting pose is the
+            // independent variable of this whole measurement, so it has to be exact.
+            //
+            // The rig's head axis is local +Y and its facing axis is local +X. Flat on the back means
+            // the head axis lies in the horizontal plane and the facing axis points at the sky. In
+            // Unity's basis Cross(right, up) == forward, so mapping local +Y onto the ground-projected
+            // heading and local +Z onto Cross(worldUp, heading) puts local +X on world up exactly.
             Vector3 p = _rig.BasePosition;
-            Quaternion standing = _rig.BaseRotation;
-            Quaternion supine = Quaternion.AngleAxis(90f, standing * Vector3.forward) * standing;
-            _rig.ResetPose(new Vector3(p.x, _floorY + 0.35f, p.z), supine);
+            Vector3 heading = Vector3.ProjectOnPlane(_rig.BaseRotation * Vector3.right, Vector3.up);
+            if (heading.sqrMagnitude < 1e-4f) heading = Vector3.forward;
+            heading.Normalize();
+            Quaternion supine = Quaternion.LookRotation(Vector3.Cross(Vector3.up, heading), heading);
+
+            // Just clear of the deck, so it settles rather than bounces.
+            _rig.ResetPose(new Vector3(p.x, _floorY + 0.22f, p.z), supine);
         }
 
         static void OpenCsv()
@@ -377,6 +514,7 @@ namespace PoDecath.EditorTools
             Phase = "idle";
             _runner = null;
             _rig = null;
+            _recovery = null;
             if (EditorApplication.isPlaying)
                 EditorApplication.ExitPlaymode();
             Debug.Log($"[GetUpProbe] {status}. Summary -> {JsonPath}");
@@ -397,6 +535,21 @@ namespace PoDecath.EditorTools
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"longest_hold_s\":{0:0.###},", bestHold);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"stood\":{0},", bestHold > 0f ? "true" : "false");
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"held_one_second\":{0},", bestHold >= 1.0f ? "true" : "false");
+            int actN = SessionState.GetInt(KeyActN, 0);
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"active_model\":\"{0}\",",
+                SessionState.GetString(KeyModelName, "?"));
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"policy_steps\":{0},", SessionState.GetInt(KeySteps, 0));
+            if (_cfg != null && _cfg.use_recovery_controller)
+            {
+                sb.AppendFormat(CultureInfo.InvariantCulture, "\"recovery_state\":\"{0}\",",
+                    _recovery != null ? _recovery.Current.ToString() : "(no controller)");
+                sb.AppendFormat(CultureInfo.InvariantCulture, "\"recoveries\":{0},",
+                    _recovery != null ? _recovery.Recoveries : -1);
+                sb.AppendFormat(CultureInfo.InvariantCulture, "\"controllers_in_scene\":{0},",
+                    UnityEngine.Object.FindObjectsByType<RecoveryController>(FindObjectsSortMode.None).Length);
+            }
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"mean_abs_action\":{0:0.####},",
+                actN > 0 ? SessionState.GetFloat(KeyActSum, 0f) / actN : 0f);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"error\":{0}",
                 error == null ? "null" : "\"" + error.Replace("\"", "'") + "\"");
             sb.Append('}');

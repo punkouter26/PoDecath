@@ -81,6 +81,7 @@ namespace PoDecath.Sim
         public bool Available => runner != null && runner.HasRecoveryModel && Recoveries < maxRecoveries;
 
         float _spawnHeight = 0.95f;
+        int _groundMask;
         float _attemptTime;
         float _settleTime;
 
@@ -88,6 +89,10 @@ namespace PoDecath.Sim
         public void Configure(float spawnHeight)
         {
             _spawnHeight = Mathf.Max(0.05f, spawnHeight);
+            string layerName = runner != null && !string.IsNullOrEmpty(runner.creatureLayerName)
+                ? runner.creatureLayerName : "Creature";
+            int creature = LayerMask.NameToLayer(layerName);
+            _groundMask = creature >= 0 ? ~(1 << creature) : ~0;
         }
 
         /// <summary>Back to racing, for a restart. Does not clear the recovery count's history in the results.</summary>
@@ -173,10 +178,22 @@ namespace PoDecath.Sim
         /// The deck under this athlete. A rooftop track is not at y = 0 and the infield deck is at a
         /// different height again, so the height test has to be measured against whatever is actually below.
         /// </summary>
+        /// <summary>
+        /// World Y of the deck under the athlete.
+        ///
+        /// The ray must not see the athlete. Cast with every layer enabled it hits the body's own torso
+        /// about a quarter of a metre above the pelvis -- the ray starts above the pelvis and the chest
+        /// is the first thing below it -- so the "floor" came out *above* the base and heightFrac in
+        /// <see cref="Update"/> went negative. That made `standing` unsatisfiable, and `standing` is the
+        /// only way out of Recovering: every athlete that got itself up was still driven to
+        /// giveUpSeconds and booked as a DNF. The policy was doing its job and nothing was watching.
+        /// </summary>
         float FloorY()
         {
             Vector3 p = rig.BasePosition;
-            return Physics.Raycast(p + Vector3.up * 0.5f, Vector3.down, out RaycastHit hit, 8f, ~0, QueryTriggerInteraction.Ignore)
+            int mask = _groundMask != 0 ? _groundMask : ~0;
+            return Physics.Raycast(p + Vector3.up * 0.5f, Vector3.down, out RaycastHit hit, 8f, mask,
+                                   QueryTriggerInteraction.Ignore)
                 ? hit.point.y
                 : 0f;
         }
