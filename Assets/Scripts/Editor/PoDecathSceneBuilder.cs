@@ -112,7 +112,7 @@ namespace PoDecath.EditorTools
         /// Makes sure MainMenu is in the build list without disturbing what is already there.
         ///
         /// This used to assign the whole list, which was correct when MainMenu and Arena were the only
-        /// two scenes and actively destructive afterwards: RaceUiBuilder inserts RaceSetup at index 0 and
+        /// two scenes and actively destructive afterwards: RaceUiBuilder inserts MAIN at index 0 and
         /// RooftopSceneBuilder appends the four rooftop scenes, so running "Build Everything" threw all
         /// five away and left a build that could not reach a race.
         /// </summary>
@@ -161,7 +161,7 @@ namespace PoDecath.EditorTools
             // construction is a UXML layout in Assets/UI/MainMenu.uxml wearing the shared stylesheet.
             CreateEventSystem();
             var menu = UiBakery.AddScreen<MainMenuView>("MainMenu", UiBakery.MainMenuUxml, 0f);
-            if (menu != null) menu.playSceneName = "RaceSetup";
+            if (menu != null) menu.playSceneName = "MAIN";
 
             EditorSceneManager.SaveScene(scene, MainMenuScenePath);
         }

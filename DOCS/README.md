@@ -45,7 +45,7 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
 | Balance / get-up policy: fallen-pose resets on a widening tilt curriculum, reward on uprightness then height then a one-second hold, timeout-only termination | `training/envs/get_up.py`, `train_run.py --task getup` | trains well **in MuJoCo**: 2400 iterations gives stood 1.00, standing 78% of steps, a held second 59% of steps, at full difficulty (flat on the back). Exports `Assets/Policies/athlete_getup.onnx` |
 | Recovery at runtime: a fallen athlete switches to the get-up policy and rejoins the race instead of taking a DNF; gives up after a timeout so a wedged body cannot stall the event | `RecoveryController.cs`, `PolicyRunner.recoveryModel`, `RaceEvent.DetectFall` | plumbing verified end to end in play mode (fall -> get-up policy drives -> give-up -> DNF -> race continues). **Resolved 2026-09-06: the policy transfers and always did.** Measured with `PoDecath/Probe Get-Up Transfer`, which drops the athlete flat on its back and records every physics step: from upright 0.051 it reaches **peak uprightness 0.947 and holds the stand 7.44 s of 8**. The bug was in the watcher, not the policy -- `RecoveryController.FloorY` raycast with mask `~0` hit the athlete's own chest collider, so `heightFrac` went negative and `standing`, the only exit from `Recovering`, could never be true. Every athlete that stood up was driven to `giveUpSeconds` and booked a DNF anyway. One layer mask; before/after reads **recoveries 0 -> 3** |
 | Long jump on an infield deck inside the loop (ProBuilder runway, board, recessed sand pit; sequential attempts, 3 rounds, best mark; broadcast cuts + results modal; picked from the setup menu) | `LongJumpBuilder.cs`, `LongJumpPit.cs`, `LongJumpEvent.cs`, menu `PoDecath/Build Long Jump Scene` | done: scene `Assets/Scenes/RooftopLongJump.unity`; take-off impulse scripted until a jump policy exists |
-| Lap distances: 400 m (4 laps) and 1500 m (15 laps), picked on the menu; one scene, `SessionSettings.Laps` | `LapEvent`, `RaceSetupController` | done |
+| Lap distances: 400 m (4 laps) and 1500 m (15 laps), picked on the menu; one scene, `SessionSettings.Laps` | `LapEvent`, `SetupView` | done |
 | Hurdles: 0.762 m bars on 9 kg toppling frames along the straights, knocks booked per runner | `HurdleSet.cs`, `Hurdle.cs` | playable; no policy clears one yet |
 | Broadcast overlay: clock + lap counter, live running order that animates a pass, lap splits, lower third that wipes in on every cut, punching countdown | `Assets/UI/Broadcast.uxml`, `BroadcastView.cs` | done |
 | UI Toolkit screens: setup menu, HUD, broadcast overlay, results card, main menu, diagnostics — one stylesheet, one panel | `Assets/UI/*.uxml` + `Theme.uss`, `UiRoot.cs` and the `*View.cs` drivers, `UiBakery.cs` | done; the uGUI versions are gone |
@@ -125,9 +125,9 @@ DOCS/                           this summary and the roadmap
   (`unity command menu --path "..."`), so they work headless against the open editor.
 - Diagnostics: F3 in any scene opens the telemetry overlay (frame graph, draw calls, GC, memory, athletes,
   audio voices, crowd mood). It is the thing to open before believing any performance claim.
-- Long jump: menu `PoDecath/Build Long Jump Scene` (also rebuilds `RaceSetup.unity`), then play
+- Long jump: menu `PoDecath/Build Long Jump Scene` (also rebuilds `MAIN.unity`), then play
   `Assets/Scenes/RooftopLongJump.unity` or go through the setup menu.
-- Setup menu (`RaceSetup.unity`, build index 0): a 100 M / 400 M / 1500 M / HURDLES / LONG JUMP picker, then a counter per athlete definition
+- Setup menu (`MAIN.unity`, build index 0 -- the scene to press Play on): a 100 M / 400 M / 1500 M / HURDLES / LONG JUMP picker, then a counter per athlete definition
   including the RED heuristic bot, up to 16 in total. The lap is 100.1 m, so it is the game's 100 m; the 20 m dash
   on the straight (`Rooftop.unity`) is a development scene and is not offered on the menu. Every loop event
   is the same `RooftopRace.unity` and the same `LapEvent`: the picker writes the lap count and the hurdles

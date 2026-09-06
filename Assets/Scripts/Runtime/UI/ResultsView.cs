@@ -26,7 +26,7 @@ namespace PoDecath.UI
         public HudView hud;
         [Tooltip("Also put away: the broadcast overlay, which is a live picture over a finished race.")]
         public BroadcastView overlay;
-        public string setupSceneName = "RaceSetup";
+        public string setupSceneName = "MAIN";
 
         VisualElement _rootEl, _modal, _rows;
         Label _title, _subtitle;

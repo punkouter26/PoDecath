@@ -24,7 +24,7 @@ namespace PoDecath.EditorTools
     /// </summary>
     public static class RaceUiBuilder
     {
-        const string SetupScenePath = "Assets/Scenes/RaceSetup.unity";
+        const string SetupScenePath = "Assets/Scenes/MAIN.unity";
 
         // Sort order: the overlay is the picture, the HUD sits over it, the results card over both, and
         // the diagnostics panel over everything, because its whole job is to be readable while you are
@@ -78,6 +78,12 @@ namespace PoDecath.EditorTools
                 results.race = dash;
                 results.hud = hud;
                 results.overlay = overlay;
+                // Wired here rather than left to the field's default. This is the results card's way
+                // back to the menu, and a default only applies to a component the moment it is created:
+                // rename the scene and every already-built scene keeps pointing at a path that no longer
+                // exists, silently, until someone presses the button. Naming the entry scene in one
+                // place -- SetupScenePath -- keeps them in step.
+                results.setupSceneName = System.IO.Path.GetFileNameWithoutExtension(SetupScenePath);
             }
 
             AddTelemetry(dash);

@@ -19,9 +19,9 @@ namespace PoDecath.UI
     public class MainMenuView : UiRoot
     {
         [UnityEngine.Serialization.FormerlySerializedAs("arenaSceneName")]
-        [Tooltip("Scene the Start button loads. RaceSetup is the game's entry point; this used to "
-               + "be the Go2 arena, which has been retired.")]
-        public string playSceneName = "RaceSetup";
+        [Tooltip("Scene the Start button loads. MAIN is the game's entry point -- the event picker and "
+               + "roster. This used to be the Go2 arena, which has been retired.")]
+        public string playSceneName = "MAIN";
 
         DropdownField _policy, _tier;
         Toggle _fps60;

@@ -36,7 +36,8 @@ Assets/
                             RooftopSceneBuilder, LongJumpBuilder, KartTrackBuilder, RaceUiBuilder,
                             the *Bakery bakers, PolicyLibraryTools (+ AssetPostprocessor),
                             SceneSweep + GetUpTransferProbe (measurement, see below)
-  Scenes/                   RaceSetup, MainMenu, Rooftop, RooftopLap, RooftopRace,
+  Scenes/                   MAIN (the entry point: event picker + roster), MainMenu, Rooftop,
+                            RooftopLap, RooftopRace,
                             RooftopLongJump (build list order)
   Policies/                 *.onnx checkpoints, Athlete_PolicyConfig.asset,
                             Resources/PolicyLibrary.asset (auto-maintained)
