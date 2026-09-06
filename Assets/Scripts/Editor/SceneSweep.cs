@@ -75,7 +75,7 @@ namespace PoDecath.EditorTools
         static string ReportPath => Path.Combine(LogDir, "scene_sweep.json");
 
         static List<string> _scenes;
-        static Dictionary<int, Vector3> _startPos = new Dictionary<int, Vector3>();
+        static Dictionary<CreatureRig, Vector3> _startPos = new Dictionary<CreatureRig, Vector3>();
         static readonly List<string> _errors = new List<string>();
         static bool _hooked;
 
@@ -212,7 +212,7 @@ namespace PoDecath.EditorTools
                             _startPos = UnityEngine.Object
                                 .FindObjectsByType<CreatureRig>(FindObjectsSortMode.None)
                                 .Where(r => r.IsBound)
-                                .ToDictionary(r => r.GetInstanceID(), r => r.BasePosition);
+                                .ToDictionary(r => r, r => r.BasePosition);
                             Phase = "playing";
                         }
                         return;
@@ -291,7 +291,7 @@ namespace PoDecath.EditorTools
             float far = 0f, sum = 0f; int n = 0;
             foreach (var r in rigs)
             {
-                if (!r.IsBound || !_startPos.TryGetValue(r.GetInstanceID(), out Vector3 p0)) continue;
+                if (!r.IsBound || !_startPos.TryGetValue(r, out Vector3 p0)) continue;
                 Vector3 d = r.BasePosition - p0; d.y = 0f;
                 float dist = d.magnitude;
                 far = Mathf.Max(far, dist); sum += dist; n++;
