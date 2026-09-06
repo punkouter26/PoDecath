@@ -49,14 +49,33 @@ namespace PoDecath.EditorTools
         const string KeyErrors = "PoDecath.Sweep.Errors";
 
         const int WarmupFrames = 60;
-        const float PlaySeconds = 6f;
         const int MaxLoggedErrors = 12;
+
+        /// <summary>
+        /// Optional <c>training/logs/scene_sweep_config.json</c>:
+        /// <c>{ "seconds": 30.0, "scenes": ["Assets/Scenes/RooftopLap.unity"] }</c>
+        ///
+        /// Six seconds is enough to prove a scene runs without throwing, and not nearly enough to see
+        /// whether an athlete holds a line. A faster policy chasing a carrot that sits a fixed 6 m ahead
+        /// gets proportionally less lookahead the quicker it runs, and the rooftop deck is only 5.3 m
+        /// wide -- that is a question about a whole lap, not about six seconds.
+        /// </summary>
+        [Serializable]
+        class SweepConfig
+        {
+            public float seconds = 6f;
+            public string[] scenes = null;
+        }
+
+        static SweepConfig _cfg;
+        static float PlaySeconds => (_cfg ?? LoadConfig()).seconds;
 
         static string LogDir => Path.Combine(Directory.GetParent(Application.dataPath).FullName,
                                              "training", "logs");
         static string ReportPath => Path.Combine(LogDir, "scene_sweep.json");
 
         static List<string> _scenes;
+        static Dictionary<int, Vector3> _startPos = new Dictionary<int, Vector3>();
         static readonly List<string> _errors = new List<string>();
         static bool _hooked;
 
@@ -75,8 +94,37 @@ namespace PoDecath.EditorTools
             set => SessionState.SetString(KeyPhase, value);
         }
 
-        static List<string> Scenes =>
-            _scenes ??= EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToList();
+        static List<string> Scenes
+        {
+            get
+            {
+                if (_scenes != null) return _scenes;
+                var cfg = _cfg ?? LoadConfig();
+                _scenes = (cfg.scenes != null && cfg.scenes.Length > 0)
+                    ? cfg.scenes.ToList()
+                    : EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToList();
+                return _scenes;
+            }
+        }
+
+        static SweepConfig LoadConfig()
+        {
+            string path = Path.Combine(LogDir, "scene_sweep_config.json");
+            try
+            {
+                if (File.Exists(path))
+                    _cfg = JsonUtility.FromJson<SweepConfig>(File.ReadAllText(path)) ?? new SweepConfig();
+                else
+                    _cfg = new SweepConfig();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[SceneSweep] could not read {path}: {e.Message}");
+                _cfg = new SweepConfig();
+            }
+            if (_cfg.seconds <= 0f) _cfg.seconds = 6f;
+            return _cfg;
+        }
 
         [MenuItem(MenuPath)]
         public static void Start()
@@ -161,6 +209,10 @@ namespace PoDecath.EditorTools
                         if (Bump(KeyFrames) >= WarmupFrames)
                         {
                             SessionState.SetFloat(KeyT0, Time.fixedTime);
+                            _startPos = UnityEngine.Object
+                                .FindObjectsByType<CreatureRig>(FindObjectsSortMode.None)
+                                .Where(r => r.IsBound)
+                                .ToDictionary(r => r.GetInstanceID(), r => r.BasePosition);
                             Phase = "playing";
                         }
                         return;
@@ -233,6 +285,20 @@ namespace PoDecath.EditorTools
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"rigs_bound\":{0},", bound);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"rigs_fallen\":{0},", fallen);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"nan_transform\":{0},", nan ? "true" : "false");
+
+            // How far each athlete actually got, and how quickly. Horizontal only: vertical motion on a
+            // rooftop is the athlete bobbing, or falling off, and neither is progress.
+            float far = 0f, sum = 0f; int n = 0;
+            foreach (var r in rigs)
+            {
+                if (!r.IsBound || !_startPos.TryGetValue(r.GetInstanceID(), out Vector3 p0)) continue;
+                Vector3 d = r.BasePosition - p0; d.y = 0f;
+                float dist = d.magnitude;
+                far = Mathf.Max(far, dist); sum += dist; n++;
+            }
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"furthest_m\":{0:0.##},", far);
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"mean_speed_mps\":{0:0.##},",
+                n > 0 && simSeconds > 0f ? (sum / n) / simSeconds : 0f);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"draw_calls\":{0},", UnityStats.drawCalls);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"set_pass_calls\":{0},", UnityStats.setPassCalls);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"triangles\":{0},", UnityStats.triangles);
@@ -289,6 +355,8 @@ namespace PoDecath.EditorTools
                 "{\"status\":\"" + status + "\",\"scenes\":[" + rows + "]}");
             Phase = "idle";
             _scenes = null;
+            _cfg = null;
+            _startPos.Clear();
             if (EditorApplication.isPlaying) EditorApplication.ExitPlaymode();
             Debug.Log($"[SceneSweep] {status} -> {ReportPath}");
         }
