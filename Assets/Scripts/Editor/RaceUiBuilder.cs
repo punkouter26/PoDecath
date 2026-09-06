@@ -32,6 +32,10 @@ namespace PoDecath.EditorTools
         const float OverlayOrder = 0f;
         const float HudOrder = 10f;
         const float ResultsOrder = 20f;
+        // The frame goes over the results card - it is on every screen, and a results card that hid the
+        // version number would take the one thing a screenshot needs off exactly the screenshots people
+        // take - but under the diagnostics sheet, which is what its own DEBUG button opens.
+        const float FrameOrder = 25f;
         const float TelemetryOrder = 30f;
 
         // ---------------------------------------------------------------- race scene
@@ -86,20 +90,42 @@ namespace PoDecath.EditorTools
                 results.setupSceneName = System.IO.Path.GetFileNameWithoutExtension(SetupScenePath);
             }
 
-            AddTelemetry(dash);
+            AddFrameAndTelemetry(dash);
             return dir;
         }
 
         /// <summary>
-        /// The diagnostics panel. It is in every scene the game ships, closed, on F3 — a performance
-        /// overlay that has to be added by hand before it can be used is one that never gets used.
+        /// The frame and the diagnostics behind it, added to every scene the game ships.
+        ///
+        /// Three objects, built together by one call, because they are only useful together: the frame
+        /// carries the DEBUG button, the sheet is what DEBUG opens, and the sampler is what the sheet has
+        /// to say. Splitting them into three calls would mean three chances to build a scene with a DEBUG
+        /// button that opens nothing, which is exactly the state this project was in before.
+        ///
+        /// <paramref name="dash"/> is optional: without a race the sampler sweeps the scene for loose
+        /// <see cref="PolicyRunner"/>s instead, so a development scene and the setup menu get the same
+        /// panel as a race does.
         /// </summary>
-        public static TelemetryOverlay AddTelemetry(RaceEvent dash)
+        public static TelemetryOverlay AddFrameAndTelemetry(RaceEvent dash)
         {
+            // The sampler is a plain component, not a screen: it has no UI of its own, and the frame reads
+            // its headline grade whether or not the sheet has ever been opened.
+            var agentsGo = new GameObject("AgentTelemetry");
+            var agents = agentsGo.AddComponent<AgentTelemetry>();
+            agents.race = dash;
+
             var telemetry = UiBakery.AddScreen<TelemetryOverlay>("Telemetry", UiBakery.TelemetryUxml, TelemetryOrder);
-            if (telemetry == null) return null;
-            telemetry.race = dash;
-            telemetry.audioMix = Object.FindFirstObjectByType<PoDecath.Audio.RaceAudio>();
+            if (telemetry != null)
+            {
+                telemetry.race = dash;
+                telemetry.agents = agents;
+                telemetry.audioMix = Object.FindFirstObjectByType<PoDecath.Audio.RaceAudio>();
+            }
+
+            var frame = UiBakery.AddScreen<AppFrameView>("AppFrame", UiBakery.AppFrameUxml, FrameOrder);
+            if (frame != null)
+                frame.menuSceneName = System.IO.Path.GetFileNameWithoutExtension(SetupScenePath);
+
             return telemetry;
         }
 
@@ -211,7 +237,7 @@ namespace PoDecath.EditorTools
 
             // The diagnostics panel belongs here too: the menu is where a frame rate problem caused by the
             // UI itself would otherwise be invisible.
-            AddTelemetry(null);
+            AddFrameAndTelemetry(null);
 
             EditorSceneManager.SaveScene(scene, SetupScenePath);
             MakeFirstSceneInBuild(SetupScenePath);

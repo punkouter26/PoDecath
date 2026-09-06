@@ -334,7 +334,7 @@ namespace PoDecath.EditorTools
             HudView hud = RaceUiBuilder.BuildHud(dash, camRig, handsOn: devScene);
 
             BroadcastDirector director = fieldMode ? RaceUiBuilder.BuildBroadcastAndResults(dash, path, camRig, hud, pit) : null;
-            if (!fieldMode) RaceUiBuilder.AddTelemetry(dash);   // the dev scenes get the diagnostics panel too
+            if (!fieldMode) RaceUiBuilder.AddFrameAndTelemetry(dash);   // the dev scenes get the frame and panel too
 
             // Focus follows the gallery. Without this the depth of field in the PC profile is authored at a
             // fixed 12 m, which is right for one shot in seven; with it, a close-up racks onto the athlete

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The frame: the five things that are in the same place on every screen the game has.
+
+        top-left      the game's name
+        top-centre    the frame rate
+        top-right     MENU
+        bottom-left   DEBUG, which opens the agent/ONNX diagnostics
+        bottom-right  the version
+
+    It is its own document rather than five elements bolted onto each screen because it has to survive
+    whichever screen is on: the setup menu, a race, the results card over a race. AppFrameView is added to
+    every scene by the builders, and its sorting order puts it over the game and under the diagnostics
+    sheet it opens.
+
+    Both rows are absolutely positioned. The frame is furniture and must not push the screen underneath it
+    around; what it does instead is publish its own height (see AppFrameView.RowHeight) so the HUD's
+    control bar and the broadcast lower third can keep out of its way.
+
+    picking-mode is Ignore everywhere except the two buttons, so a tap anywhere else falls through to the
+    screen behind — a frame that ate touches over the whole top and bottom of a phone would be worse than
+    no frame.
+-->
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/Theme.uss" />
+
+    <ui:VisualElement name="root" class="root" picking-mode="Ignore">
+        <ui:VisualElement name="safe" class="safe" picking-mode="Ignore">
+
+            <ui:VisualElement name="frame-top" class="frame-row frame-row--top" picking-mode="Ignore">
+                <ui:Label name="title" class="frame-chip frame-title" text="PODECATH" picking-mode="Ignore" />
+                <ui:VisualElement class="spacer" picking-mode="Ignore" />
+                <ui:Label name="fps" class="frame-chip frame-fps" text="-- FPS" picking-mode="Ignore" />
+                <ui:VisualElement class="spacer" picking-mode="Ignore" />
+                <ui:Button name="menu" class="btn btn--ghost frame-btn" text="MENU" />
+            </ui:VisualElement>
+
+            <ui:VisualElement name="frame-bottom" class="frame-row frame-row--bottom" picking-mode="Ignore">
+                <ui:Button name="debug" class="btn btn--ghost frame-btn" text="DEBUG" />
+                <ui:VisualElement class="spacer" picking-mode="Ignore" />
+                <ui:Label name="version" class="frame-chip frame-version" text="v0.0.0" picking-mode="Ignore" />
+            </ui:VisualElement>
+
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

@@ -46,6 +46,53 @@ namespace PoDecath.Sim
         bool _ready;
         bool _warnedShape;
 
+        // ---------------------------------------------------------------- diagnostics
+        //
+        // Five numbers, sampled on the policy step itself, that between them say whether a checkpoint is
+        // being run inside the envelope it was trained in. They live here rather than in the overlay
+        // because three of them are only visible from inside Step(): once the action has been clamped and
+        // the observation clipped, the evidence that either happened is gone.
+        //
+        // Each is an exponential moving average over roughly the last second of policy steps (50 Hz,
+        // alpha 0.02) - short enough to react to a fall, long enough not to flicker.
+        const float Ema = 0.02f;
+
+        static readonly double TickMs = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+
+        /// <summary>Milliseconds of inference per policy step, averaged. What the frame budget pays.</summary>
+        public float InferenceMs { get; private set; }
+
+        /// <summary>
+        /// Fraction of joints whose commanded target had to be clamped into the joint limits before it
+        /// reached the drive. This is the clamp that actually bites - <c>actionClip</c> ships at 100 and
+        /// so can only ever read zero - and it is the one that means the pose the policy asked for is not
+        /// the pose the body was given. Sustained above ~0.1 is either <c>actionScale</c> set too high
+        /// for this checkpoint, or rig limits that do not match the MJCF it was trained against.
+        /// </summary>
+        public float TargetClamping { get; private set; }
+
+        /// <summary>
+        /// Fraction of observation slots hitting <c>observationClip</c>. Above a few per cent this is a
+        /// scale mismatch - one of the <c>*Scale</c> fields does not match what the checkpoint was
+        /// normalised with - and every clipped slot is an input the policy has never seen.
+        /// </summary>
+        public float ObservationClipping { get; private set; }
+
+        /// <summary>
+        /// Mean absolute change in action between consecutive policy steps: jitter. A smooth gait sits
+        /// low, a policy chattering against the PD gains runs several times that, and the fix is a larger
+        /// action-rate penalty in training rather than anything on this side.
+        /// </summary>
+        public float ActionRate { get; private set; }
+
+        /// <summary>Mean absolute action magnitude, to read <see cref="TargetClamping"/> against.</summary>
+        public float ActionMagnitude { get; private set; }
+
+        /// <summary>Policy steps actually taken per second: the control rate the body really got.</summary>
+        public float MeasuredControlHz { get; private set; }
+        float _hzWindowStart;
+        int _hzWindowSteps;
+
         public bool IsReady => _ready;
         public bool HasModel => _worker != null;
 
@@ -136,6 +183,10 @@ namespace PoDecath.Sim
             rig.ApplyTargets(_targets);
             _stepCounter = 0;
             PolicySteps = 0;
+            InferenceMs = TargetClamping = ObservationClipping = ActionRate = ActionMagnitude = 0f;
+            MeasuredControlHz = 0f;
+            _hzWindowStart = Time.unscaledTime;
+            _hzWindowSteps = 0;
             _ready = true;
         }
 
@@ -188,10 +239,13 @@ namespace PoDecath.Sim
 
             _obsBuilder.Fill(_obs, rig, cmd, _lastAction, _jointPos, _jointVel);
 
+            MeasureObservationClipping();
+
             int n = _action.Length;
             Worker worker = UseRecovery && _recoveryWorker != null ? _recoveryWorker : _worker;
             if (worker != null)
             {
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 _input.Upload(_obs);
                 worker.Schedule(_input);
                 var output = worker.PeekOutput() as Tensor<float>;
@@ -209,20 +263,70 @@ namespace PoDecath.Sim
                     }
                     for (int i = count; i < n; i++) _action[i] = 0f;
                 }
+                InferenceMs += ((float)((System.Diagnostics.Stopwatch.GetTimestamp() - t0) * TickMs) - InferenceMs) * Ema;
             }
             else
             {
                 for (int i = 0; i < n; i++) _action[i] = 0f;
             }
 
+            // Measured before _lastAction is overwritten below: the rate is the difference between this
+            // action and the previous one, and this is the one line where both still exist.
+            MeasureAction(n);
+
             float scale = config.actionScale;
+            int clamped = 0;
             for (int i = 0; i < n; i++)
             {
-                _targets[i] = rig.DefaultPosition(i) + _action[i] * scale;
+                float want = rig.DefaultPosition(i) + _action[i] * scale;
+                if (want < rig.LowerLimit(i) || want > rig.UpperLimit(i)) clamped++;
+                _targets[i] = want;
                 _lastAction[i] = _action[i];
             }
+            TargetClamping += (clamped / (float)n - TargetClamping) * Ema;
             rig.ApplyTargets(_targets);
             PolicySteps++;
+
+            _hzWindowSteps++;
+            float window = Time.unscaledTime - _hzWindowStart;
+            if (window >= 0.5f)
+            {
+                MeasuredControlHz = _hzWindowSteps / window;
+                _hzWindowStart = Time.unscaledTime;
+                _hzWindowSteps = 0;
+            }
+        }
+
+        /// <summary>
+        /// How much of the observation vector arrived at the rail. <see cref="ObservationBuilder"/> has
+        /// already clamped it, so this compares against the clip value rather than looking for the
+        /// original: a slot within a thousandth of the limit was, to any useful precision, clipped.
+        /// </summary>
+        void MeasureObservationClipping()
+        {
+            float clip = config.observationClip;
+            if (clip <= 0f || _obs.Length == 0) return;
+            float edge = clip * 0.999f;
+            int hit = 0;
+            for (int i = 0; i < _obs.Length; i++)
+                if (_obs[i] >= edge || _obs[i] <= -edge) hit++;
+            ObservationClipping += (hit / (float)_obs.Length - ObservationClipping) * Ema;
+        }
+
+        /// <summary>Jitter and magnitude of the action just produced, before it becomes a joint target.</summary>
+        void MeasureAction(int n)
+        {
+            if (n == 0) return;
+            float sumAbs = 0f, sumDelta = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float a = _action[i];
+                sumAbs += a < 0f ? -a : a;
+                float d = a - _lastAction[i];
+                sumDelta += d < 0f ? -d : d;
+            }
+            ActionMagnitude += (sumAbs / n - ActionMagnitude) * Ema;
+            ActionRate += (sumDelta / n - ActionRate) * Ema;
         }
 
         public void ResetEpisode(Vector3 position, Quaternion rotation)

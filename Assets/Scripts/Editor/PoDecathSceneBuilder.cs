@@ -163,6 +163,12 @@ namespace PoDecath.EditorTools
             var menu = UiBakery.AddScreen<MainMenuView>("MainMenu", UiBakery.MainMenuUxml, 0f);
             if (menu != null) menu.playSceneName = "MAIN";
 
+            // The frame belongs here too. This is a scene the game ships and the HUD's MENU button loads,
+            // so leaving it out made "the same five things in the same place on every screen" false on the
+            // one screen a player reaches by asking for the menu — and took the version number off the
+            // corner of any screenshot taken of it.
+            RaceUiBuilder.AddFrameAndTelemetry(null);
+
             EditorSceneManager.SaveScene(scene, MainMenuScenePath);
         }
 

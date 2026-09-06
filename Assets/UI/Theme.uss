@@ -38,13 +38,25 @@
     --danger:         rgb(255, 108, 92);
     --warn:           rgb(255, 198, 84);
 
-    /* Type scale */
-    --t-micro:        18px;
-    --t-small:        24px;
-    --t-body:         30px;
-    --t-title:        40px;
-    --t-display:      58px;
-    --t-clock:        66px;
+    /* Type scale.
+     *
+     * Sized for a phone held in portrait, not for a maximised Game view. The reference resolution is
+     * 1080 wide, and a 1080-wide phone is around 2.6 device pixels to the CSS pixel, so a reference px is
+     * roughly 0.38 dp: the old 18px "micro" landed at about 7 dp on a Pixel, which is below the size at
+     * which Android's own accessibility guidance says text stops being readable (12 sp, ~31 reference px
+     * at width match).
+     *
+     * So the floor here is 26px, and that is only used for letter-spaced ALL-CAPS section labels and the
+     * telemetry keys, which read a size larger than their nominal height. Everything that carries a
+     * sentence or a number a person has to act on is --t-small (32px, ~12 sp) or above. Row heights and
+     * fixed column widths below were re-measured against this scale; changing it means re-measuring them.
+     */
+    --t-micro:        26px;
+    --t-small:        32px;
+    --t-body:         38px;
+    --t-title:        48px;
+    --t-display:      64px;
+    --t-clock:        74px;
 
     /* Grid */
     --gap-1:           8px;
@@ -169,7 +181,7 @@
 .order-row {
     flex-direction: row;
     align-items: center;
-    height: 52px;
+    height: 64px;
     padding-left: var(--gap-1);
     padding-right: var(--gap-1);
     margin-bottom: 2px;
@@ -192,7 +204,7 @@
 .order-row--gained { background-color: rgba(46, 191, 140, 0.28); }
 .order-row--lost { background-color: rgba(255, 108, 92, 0.22); }
 
-.order-rank { width: 46px; font-size: var(--t-small); -unity-font-style: bold; color: var(--ink-dim); }
+.order-rank { width: 60px; font-size: var(--t-small); -unity-font-style: bold; color: var(--ink-dim); }
 .order-name {
     flex-grow: 1;
     font-size: var(--t-small);
@@ -211,7 +223,7 @@
     margin-left: var(--gap-1);
 }
 
-.split-row { font-size: var(--t-micro); color: var(--ink-dim); height: 34px; }
+.split-row { font-size: var(--t-micro); color: var(--ink-dim); height: 42px; }
 
 /* The split that has just been set flashes once and settles. */
 .split-row--new { color: var(--ink); -unity-font-style: bold; }
@@ -301,7 +313,7 @@
 .result-row {
     flex-direction: row;
     align-items: center;
-    height: 78px;
+    height: 92px;
     padding-left: var(--gap-2);
     padding-right: var(--gap-2);
     border-radius: 6px;
@@ -310,7 +322,7 @@
 }
 
 .result-row--podium { background-color: var(--row-lead); }
-.result-rank { width: 72px; font-size: var(--t-title); -unity-font-style: bold; }
+.result-rank { width: 88px; font-size: var(--t-title); -unity-font-style: bold; }
 .result-name { flex-grow: 1; font-size: var(--t-body); -unity-font-style: bold; }
 .result-time { width: 280px; font-size: var(--t-body); -unity-text-align: middle-right; }
 
@@ -360,8 +372,8 @@
 }
 
 .runner-swatch {
-    width: 12px;
-    height: 56px;
+    width: 14px;
+    height: 64px;
     border-radius: 6px;
     margin-right: var(--gap-2);
 }
@@ -386,7 +398,7 @@
     margin-bottom: var(--gap-1);
 }
 
-.telemetry-row { flex-direction: row; justify-content: space-between; height: 30px; }
+.telemetry-row { flex-direction: row; justify-content: space-between; height: 40px; }
 .telemetry-key { font-size: var(--t-micro); color: var(--ink-dim); }
 .telemetry-value { font-size: var(--t-micro); -unity-font-style: bold; -unity-text-align: middle-right; }
 .telemetry-value--good { color: var(--accent); }
@@ -399,4 +411,195 @@
     margin-top: var(--gap-1);
     background-color: rgba(255, 255, 255, 0.04);
     border-radius: 6px;
+}
+
+/* ------------------------------------------------------------------ the frame
+ *
+ * Five fixed positions that every screen shares: name, frame rate, MENU, DEBUG, version. Both rows are
+ * absolute so the frame never reflows the screen underneath it, and both are 112 px tall — an 80 px
+ * touch target plus 16 px of padding either side. AppFrameView publishes that number as RowHeight, and
+ * the HUD's control bar and the broadcast lower third are pushed clear of it by that much rather than by
+ * a literal copied into three files.
+ */
+
+.frame-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 112px;
+    flex-direction: row;
+    align-items: center;
+    padding-left: var(--gap-2);
+    padding-right: var(--gap-2);
+}
+
+.frame-row--top { top: 0; }
+.frame-row--bottom { bottom: 0; }
+
+/* Text in the frame sits over the sky, which is the brightest thing in the scene, so every chip carries
+   its own ground rather than relying on a shadow. */
+.frame-chip {
+    background-color: var(--overlay);
+    border-radius: var(--radius-sm);
+    padding: var(--gap-1) var(--gap-2);
+    -unity-text-align: middle-center;
+}
+
+.frame-title {
+    font-size: var(--t-small);
+    -unity-font-style: bold;
+    letter-spacing: 3px;
+    color: var(--ink);
+}
+
+/* Fixed width, so the row does not shuffle sideways every time the frame rate crosses a digit. */
+.frame-fps {
+    font-size: var(--t-small);
+    -unity-font-style: bold;
+    width: 220px;
+}
+
+.frame-fps--good { color: var(--accent); }
+.frame-fps--warn { color: var(--warn); }
+.frame-fps--bad { color: var(--danger); }
+
+.frame-version {
+    font-size: var(--t-micro);
+    color: var(--ink-dim);
+    letter-spacing: 1px;
+}
+
+.frame-btn {
+    min-height: 80px;
+    min-width: 180px;
+    font-size: var(--t-small);
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    padding: var(--gap-1) var(--gap-2);
+    background-color: var(--overlay);
+}
+
+/* The debug button reports as well as opens: it wears the worst grade the agent panel has found, so a
+   config fault is visible from the corner of the screen without opening anything. */
+.frame-btn--warn { color: var(--warn); }
+.frame-btn--bad { color: var(--danger); }
+.frame-btn--open { background-color: rgba(46, 191, 140, 0.28); }
+
+/* ------------------------------------------------------------------ diagnostics sheet
+ *
+ * The old panel was a 560 px card pinned to the top-left corner with 18 px text in it — a desktop
+ * overlay, on a screen held in one hand. This is a sheet instead: it comes up from the bottom over most
+ * of the picture, it scrolls, and everything in it is readable at arm's length.
+ */
+
+.sheet-scrim {
+    position: absolute;
+    left: 0; right: 0; top: 0; bottom: 0;
+    background-color: rgba(3, 5, 9, 0.72);
+}
+
+.sheet {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    top: 96px;
+    background-color: rgba(8, 10, 17, 0.97);
+    border-top-left-radius: var(--radius);
+    border-top-right-radius: var(--radius);
+    border-width: 1px;
+    border-color: var(--surface-line);
+    padding: var(--gap-3);
+}
+
+.sheet-head { flex-direction: row; align-items: center; margin-bottom: var(--gap-2); }
+
+.sheet-tabs { flex-direction: row; margin-bottom: var(--gap-2); }
+
+.tab {
+    flex-grow: 1;
+    min-height: 80px;
+    font-size: var(--t-small);
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    background-color: var(--surface-2);
+    border-radius: var(--radius-sm);
+    border-width: 0;
+    color: var(--ink-dim);
+    margin-right: var(--gap-1);
+}
+
+.tab--on { background-color: rgba(46, 191, 140, 0.22); color: var(--ink); }
+
+/* The headline: one sentence naming the worst thing wrong with the field, or saying there is nothing. */
+.headline {
+    font-size: var(--t-small);
+    white-space: normal;
+    border-left-width: 6px;
+    border-left-color: var(--ink-faint);
+    padding: var(--gap-2);
+    background-color: var(--row);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--gap-2);
+}
+
+.headline--good { border-left-color: var(--accent); }
+.headline--warn { border-left-color: var(--warn); }
+.headline--bad { border-left-color: var(--danger); }
+
+/* ------------------------------------------------------------------ one agent's card */
+
+.agent {
+    background-color: var(--surface-2);
+    border-radius: var(--radius-sm);
+    border-left-width: 6px;
+    border-left-color: var(--ink-faint);
+    padding: var(--gap-2);
+    margin-bottom: var(--gap-2);
+}
+
+.agent--good { border-left-color: var(--accent); }
+.agent--warn { border-left-color: var(--warn); }
+.agent--bad { border-left-color: var(--danger); }
+
+.agent-name { font-size: var(--t-body); -unity-font-style: bold; }
+
+/* The ONNX file driving this body right now. Small, but never hidden: "which checkpoint am I watching"
+   is the question the whole panel exists to stop somebody guessing at. */
+.agent-model {
+    font-size: var(--t-micro);
+    color: var(--ink-dim);
+    white-space: normal;
+    margin-bottom: var(--gap-1);
+}
+
+/* Three metrics to a row, each a big number over its name, so the card is scannable rather than read. */
+.metric-grid { flex-direction: row; flex-wrap: wrap; margin-bottom: var(--gap-1); }
+
+.metric {
+    width: 33%;
+    padding-top: var(--gap-1);
+    padding-bottom: var(--gap-1);
+}
+
+.metric-value { font-size: var(--t-body); -unity-font-style: bold; }
+.metric-value--good { color: var(--accent); }
+.metric-value--warn { color: var(--warn); }
+.metric-value--bad { color: var(--danger); }
+.metric-key { font-size: var(--t-micro); color: var(--ink-faint); letter-spacing: 1px; }
+
+/* Speed and uprightness over the last ninety seconds, drawn in AgentCard.DrawTrend. */
+.agent-trend {
+    height: 130px;
+    margin-top: var(--gap-1);
+    margin-bottom: var(--gap-1);
+    background-color: rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+}
+
+.agent-legend { font-size: var(--t-micro); color: var(--ink-faint); margin-bottom: var(--gap-1); }
+
+/* The sentence. This is the payload of the whole panel: what to change, in words. */
+.agent-verdict {
+    font-size: var(--t-small);
+    white-space: normal;
+    color: var(--ink);
 }

@@ -1,17 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The diagnostics panel. Rows are built in TelemetryOverlay so that a metric the platform cannot report
-    is left out rather than shown as a permanent zero.
+    The diagnostics sheet, opened by DEBUG in the bottom-left of the frame (or F3 on a desktop).
+
+    Two pages, because there are two different questions and mixing them made both harder to answer:
+
+      FRAME   is the device keeping up? — frame time, draw calls, memory, GC.
+      AGENTS  are the policies doing what they were trained to? — per athlete, which ONNX is driving it,
+              what it is doing over time, and one sentence saying what to change.
+
+    AGENTS is the page it opens on. This project's frame rate has been fine for weeks; what has cost it
+    real time is a policy that looked wrong and a config that nobody could see was wrong from inside the
+    game. Rows on the FRAME page are still built in TelemetryOverlay so a counter the platform will not
+    report is left out rather than shown as a permanent zero.
+
+    It is a sheet rather than the corner card it used to be because the game is played in portrait on a
+    phone: a 560 px card of 18 px text pinned to a corner was a desktop overlay wearing a phone's clothes.
 -->
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Theme.uss" />
 
-    <ui:VisualElement name="root" class="root hidden" picking-mode="Ignore">
-        <ui:VisualElement name="panel" class="telemetry" style="top: 24px; left: 24px;">
-            <ui:Label name="title" class="telemetry-title" text="TELEMETRY" />
-            <ui:VisualElement name="rows" />
-            <ui:VisualElement name="graph" class="telemetry-graph" />
-            <ui:Label name="footer" class="telemetry-key" text="" style="margin-top: 8px;" />
+    <ui:VisualElement name="root" class="root hidden">
+        <ui:VisualElement name="scrim" class="sheet-scrim" />
+        <ui:VisualElement name="safe" class="safe" picking-mode="Ignore">
+            <ui:VisualElement name="panel" class="sheet">
+
+                <ui:VisualElement class="sheet-head">
+                    <ui:Label name="title" class="label-micro" text="TELEMETRY" style="flex-grow: 1;" />
+                    <ui:Button name="export" class="btn btn--ghost" text="EXPORT"
+                               style="min-height: 72px; min-width: 180px; font-size: 32px; margin-right: 12px;" />
+                    <ui:Button name="close" class="btn btn--ghost" text="CLOSE"
+                               style="min-height: 72px; min-width: 180px; font-size: 32px;" />
+                </ui:VisualElement>
+
+                <!-- Where the last export landed. Empty until EXPORT is pressed, because a permanent file
+                     path across the top of a diagnostics panel is furniture, not information. -->
+                <ui:Label name="export-note" class="agent-legend" text="" style="white-space: normal;" />
+
+                <ui:VisualElement class="sheet-tabs">
+                    <ui:Button name="tab-agents" class="tab tab--on" text="AGENTS" />
+                    <ui:Button name="tab-frame" class="tab" text="FRAME" />
+                </ui:VisualElement>
+
+                <ui:ScrollView name="body" style="flex-grow: 1;">
+
+                    <ui:VisualElement name="agents-page">
+                        <ui:Label name="headline" class="headline" text="" />
+                        <ui:VisualElement name="agents" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="frame-page" class="hidden">
+                        <ui:VisualElement name="rows" />
+                        <ui:VisualElement name="graph" class="telemetry-graph" />
+                        <ui:Label name="footer" class="telemetry-key" text="" style="margin-top: 8px; white-space: normal;" />
+                    </ui:VisualElement>
+
+                </ui:ScrollView>
+            </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

@@ -82,3 +82,6 @@ desktop.ini
 # Editor capture scratch: verification screenshots taken through the Unity CLI.
 Assets/_Recovery/
 Assets/_Recovery.meta
+
+# IL2CPP build scratch (created next to the project by the Android build).
+.utmp/
