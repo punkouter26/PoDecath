@@ -107,6 +107,23 @@ class RunTrackEnv(RunToTargetEnv):
         r_prog = 0.5 * (ds / self.dt).clamp(-1.0, self.target_speed)
         reward = reward + r_lat + r_prog - 2.0 * off_deck.float()
         newly_done = off_deck & ~done
+
+        # Book the deck exits, before _apply_reset clears the episode counters they are read from.
+        #
+        # RunToTargetEnv.step has already written its stats by the time control reaches here, and the
+        # only ending it knows about is going down: height under 60% of standing, or uprightness under
+        # 0.4. Running off the side of a 5.3 m deck is neither. So `fall_rate` was blind to the one
+        # failure mode that gets *worse* the faster an athlete runs -- and the adaptive speed curriculum
+        # gated on exactly that number. It raised the target happily while the field streamed off the
+        # roof: 5% "falls" reported against a measured 0% of athletes completing a clean lap.
+        ndf = newly_done.float()
+        self._acc.setdefault("off_deck_sum", torch.zeros((), device=self.device))
+        self._acc["off_deck_sum"] += ndf.sum()
+        self._acc["fell_sum"] += ndf.sum()
+        self._acc["done_n"] += ndf.sum()          # they ended an episode; the denominator must know
+        self._acc["ret_sum"] += (self.episode_return * ndf).sum()
+        self._acc["len_sum"] += (self.episode_len * ndf).sum()
+
         if newly_done.any():
             self._apply_reset(newly_done)
             mjw.forward(self.mw, self.dw)
@@ -122,8 +139,16 @@ class RunTrackEnv(RunToTargetEnv):
     def get_stats(self):
         lp = self._acc.get("lap_prog")
         steps = max(1.0, float(self._acc["steps"].item()))
+        # Read every accumulator *before* super().get_stats(), which zeroes all of them. Reading
+        # afterwards is why lap_progress_m has always reported 0.
+        lp_v = float(lp.item()) if lp is not None else None
+        od = self._acc.get("off_deck_sum")
+        od_v = float(od.item()) if od is not None else None
+        n = max(1.0, float(self._acc["done_n"].item()))
+
         out = super().get_stats()
-        if lp is not None:
-            out["lap_progress_m"] = lp.item() / steps
-            lp.zero_()
+        if lp_v is not None:
+            out["lap_progress_m"] = lp_v / steps
+        if od_v is not None:
+            out["off_deck_rate"] = od_v / n
         return out
