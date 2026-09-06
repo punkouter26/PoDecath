@@ -203,24 +203,13 @@ namespace PoDecath.Sim
         /// </summary>
         void GiveBotsSomethingToHitWith()
         {
-            int layer = LayerMask.NameToLayer("Creature");
-            foreach (RaceEvent.Athlete a in race.Athletes)
-            {
-                HeuristicRunner bot = a.heuristic;
-                if (bot == null || bot.GetComponent<Rigidbody>() != null) continue;
-
-                if (layer >= 0) bot.gameObject.layer = layer;
-                var cap = bot.gameObject.AddComponent<CapsuleCollider>();
-                cap.height = 1.7f;
-                cap.radius = 0.26f;
-                cap.center = new Vector3(0f, 0.85f, 0f);
-
-                var rb = bot.gameObject.AddComponent<Rigidbody>();
-                rb.isKinematic = true;
-                rb.useGravity = false;
-                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
-                bot.body = rb;   // the bot sweeps to its pose from here on rather than teleporting
-            }
+            // Nothing to do any more, and that is the point.
+            //
+            // This used to give the heuristic bot a capsule and a kinematic Rigidbody so that a body
+            // with no physics at all had something to knock a hurdle over with, swept rather than
+            // teleported so PhysX did not shove the hurdle metres down the track. The bot is a real
+            // articulated athlete now, with the same colliders as everyone else, so it hits a hurdle
+            // with its actual shins.
         }
 
         // ---------------------------------------------------------------- the book

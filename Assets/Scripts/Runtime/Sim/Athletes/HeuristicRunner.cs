@@ -3,142 +3,157 @@ using UnityEngine;
 namespace PoDecath.Sim
 {
     /// <summary>
-    /// Heuristic-coded sprinter (house rule: RED). Kinematic pace profile along a straight lane:
-    /// accelerates to top speed over accelSeconds, then holds it. No physics, never falls.
+    /// The hand-coded athlete, as the events see it.
+    ///
+    /// This used to be a pace profile: a transform swept along a line at a chosen speed, with a cosmetic
+    /// bob, that could not be pushed off its course and never fell. It made a serviceable pacer and a
+    /// meaningless opponent, because "the heuristic bot runs 9 m/s" was a fact about a constant in a
+    /// script rather than about a body. Comparing a learned policy against it compared a physics problem
+    /// with an animation.
+    ///
+    /// Now it is physical. The bot is built from the same MJCF as every other athlete, with the same
+    /// colliders, the same ArticulationBody chain, the same per-joint PD gains and the same gravity, and
+    /// it is driven by <see cref="HeuristicGait"/> -- arithmetic where the policies have a network. It
+    /// can be shoved, it can trip over a hurdle, and it can fall over and stay there.
+    ///
+    /// This class is only the adapter: it keeps the small API the events already speak (reset onto a
+    /// line or a track, go, stop, report speed and distance) and translates it into rig operations, so
+    /// nothing upstream had to learn a new vocabulary.
     /// </summary>
     public class HeuristicRunner : MonoBehaviour
     {
-        public float topSpeed = 9.0f;
-        public float accelSeconds = 3.0f;
-        public float bobAmplitude = 0.03f;
-        public float bobHz = 3.0f;
-        [Tooltip("Optional kinematic body, set by HurdleSet so the bot has something to knock hurdles over "
-               + "with. When it is here the bot is swept to its pose instead of being teleported: a "
-               + "teleported kinematic body is depenetrated out of whatever it lands inside, which shoves a "
-               + "hurdle metres down the track instead of knocking it over.")]
-        public Rigidbody body;
+        [Header("Wiring")]
+        public AthleteRig rig;
+        public HeuristicGait gait;
 
-        public bool Running { get; private set; }
+        [Header("Pace")]
+        [Tooltip("Speed the gait is asked for. Unlike the old pace profile this is a request, not a "
+               + "guarantee: what the body actually does is up to the controller and the physics.")]
+        public float topSpeed = 3.0f;
+        [Tooltip("Seconds spent easing the request up to topSpeed, so it does not lurch off the line.")]
+        public float accelSeconds = 2.0f;
+
+        public bool Running => gait != null && gait.Running;
+        /// <summary>Forward speed measured on the rig, not integrated from a command.</summary>
         public float Speed { get; private set; }
+        /// <summary>Distance travelled along the course, measured from the rig's own position.</summary>
         public float Distance { get; private set; }
         public Vector3 Start { get; private set; }
         public Vector3 Direction { get; private set; } = Vector3.right;
 
         float _t;
-        float _baseY;
+        Vector3 _startPos;
 
+        // ---- straight-line courses -------------------------------------------------------------
         public void ResetTo(Vector3 start, Vector3 direction)
         {
             Start = start;
-            Direction = direction.normalized;
-            transform.position = start;
-            // The root's +X is the athlete's forward axis (same convention as the physics rig).
-            Vector3 flat = new Vector3(Direction.x, 0f, Direction.z);
-            transform.rotation = flat.sqrMagnitude > 1e-6f ? Quaternion.FromToRotation(Vector3.right, flat.normalized) : Quaternion.identity;
-            _baseY = start.y;
-            _t = 0f;
-            Speed = 0f;
-            Distance = 0f;
-            Running = false;
+            Direction = direction.sqrMagnitude > 1e-6f ? direction.normalized : Vector3.right;
+            path = null;
+            Place(start, Direction);
         }
 
-        public void Go() => Running = true;
-        public void Stop() { Running = false; Airborne = false; }
-
-        // ---- flight mode: the long jump take-off ----
-        /// <summary>True between the take-off board and the sand.</summary>
-        public bool Airborne { get; private set; }
-        Vector3 _vel;
-        float _landY;
-
-        /// <summary>
-        /// Leaves the ground on a ballistic arc and lands when the root drops to <paramref name="landY"/>.
-        /// The RL athletes get their arc from PhysX; this bot has no physics at all, so its jump is
-        /// integrated here from the same take-off velocity the event hands the physics athletes.
-        /// </summary>
-        public void Launch(Vector3 velocity, float landY)
-        {
-            Running = false;
-            Airborne = true;
-            _vel = velocity;
-            _landY = landY;
-        }
-
-        // ---- track mode: follow a TrackPath instead of a straight line ----
+        // ---- track courses ---------------------------------------------------------------------
         public TrackPath path;
-        float _s;
         float _lateral;
 
-        /// <summary>Arc length along <see cref="path"/>, wrapped into one lap like <see cref="TrackFollower.S"/>.</summary>
-        public float S => path != null ? Mathf.Repeat(_s, path.LapLength) : _s;
+        /// <summary>Arc length along <see cref="path"/>, read back from where the body actually is.</summary>
+        public float S
+        {
+            get
+            {
+                if (path == null || rig == null) return Distance;
+                return Mathf.Repeat(path.ProjectGlobal(rig.BasePosition), path.LapLength);
+            }
+        }
 
         public void ResetOnTrack(TrackPath p, float s, float lateral)
         {
             path = p;
-            _s = s;
             _lateral = lateral;
             Start = p.Position(s, lateral);
             Direction = p.Tangent(s);
-            transform.position = Start;
-            Vector3 flat = new Vector3(Direction.x, 0f, Direction.z);
-            transform.rotation = flat.sqrMagnitude > 1e-6f ? Quaternion.FromToRotation(Vector3.right, flat.normalized) : Quaternion.identity;
-            _baseY = Start.y;
+            Place(Start, Direction);
+        }
+
+        void Place(Vector3 position, Vector3 direction)
+        {
+            Vector3 flat = new Vector3(direction.x, 0f, direction.z);
+            Quaternion rot = flat.sqrMagnitude > 1e-6f
+                ? Quaternion.FromToRotation(Vector3.right, flat.normalized)
+                : Quaternion.identity;
+            if (rig != null) rig.ResetPose(position, rot);
+            else transform.SetPositionAndRotation(position, rot);
+            _startPos = position;
             _t = 0f;
             Speed = 0f;
             Distance = 0f;
-            Running = false;
+            Airborne = false;
+            if (gait != null)
+            {
+                gait.desiredDirection = flat.sqrMagnitude > 1e-6f ? flat.normalized : Vector3.right;
+                gait.desiredSpeed = 0f;
+                gait.Halt();
+            }
         }
 
-        void Update()
+        public void Go()
         {
-            if (Airborne)
-            {
-                float fdt = Time.deltaTime;
-                _vel += Physics.gravity * fdt;
-                Vector3 next = transform.position + _vel * fdt;
-                Distance += new Vector2(_vel.x, _vel.z).magnitude * fdt;
-                Speed = _vel.magnitude;
-                if (next.y <= _landY) { next.y = _landY; Airborne = false; Speed = 0f; }
-                MoveTo(next, transform.rotation);
-                return;
-            }
-            if (!Running) return;
-            float dt = Time.deltaTime;
-            _t += dt;
-            float k = accelSeconds > 0f ? Mathf.Clamp01(_t / accelSeconds) : 1f;
-            Speed = topSpeed * (1f - (1f - k) * (1f - k));   // ease-out acceleration
-            Distance += Speed * dt;
-            float bob = Mathf.Abs(Mathf.Sin(_t * bobHz * Mathf.PI)) * bobAmplitude * Mathf.Clamp01(Speed / topSpeed);
-            if (path != null)
-            {
-                _s += Speed * dt;
-                Vector3 p = path.Position(_s, _lateral);
-                p.y += bob;
-                Vector3 t = path.Tangent(_s);
-                MoveTo(p, Quaternion.FromToRotation(Vector3.right, new Vector3(t.x, 0f, t.z).normalized));
-                return;
-            }
-            Vector3 q = Start + Direction * Distance;
-            q.y = _baseY + bob;
-            MoveTo(q, transform.rotation);
+            _t = 0f;
+            if (gait != null) gait.Begin(Direction, 0f);
         }
+
+        public void Stop()
+        {
+            Airborne = false;
+            if (gait != null) gait.Halt();
+        }
+
+        // ---- the long jump take-off ------------------------------------------------------------
+        /// <summary>True between the board and the sand.</summary>
+        public bool Airborne { get; private set; }
+        float _landY;
 
         /// <summary>
-        /// Puts the bot on its next pose. With a kinematic <see cref="body"/> attached this is a swept
-        /// move rather than a teleport, which is the difference between clipping a hurdle and knocking it
-        /// over: a teleported kinematic body arrives already inside whatever it hit and PhysX resolves that
-        /// by shoving the hurdle out of the way, metres down the track. Nothing else about the bot changes
-        /// — it is still a pace profile that cannot be pushed off its line and never falls.
+        /// Leaves the board. Where the old bot integrated a ballistic arc in script, this hands the
+        /// same take-off velocity to the physics and lets PhysX fly the body, exactly as it does for
+        /// the policy athletes.
         /// </summary>
-        void MoveTo(Vector3 position, Quaternion rotation)
+        public void Launch(Vector3 velocity, float landY)
         {
-            if (body != null && body.isKinematic)
+            _landY = landY;
+            Airborne = true;
+            if (gait != null) gait.Halt();
+            if (rig != null && rig.root != null)
+                rig.root.AddForce(velocity * rig.root.mass, ForceMode.Impulse);
+        }
+
+        void FixedUpdate()
+        {
+            if (rig == null || !rig.IsBound) return;
+
+            Vector3 dir = path != null ? path.Tangent(S) : Direction;
+            Vector3 flat = new Vector3(dir.x, 0f, dir.z);
+            if (flat.sqrMagnitude > 1e-6f) flat.Normalize(); else flat = Vector3.right;
+
+            Speed = Vector3.Dot(rig.BaseLinearVelocityWorld, flat);
+            Distance = path != null
+                ? Distance   // the event reads S on a track; distance along a lap is its business
+                : Vector3.Dot(rig.BasePosition - _startPos, flat);
+
+            if (Airborne)
             {
-                body.MovePosition(position);
-                body.MoveRotation(rotation);
+                if (rig.BasePosition.y <= _landY) Airborne = false;
                 return;
             }
-            transform.SetPositionAndRotation(position, rotation);
+            if (gait == null || !gait.Running) return;
+
+            // Ease the ask up rather than demanding race pace from a standing start, which is the
+            // quickest way to put a hand-tuned gait on its face.
+            _t += Time.fixedDeltaTime;
+            float k = accelSeconds > 0f ? Mathf.Clamp01(_t / accelSeconds) : 1f;
+            gait.desiredSpeed = topSpeed * (1f - (1f - k) * (1f - k));
+            gait.desiredDirection = flat;
         }
     }
 }

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Sim.AthleteDefinition
   displayName: Matt RL
   kind: 1
-  model: {fileID: 5022602860645237092, guid: a8269c2479fa3ae4aa1406384be837e1, type: 3}
+  model: {fileID: 5022602860645237092, guid: 3d9db67763f271248ab165a5230a7da6, type: 3}
   mjcfOverride: {fileID: 0}
   actionScale: 0.5
   topSpeed: 9

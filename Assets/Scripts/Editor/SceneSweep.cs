@@ -285,6 +285,7 @@ namespace PoDecath.EditorTools
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"rigs_bound\":{0},", bound);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"rigs_fallen\":{0},", fallen);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"nan_transform\":{0},", nan ? "true" : "false");
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"race\":\"{0}\",", Esc(RacePhase()));
 
             // How far each athlete actually got, and how quickly. Horizontal only: vertical motion on a
             // rooftop is the athlete bobbing, or falling off, and neither is progress.
@@ -296,6 +297,24 @@ namespace PoDecath.EditorTools
                 float dist = d.magnitude;
                 far = Mathf.Max(far, dist); sum += dist; n++;
             }
+            // Per athlete, because an aggregate cannot tell you which one fell over. Tuning a gait
+            // needs to know whether the hand-coded bot is upright and moving, not whether the scene
+            // averaged out acceptably.
+            sb.Append("\"athletes\":[");
+            bool first = true;
+            foreach (var r in rigs)
+            {
+                if (!r.IsBound) continue;
+                _startPos.TryGetValue(r, out Vector3 p0);
+                Vector3 d = r.BasePosition - p0; d.y = 0f;
+                if (!first) sb.Append(',');
+                first = false;
+                sb.AppendFormat(CultureInfo.InvariantCulture,
+                    "{{\"name\":\"{0}\",\"upright\":{1:0.###},\"travelled_m\":{2:0.##},\"speed_mps\":{3:0.##}}}",
+                    Esc(RigName(r)), r.UprightDot, d.magnitude,
+                    simSeconds > 0f ? d.magnitude / simSeconds : 0f);
+            }
+            sb.Append("],");
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"furthest_m\":{0:0.##},", far);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"mean_speed_mps\":{0:0.##},",
                 n > 0 && simSeconds > 0f ? (sum / n) / simSeconds : 0f);
@@ -310,6 +329,30 @@ namespace PoDecath.EditorTools
 
             Debug.Log($"[SceneSweep] {Path.GetFileNameWithoutExtension(scenePath)}: " +
                       $"{_errors.Count} error(s), {bound}/{rigs.Length} rigs bound, {withModel}/{runners.Length} policies loaded");
+        }
+
+        /// <summary>
+        /// The athlete's own name plus which kind of controller is driving it. The importer names the
+        /// athlete root after its definition and hangs the rig under it, so walking up to whichever
+        /// object carries a runner finds the name a person would recognise.
+        /// </summary>
+        static string RigName(AthleteRig r)
+        {
+            Transform t = r.transform;
+            for (int i = 0; i < 6 && t != null; i++)
+            {
+                if (t.GetComponent<HeuristicRunner>() != null) return t.name + " [coded]";
+                if (t.GetComponent<PolicyRunner>() != null) return t.name + " [policy]";
+                t = t.parent;
+            }
+            return r.name;
+        }
+
+        /// <summary>Whatever race event is in the scene, and what phase it reached.</summary>
+        static string RacePhase()
+        {
+            var ev = UnityEngine.Object.FindAnyObjectByType<RaceEvent>();
+            return ev == null ? "(none)" : ev.GetType().Name + ":" + ev.Current;
         }
 
         static void TryScreenshot(string path)

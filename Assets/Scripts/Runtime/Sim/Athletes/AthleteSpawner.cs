@@ -71,7 +71,9 @@ namespace PoDecath.Sim
             foreach (AthleteDefinition def in BuildSpawnList())
             {
                 if (def == null) continue;
-                RaceEvent.Athlete a = def.kind == AthleteKind.Heuristic ? SpawnHeuristic(def) : SpawnRL(def, layer, pj);
+                RaceEvent.Athlete a = def.kind == AthleteKind.Heuristic
+                    ? SpawnHeuristic(def, layer, pj)
+                    : SpawnRL(def, layer, pj);
                 if (a == null) continue;
                 a.number = ++number;
                 if (numberRunners)
@@ -197,8 +199,18 @@ namespace PoDecath.Sim
             if (race != null) recovery.GaveUp += _ => race.OnRecoveryGaveUp(captured);
         }
 
-        RaceEvent.Athlete SpawnRL(AthleteDefinition def, int layer, PolicyJson pj)
+        /// <summary>
+        /// Builds one athlete's body: the MJCF rig, its colliders, its PD gains and its skin.
+        ///
+        /// Shared by the policy athletes and the hand-coded one so that "the same rig" is a fact about
+        /// the code rather than a claim in a comment. Everything that decides how the body behaves --
+        /// the articulation chain, the collider shapes, the per-joint stiffness and damping read from
+        /// the MJCF actuators, the spawn height -- is settled here, before either kind of controller is
+        /// attached.
+        /// </summary>
+        MjcfImporter.Result SpawnBody(AthleteDefinition def, int layer, PolicyJson pj, out PolicyConfig cfg)
         {
+            cfg = null;
             TextAsset xml = def.mjcfOverride != null ? def.mjcfOverride : defaultMjcf;
             if (xml == null) { Debug.LogError("[AthleteSpawner] No MJCF assigned.", this); return null; }
             GameObject skinPrefab = def.skinOverride != null ? def.skinOverride : defaultSkin;
@@ -214,7 +226,7 @@ namespace PoDecath.Sim
             res.root.name = def.displayName;
             res.root.transform.SetParent(transform, false);
 
-            var cfg = ScriptableObject.CreateInstance<PolicyConfig>();
+            cfg = ScriptableObject.CreateInstance<PolicyConfig>();
             cfg.name = def.displayName + "_config";
             cfg.joints = res.joints;
             cfg.physicsHz = Mathf.RoundToInt(1f / Mathf.Max(1e-4f, res.physicsTimestep));
@@ -227,6 +239,29 @@ namespace PoDecath.Sim
             cfg.minUprightDot = 0.4f;
             cfg.stiffness = 100f; cfg.damping = 5f; cfg.forceLimit = 100f;   // fallbacks; per-joint values come from the MJCF actuators
             cfg.clampTargetsToJointLimits = true;
+
+            GameObject skin = null;
+            if (skinPrefab != null)
+            {
+                skin = Instantiate(skinPrefab);
+                skin.name = "Skin";
+                SetLayerRecursive(skin, layer);
+                var binder = res.root.AddComponent<SkinBinder>();
+                if (def.boneMap != null && def.boneMap.Count > 0) binder.map = def.boneMap;   // per-glb skeleton names
+                binder.skinRootEuler = def.skinRootEuler;
+                binder.Bind(res.rig, skin);   // must happen before ResetPose moves the rig out of the rest pose
+                Tint(skin, def, skinTintStrength);
+            }
+            if (opt.debugVisuals) TintPrimitives(res.root, def.Tint);
+
+            res.rig.Bind(cfg);
+            return res;
+        }
+
+        RaceEvent.Athlete SpawnRL(AthleteDefinition def, int layer, PolicyJson pj)
+        {
+            MjcfImporter.Result res = SpawnBody(def, layer, pj, out PolicyConfig cfg);
+            if (res == null) return null;
 
             var cmd = res.root.AddComponent<VelocityCommandSource>();
             cmd.mode = CommandMode.TargetVector;
@@ -245,20 +280,6 @@ namespace PoDecath.Sim
                 follower.lookahead = lap.lookahead;
             }
 
-            GameObject skinInstance = null;
-            if (skinPrefab != null)
-            {
-                skinInstance = Instantiate(skinPrefab);
-                skinInstance.name = "Skin";
-                SetLayerRecursive(skinInstance, layer);
-                var binder = res.root.AddComponent<SkinBinder>();
-                if (def.boneMap != null && def.boneMap.Count > 0) binder.map = def.boneMap;   // per-glb skeleton names
-                binder.skinRootEuler = def.skinRootEuler;
-                binder.Bind(res.rig, skinInstance);   // must happen before ResetPose moves the rig out of the rest pose
-                Tint(skinInstance, def, skinTintStrength);
-            }
-            if (opt.debugVisuals) TintPrimitives(res.root, def.Tint);
-
             // Set before Initialize: that is where both workers are built, and building the get-up worker
             // up front is the whole point — the frame an athlete hits the deck must not stall.
             runner.recoveryModel = getUpModel;
@@ -272,32 +293,35 @@ namespace PoDecath.Sim
             };
         }
 
-        RaceEvent.Athlete SpawnHeuristic(AthleteDefinition def)
+        /// <summary>
+        /// The hand-coded athlete, built on exactly the same body as the policy athletes.
+        ///
+        /// It used to be a bare GameObject with a skin on it and a pace profile driving the transform,
+        /// which is why it never fell and could not be raced against honestly. It now shares SpawnBody
+        /// with SpawnRL -- same MJCF, same colliders, same per-joint PD gains, same gravity -- and the
+        /// only difference from a policy athlete is that HeuristicGait computes the joint targets
+        /// instead of a network. It gets no PolicyRunner and no get-up policy: borrowing a trained
+        /// network to stand back up would defeat the point of having a coded opponent.
+        /// </summary>
+        RaceEvent.Athlete SpawnHeuristic(AthleteDefinition def, int layer, PolicyJson pj)
         {
-            var go = new GameObject(def.displayName);
-            go.transform.SetParent(transform, false);
-            var hr = go.AddComponent<HeuristicRunner>();
+            MjcfImporter.Result res = SpawnBody(def, layer, pj, out PolicyConfig cfg);
+            if (res == null) return null;
+
+            var gait = res.root.AddComponent<HeuristicGait>();
+            gait.rig = res.rig;
+
+            var hr = res.root.AddComponent<HeuristicRunner>();
+            hr.rig = res.rig;
+            hr.gait = gait;
             hr.topSpeed = def.topSpeed;
             hr.accelSeconds = def.accelSeconds;
-            GameObject skinPrefab = def.skinOverride != null ? def.skinOverride : defaultSkin;
-            if (skinPrefab != null)
+
+            return new RaceEvent.Athlete
             {
-                var skin = Instantiate(skinPrefab, go.transform);
-                skin.name = "Skin";
-                skin.transform.localPosition = Vector3.zero;
-                skin.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);   // skin faces +Z; runner forward is +X
-                Tint(skin, def, skinTintStrength);
-            }
-            else
-            {
-                var cap = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                cap.transform.SetParent(go.transform, false);
-                cap.transform.localPosition = Vector3.up * 0.9f;
-                cap.transform.localScale = new Vector3(0.4f, 0.9f, 0.4f);
-                Destroy(cap.GetComponent<Collider>());
-                TintPrimitives(go, def.Tint);
-            }
-            return new RaceEvent.Athlete { name = def.displayName, kind = def.kind, color = def.Tint, go = go, heuristic = hr };
+                name = def.displayName, kind = def.kind, color = def.Tint, go = res.root, rig = res.rig,
+                heuristic = hr, spawnHeight = cfg.spawnHeight,
+            };
         }
 
         static void Tint(GameObject skin, AthleteDefinition def, float strength)
