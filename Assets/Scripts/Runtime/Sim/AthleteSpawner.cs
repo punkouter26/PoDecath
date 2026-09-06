@@ -9,7 +9,7 @@ namespace PoDecath.Sim
 {
     /// <summary>
     /// Spawns the roster (house rules: RED heuristic bot, GREEN reference RL bot, custom bots with their
-    /// own textures) and registers everyone with the DashEvent. RL athletes are built from the MJCF used
+    /// own textures) and registers everyone with the RaceEvent. RL athletes are built from the MJCF used
     /// for training, skinned with the glTF character, and driven by PolicyRunner in TargetVector mode.
     /// </summary>
     [DefaultExecutionOrder(-60)]
@@ -19,7 +19,7 @@ namespace PoDecath.Sim
         public TextAsset defaultPolicyJson;
         public GameObject defaultSkin;
         public List<AthleteDefinition> roster = new List<AthleteDefinition>();
-        public DashEvent dash;
+        public RaceEvent dash;
         public CameraRig cameraRig;
         public PhysicsMaterial footMaterial;
         public Material debugVisualMaterial;
@@ -71,7 +71,7 @@ namespace PoDecath.Sim
             foreach (AthleteDefinition def in BuildSpawnList())
             {
                 if (def == null) continue;
-                DashEvent.Athlete a = def.kind == AthleteKind.Heuristic ? SpawnHeuristic(def) : SpawnRL(def, layer, pj);
+                RaceEvent.Athlete a = def.kind == AthleteKind.Heuristic ? SpawnHeuristic(def) : SpawnRL(def, layer, pj);
                 if (a == null) continue;
                 a.number = ++number;
                 if (numberRunners)
@@ -127,7 +127,7 @@ namespace PoDecath.Sim
         /// The dust comes off the same detection: <see cref="FootstepAudio"/> raises an event per step and
         /// <see cref="FootstepDust"/> listens, so the puff and the sound are always on the same frame.
         /// </summary>
-        void AddFootsteps(DashEvent.Athlete a)
+        void AddFootsteps(RaceEvent.Athlete a)
         {
             GameObject host = a.IsRL && a.rig.root != null ? a.rig.root.gameObject : a.go;
             if (host == null) return;
@@ -153,7 +153,7 @@ namespace PoDecath.Sim
         /// Only the first few athletes get a ribbon on the mobile tier — <see cref="RenderTier.TrailedAthletes"/> —
         /// because sixteen trail renderers is sixteen dynamic meshes rebuilt every frame.
         /// </summary>
-        void AddPresentation(DashEvent.Athlete a, int index)
+        void AddPresentation(RaceEvent.Athlete a, int index)
         {
             if (vfxBank == null) return;
             GameObject host = a.IsRL && a.rig.root != null ? a.rig.root.gameObject : a.go;
@@ -183,7 +183,7 @@ namespace PoDecath.Sim
         /// second worker. The event is wired to the give-up event here rather than polling for it, so a
         /// recovery that fails becomes a DNF on the frame it fails.
         /// </summary>
-        void AddRecovery(DashEvent.Athlete a)
+        void AddRecovery(RaceEvent.Athlete a)
         {
             if (getUpModel == null || !a.IsRL || a.runner == null) return;
             var recovery = a.runner.gameObject.AddComponent<RecoveryController>();
@@ -192,12 +192,12 @@ namespace PoDecath.Sim
             recovery.Configure(a.spawnHeight);
             a.recovery = recovery;
 
-            DashEvent.Athlete captured = a;
-            DashEvent race = dash;
+            RaceEvent.Athlete captured = a;
+            RaceEvent race = dash;
             if (race != null) recovery.GaveUp += _ => race.OnRecoveryGaveUp(captured);
         }
 
-        DashEvent.Athlete SpawnRL(AthleteDefinition def, int layer, PolicyJson pj)
+        RaceEvent.Athlete SpawnRL(AthleteDefinition def, int layer, PolicyJson pj)
         {
             TextAsset xml = def.mjcfOverride != null ? def.mjcfOverride : defaultMjcf;
             if (xml == null) { Debug.LogError("[AthleteSpawner] No MJCF assigned.", this); return null; }
@@ -265,14 +265,14 @@ namespace PoDecath.Sim
             runner.Initialize(cfg, def.model);
             if (def.model == null) Debug.LogWarning($"[AthleteSpawner] '{def.displayName}' has no ONNX model; it will hold its default pose.", this);
 
-            return new DashEvent.Athlete
+            return new RaceEvent.Athlete
             {
                 name = def.displayName, kind = def.kind, color = def.Tint, go = res.root, rig = res.rig,
                 runner = runner, command = cmd, follower = follower, spawnHeight = cfg.spawnHeight,
             };
         }
 
-        DashEvent.Athlete SpawnHeuristic(AthleteDefinition def)
+        RaceEvent.Athlete SpawnHeuristic(AthleteDefinition def)
         {
             var go = new GameObject(def.displayName);
             go.transform.SetParent(transform, false);
@@ -297,7 +297,7 @@ namespace PoDecath.Sim
                 Destroy(cap.GetComponent<Collider>());
                 TintPrimitives(go, def.Tint);
             }
-            return new DashEvent.Athlete { name = def.displayName, kind = def.kind, color = def.Tint, go = go, heuristic = hr };
+            return new RaceEvent.Athlete { name = def.displayName, kind = def.kind, color = def.Tint, go = go, heuristic = hr };
         }
 
         static void Tint(GameObject skin, AthleteDefinition def, float strength)

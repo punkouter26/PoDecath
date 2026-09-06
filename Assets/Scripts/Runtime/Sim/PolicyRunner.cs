@@ -6,7 +6,7 @@ namespace PoDecath.Sim
 {
     /// <summary>
     /// Runs an ONNX locomotion policy through Unity Inference Engine (formerly Sentis)
-    /// and drives a CreatureRig with PD position targets.
+    /// and drives a AthleteRig with PD position targets.
     ///
     /// - Input and output buffers are allocated once in Initialize(); FixedUpdate is allocation-free
     ///   when the backend is CPU (output is read through a ReadOnlySpan).
@@ -16,7 +16,7 @@ namespace PoDecath.Sim
     [DefaultExecutionOrder(-50)]
     public class PolicyRunner : MonoBehaviour
     {
-        public CreatureRig rig;
+        public AthleteRig rig;
         public PolicyConfig config;
         public ModelAsset model;
         [Tooltip("Optional second policy for getting up off the ground (athlete_getup.onnx). Loaded "
@@ -79,8 +79,8 @@ namespace PoDecath.Sim
             model = asset;
 
             if (config == null) { Debug.LogError("[PolicyRunner] No PolicyConfig.", this); return; }
-            if (rig == null) rig = GetComponentInChildren<CreatureRig>();
-            if (rig == null) { Debug.LogError("[PolicyRunner] No CreatureRig.", this); return; }
+            if (rig == null) rig = GetComponentInChildren<AthleteRig>();
+            if (rig == null) { Debug.LogError("[PolicyRunner] No AthleteRig.", this); return; }
 
             Time.fixedDeltaTime = config.FixedDeltaTime;
             rig.Bind(config);

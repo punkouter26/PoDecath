@@ -63,7 +63,7 @@ namespace PoDecath.Sim
         }
 
         /// <summary>Called once per policy step by PolicyRunner.</summary>
-        public void Tick(CreatureRig rig)
+        public void Tick(AthleteRig rig)
         {
             switch (mode)
             {
@@ -84,7 +84,7 @@ namespace PoDecath.Sim
         }
 
         /// <summary>Matches training/envs/run_to_target.py: direction in the base-yaw frame and saturated distance.</summary>
-        Vector3 TargetVectorCommand(CreatureRig rig)
+        Vector3 TargetVectorCommand(AthleteRig rig)
         {
             Vector3 fwdExt = CoordinateTransform.UnityToExternal(rig.BaseForward);
             Vector3 toExt = CoordinateTransform.UnityToExternal(TargetPosition - rig.BasePosition);
@@ -104,7 +104,7 @@ namespace PoDecath.Sim
             Command = new Vector3(R(linXRange), R(linYRange), R(yawRange));
         }
 
-        Vector3 Steer(CreatureRig rig)
+        Vector3 Steer(AthleteRig rig)
         {
             // Work entirely in the external frame so yaw sign is the right-handed convention.
             Vector3 fwdExt = CoordinateTransform.UnityToExternal(rig.BaseForward);

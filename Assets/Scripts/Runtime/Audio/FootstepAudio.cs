@@ -20,7 +20,7 @@ namespace PoDecath.Audio
     {
         public AudioBank bank;
         [Tooltip("Set for a physics athlete: steps come from the foot contact sensors.")]
-        public CreatureRig rig;
+        public AthleteRig rig;
         [Tooltip("Set for the kinematic bot: steps are counted off distance covered.")]
         public HeuristicRunner heuristic;
 

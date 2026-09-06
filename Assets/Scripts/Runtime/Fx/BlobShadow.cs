@@ -24,7 +24,7 @@ namespace PoDecath.Fx
     public class BlobShadow : MonoBehaviour
     {
         [Header("Wiring")]
-        public CreatureRig rig;
+        public AthleteRig rig;
         public HeuristicRunner heuristic;
         public Material material;
 

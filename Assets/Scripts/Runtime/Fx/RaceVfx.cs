@@ -19,7 +19,7 @@ namespace PoDecath.Fx
     public class RaceVfx : MonoBehaviour
     {
         [Header("Wiring")]
-        public DashEvent race;
+        public RaceEvent race;
         [Tooltip("Set for the long jump; the landing burst comes off the pit's own measurement.")]
         public LongJumpPit pit;
 
@@ -27,12 +27,12 @@ namespace PoDecath.Fx
         [Tooltip("How hard a fall throws dust up. A fall at speed is worth more than a stumble.")]
         public float fallSpeedReference = 7f;
 
-        DashEvent.Phase _lastPhase = DashEvent.Phase.Idle;
+        RaceEvent.Phase _lastPhase = RaceEvent.Phase.Idle;
         LongJumpEvent.Stage _lastStage;
         int _lastAttempt = -1;
-        readonly HashSet<DashEvent.Athlete> _fallen = new HashSet<DashEvent.Athlete>();
-        readonly HashSet<DashEvent.Athlete> _finished = new HashSet<DashEvent.Athlete>();
-        readonly Dictionary<DashEvent.Athlete, int> _recoveries = new Dictionary<DashEvent.Athlete, int>();
+        readonly HashSet<RaceEvent.Athlete> _fallen = new HashSet<RaceEvent.Athlete>();
+        readonly HashSet<RaceEvent.Athlete> _finished = new HashSet<RaceEvent.Athlete>();
+        readonly Dictionary<RaceEvent.Athlete, int> _recoveries = new Dictionary<RaceEvent.Athlete, int>();
         readonly List<Hurdle> _hurdles = new List<Hurdle>();
 
         LongJumpEvent Jump => race as LongJumpEvent;
@@ -79,8 +79,8 @@ namespace PoDecath.Fx
 
         void Phases()
         {
-            DashEvent.Phase phase = race.Current;
-            if (phase == DashEvent.Phase.Running && _lastPhase == DashEvent.Phase.Countdown)
+            RaceEvent.Phase phase = race.Current;
+            if (phase == RaceEvent.Phase.Running && _lastPhase == RaceEvent.Phase.Countdown)
             {
                 // The starter stands behind and above the grid; the smoke has to come from where the
                 // report does or it reads as a puff of dust off the deck.
@@ -92,7 +92,7 @@ namespace PoDecath.Fx
 
         void Athletes()
         {
-            foreach (DashEvent.Athlete a in race.Athletes)
+            foreach (RaceEvent.Athlete a in race.Athletes)
             {
                 if (a.fell && _fallen.Add(a))
                 {
@@ -125,7 +125,7 @@ namespace PoDecath.Fx
 
             if (stage == LongJumpEvent.Stage.Settle && _lastStage == LongJumpEvent.Stage.Flight)
             {
-                DashEvent.Athlete who = jump.Competitor;
+                RaceEvent.Athlete who = jump.Competitor;
                 Vector3 at = who != null ? Ground(who) : pit.SandPoint(pit.pitNearX + 1f);
                 // Sand goes the way the jumper was travelling, which is what makes the landing read as an
                 // arrival rather than an explosion.
@@ -141,7 +141,7 @@ namespace PoDecath.Fx
         }
 
         /// <summary>Where an athlete meets the deck, which is where anything it kicks up starts.</summary>
-        static Vector3 Ground(DashEvent.Athlete a)
+        static Vector3 Ground(RaceEvent.Athlete a)
         {
             Vector3 p = a.IsRL ? a.rig.BasePosition : (a.go != null ? a.go.transform.position : Vector3.zero);
             if (Physics.Raycast(p + Vector3.up * 1.2f, Vector3.down, out RaycastHit hit, 4f, ~0, QueryTriggerInteraction.Ignore))

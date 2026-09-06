@@ -75,7 +75,7 @@ namespace PoDecath.EditorTools
         static string ReportPath => Path.Combine(LogDir, "scene_sweep.json");
 
         static List<string> _scenes;
-        static Dictionary<CreatureRig, Vector3> _startPos = new Dictionary<CreatureRig, Vector3>();
+        static Dictionary<AthleteRig, Vector3> _startPos = new Dictionary<AthleteRig, Vector3>();
         static readonly List<string> _errors = new List<string>();
         static bool _hooked;
 
@@ -210,7 +210,7 @@ namespace PoDecath.EditorTools
                         {
                             SessionState.SetFloat(KeyT0, Time.fixedTime);
                             _startPos = UnityEngine.Object
-                                .FindObjectsByType<CreatureRig>(FindObjectsSortMode.None)
+                                .FindObjectsByType<AthleteRig>(FindObjectsSortMode.None)
                                 .Where(r => r.IsBound)
                                 .ToDictionary(r => r, r => r.BasePosition);
                             Phase = "playing";
@@ -260,7 +260,7 @@ namespace PoDecath.EditorTools
         static void Record(string scenePath, float simSeconds)
         {
             var runners = UnityEngine.Object.FindObjectsByType<PolicyRunner>(FindObjectsSortMode.None);
-            var rigs = UnityEngine.Object.FindObjectsByType<CreatureRig>(FindObjectsSortMode.None);
+            var rigs = UnityEngine.Object.FindObjectsByType<AthleteRig>(FindObjectsSortMode.None);
             int withModel = runners.Count(r => r.HasModel);
             int bound = rigs.Count(r => r.IsBound);
             int fallen = rigs.Count(r => r.IsBound && r.UprightDot < 0.4f);

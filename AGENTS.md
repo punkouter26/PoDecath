@@ -19,10 +19,10 @@ Unity ML-Agents is not used and must not be added.
 
 ```
 Assets/
-  Scripts/Runtime/Sim/      CoordinateTransform, PolicyConfig, PolicyLibrary, CreatureRig,
+  Scripts/Runtime/Sim/      CoordinateTransform, PolicyConfig, PolicyLibrary, AthleteRig,
                             ObservationBuilder, PolicyRunner, VelocityCommandSource,
                             SessionSettings, FootContactSensor, RecoveryController,
-                            DashEvent, LapEvent, LongJumpEvent, HurdleSet, TrackPath
+                            RaceEvent, LapEvent, LongJumpEvent, HurdleSet, TrackPath
   Scripts/Runtime/UI/       UiRoot + MainMenuView, SetupView, HudView, BroadcastView, ResultsView,
                             TouchPerturbation
   Scripts/Runtime/Fx/       VfxBank, VfxLibrary, RaceVfx, FootstepDust, AthleteTrail, BlobShadow
@@ -38,7 +38,7 @@ Assets/
                             SceneSweep + GetUpTransferProbe (measurement, see below)
   Scenes/                   RaceSetup, MainMenu, Rooftop, RooftopLap, RooftopRace,
                             RooftopLongJump (build list order)
-  Policies/                 *.onnx checkpoints, Go2_Flat_PolicyConfig.asset,
+  Policies/                 *.onnx checkpoints, Athlete_PolicyConfig.asset,
                             Resources/PolicyLibrary.asset (auto-maintained)
   Models/                   WhiteHouse.glb, Athlete_Matt.glb, athlete.xml
   Models/                   Blender .glb skins (1 unit = 1 m, origins at joint pivots)
@@ -67,17 +67,17 @@ Unity: left-handed, Y-up. The creature's forward axis in Unity is **+X**, up is 
 Why the joint sign: a rotation by `t` about external axis `a` maps to a rotation by `-t` about the
 mapped axis `M(a)` in Unity. `QuadrupedFactory` places every revolute axis on the mapped axis
 (hips about Unity X, thighs/calves about Unity Z), hence `sign = -1`. Joint limits are mirrored
-accordingly inside `CreatureRig.ConfigureDrive`.
+accordingly inside `AthleteRig.ConfigureDrive`.
 
 Implementation: `CoordinateTransform.cs`, `ObservationBuilder.cs` (angular velocity negation),
-`CreatureRig.cs` (joint sign, limits, targets).
+`AthleteRig.cs` (joint sign, limits, targets).
 
 ## Tensor contract
 
 Input: one float tensor of shape `(1, N_obs)`. Output: float tensor whose first `N_act` values are
 the actions. Only the first input and first output are used.
 
-Default layout (Isaac Lab velocity-tracking task, `Go2_Flat_PolicyConfig`, **N_obs = 48**,
+Default layout (Isaac Lab velocity-tracking task, `Athlete_PolicyConfig`, **N_obs = 48**,
 **N_act = 12**), in order:
 
 | Slice | Size | Content (external body frame) | Scale field |
@@ -109,7 +109,7 @@ rsl_rl exports typically bake the observation normaliser into the ONNX graph; if
 put the empirical scales into the `*Scale` fields.
 
 Joint order (Go2, Isaac Lab / USD breadth-first): `FL_hip, FR_hip, RL_hip, RR_hip, FL_thigh,
-FR_thigh, RL_thigh, RR_thigh, FL_calf, FR_calf, RL_calf, RR_calf`. `CreatureRig.Bind` resolves
+FR_thigh, RL_thigh, RR_thigh, FL_calf, FR_calf, RL_calf, RR_calf`. `AthleteRig.Bind` resolves
 joints by GameObject name, so a Blender-skinned rig only has to keep these names.
 
 ## Stepping
@@ -187,7 +187,7 @@ policy actually stepped and the intended model actually drove the body.
 1. Export the policy to ONNX (rsl_rl `export_policy_as_onnx`, or MuJoCo/PyTorch `torch.onnx.export`),
    opset 15-17, input shape `(1, N_obs)` or `(batch, N_obs)`.
 2. Copy the file into `Assets/Policies/`. The post-processor imports it as a `ModelAsset` and adds a
-   `PolicyLibrary` entry using `Go2_Flat_PolicyConfig` (or run `PoDecath/Refresh Policy Library`).
+   `PolicyLibrary` entry using `Athlete_PolicyConfig` (or run `PoDecath/Refresh Policy Library`).
 3. If the observation layout differs, duplicate the config asset, adjust the toggles, scales,
    joints, `actionScale`, gains and decimation, and assign it on the library entry.
 4. Press Play in `RooftopLap.unity` (or run `PoDecath/Sweep All Scenes`). `PolicyRunner` validates
@@ -251,7 +251,7 @@ observation (0, 0, -1).
   (glTFast importer; re-export from Blender after every `.blend` change, never save the `.blend`). A go-kart
   race track is built **with ProBuilder on the residence roof only** (`KartTrackBuilder`): a stadium loop
   solved for 40% roof coverage (22 m straights, R 8.8 m, 100 m lap, 5.3 m deck) on legs ray-cast onto the
-  roof. `DashEvent` races the straight that fits (20.4 m, 1.08 m lanes); `RooftopSceneBuilder` wires
+  roof. `RaceEvent` races the straight that fits (20.4 m, 1.08 m lanes); `RooftopSceneBuilder` wires
   `track.dashLength` and `track.laneSpacing` into it.
 - **Agreed product (2026-09-04 interview):** first event = one lap of the rooftop track, one humanoid,
   hands-off (Restart only), HUD = timer/finish, speed, distance, stability (red on fall), auto reset

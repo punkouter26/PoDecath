@@ -27,7 +27,7 @@ namespace PoDecath.Sim
     {
         [Header("Wiring")]
         public TrackPath path;
-        public DashEvent race;
+        public RaceEvent race;
         public Material frameMaterial;
         public Material barMaterial;
         [Tooltip("Played from the hurdle itself as it goes over.")]
@@ -78,11 +78,11 @@ namespace PoDecath.Sim
         }
 
         readonly List<Hurdle> _hurdles = new List<Hurdle>();
-        readonly Dictionary<DashEvent.Athlete, int> _knocks = new Dictionary<DashEvent.Athlete, int>();
+        readonly Dictionary<RaceEvent.Athlete, int> _knocks = new Dictionary<RaceEvent.Athlete, int>();
         readonly List<float> _marks = new List<float>();
 
         /// <summary>How many hurdles this athlete has put down in the current attempt.</summary>
-        public int KnockedBy(DashEvent.Athlete a) => a != null && _knocks.TryGetValue(a, out int n) ? n : 0;
+        public int KnockedBy(RaceEvent.Athlete a) => a != null && _knocks.TryGetValue(a, out int n) ? n : 0;
 
         void Awake()
         {
@@ -204,7 +204,7 @@ namespace PoDecath.Sim
         void GiveBotsSomethingToHitWith()
         {
             int layer = LayerMask.NameToLayer("Creature");
-            foreach (DashEvent.Athlete a in race.Athletes)
+            foreach (RaceEvent.Athlete a in race.Athletes)
             {
                 HeuristicRunner bot = a.heuristic;
                 if (bot == null || bot.GetComponent<Rigidbody>() != null) continue;
@@ -227,15 +227,15 @@ namespace PoDecath.Sim
 
         void OnKnockedOver(Hurdle h)
         {
-            DashEvent.Athlete by = Culprit(h);
+            RaceEvent.Athlete by = Culprit(h);
             if (by == null) return;
             _knocks.TryGetValue(by, out int n);
             _knocks[by] = n + 1;
         }
 
-        DashEvent.Athlete Culprit(Hurdle h)
+        RaceEvent.Athlete Culprit(Hurdle h)
         {
-            foreach (DashEvent.Athlete a in race.Athletes)
+            foreach (RaceEvent.Athlete a in race.Athletes)
             {
                 if (h.ByRig != null && a.rig == h.ByRig) return a;
                 if (h.ByBot != null && a.heuristic == h.ByBot) return a;

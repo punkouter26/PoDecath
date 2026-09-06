@@ -40,7 +40,7 @@ namespace PoDecath.Sim
         readonly List<Link> _links = new List<Link>();
         public bool IsBound => _links.Count > 0;
 
-        public void Bind(CreatureRig rig, GameObject skinInstance)
+        public void Bind(AthleteRig rig, GameObject skinInstance)
         {
             skin = skinInstance;
             _links.Clear();
@@ -75,7 +75,7 @@ namespace PoDecath.Sim
                 smr.updateWhenOffscreen = true;
         }
 
-        static Transform FindBody(CreatureRig rig, Dictionary<string, Transform> byName, string bodyName)
+        static Transform FindBody(AthleteRig rig, Dictionary<string, Transform> byName, string bodyName)
         {
             if (byName.TryGetValue(bodyName, out var t)) return t;
             // Importer convention: a body with joints is named after its last joint; search by tag stored on ArticulationBody.

@@ -95,7 +95,7 @@ namespace PoDecath.EditorTools
 
         static Config _cfg;
         static PolicyRunner _runner;
-        static CreatureRig _rig;
+        static AthleteRig _rig;
         static float _standHeight = 0.95f;   // pelvis height above the local floor when standing
         static float _floorY;                // world Y of the deck under the athlete
         static RecoveryController _recovery;
@@ -105,11 +105,11 @@ namespace PoDecath.EditorTools
         // scene is hands-off by design: it puts a fallen athlete back on its feet after three seconds,
         // which silently turned the first run of this probe into a measurement of a standing athlete.
         static readonly string[] InterferingComponents =
-            { "LapEvent", "DashEvent", "LongJumpEvent", "EpisodeManager", "RecoveryController" };
+            { "LapEvent", "RaceEvent", "LongJumpEvent", "EpisodeManager", "RecoveryController" };
 
         // In controller mode the recovery controller is the thing under test, so it stays on.
         static readonly string[] InterferingWithController =
-            { "LapEvent", "DashEvent", "LongJumpEvent", "EpisodeManager" };
+            { "LapEvent", "RaceEvent", "LongJumpEvent", "EpisodeManager" };
 
         static GetUpTransferProbe()
         {
@@ -259,7 +259,7 @@ namespace PoDecath.EditorTools
                             // which silently handed the first runs of this probe back to the *running*
                             // policy.
                             //
-                            // enabled: the events own the runner's on/off switch. DashEvent parks every
+                            // enabled: the events own the runner's on/off switch. RaceEvent parks every
                             // runner with `enabled = false` while it sets the field up and only switches
                             // the RL athletes on when the countdown ends. SilenceInterference disables
                             // the event before that ever happens, so unless the probe turns the runner

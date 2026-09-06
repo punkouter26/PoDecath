@@ -21,7 +21,7 @@ namespace PoDecath.Fx
     {
         [Header("Wiring")]
         [Tooltip("Set for a physics athlete; the ribbon hangs off the articulation root.")]
-        public CreatureRig rig;
+        public AthleteRig rig;
         [Tooltip("Set for the kinematic bot instead.")]
         public HeuristicRunner heuristic;
         public Material material;

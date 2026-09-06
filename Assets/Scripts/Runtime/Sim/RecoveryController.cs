@@ -6,7 +6,7 @@ namespace PoDecath.Sim
     /// <summary>
     /// Gets one athlete back on its feet.
     ///
-    /// Until now a fall was the end of a runner's race: <see cref="DashEvent.DetectFall"/> marked the DNF
+    /// Until now a fall was the end of a runner's race: <see cref="RaceEvent.DetectFall"/> marked the DNF
     /// and switched the policy off, because there was no policy that could do anything about being on the
     /// ground. There is one now (<c>athlete_getup.onnx</c>, trained by <c>training/envs/get_up.py</c>), and
     /// this is the piece that decides when to hand control to it and when to hand control back.
@@ -32,11 +32,11 @@ namespace PoDecath.Sim
         public enum State { Running, Recovering, Settling, Spent }
 
         [Header("Wiring")]
-        public CreatureRig rig;
+        public AthleteRig rig;
         public PolicyRunner runner;
 
         [Header("Down")]
-        [Tooltip("Uprightness below this counts as down. Matches DashEvent.fallUprightDot so that the "
+        [Tooltip("Uprightness below this counts as down. Matches RaceEvent.fallUprightDot so that the "
                + "overlay, the audio and this component never disagree about who is on the deck.")]
         public float downUprightDot = 0.4f;
         [Tooltip("Height as a fraction of spawn height below which the athlete counts as down.")]

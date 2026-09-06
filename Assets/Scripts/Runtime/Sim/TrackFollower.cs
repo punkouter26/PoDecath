@@ -12,7 +12,7 @@ namespace PoDecath.Sim
     {
         public TrackPath path;
         public VelocityCommandSource command;
-        public CreatureRig rig;
+        public AthleteRig rig;
         [Tooltip("Carrot distance ahead along the track (m). Training used 6 m.")]
         public float lookahead = 6f;
         public float lateralOffset = 0f;

@@ -14,7 +14,7 @@ namespace PoDecath.UI
     /// </summary>
     public class TouchPerturbation : MonoBehaviour
     {
-        public CreatureRig rig;
+        public AthleteRig rig;
         public Camera cam;
         [Tooltip("Impulse (N s) per screen-pixel of swipe length, scaled by screen height / 1920.")]
         public float impulsePerPixel = 0.006f;

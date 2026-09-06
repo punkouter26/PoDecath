@@ -9,7 +9,7 @@ namespace PoDecath.UI
     /// <summary>
     /// The results card, shown once every runner has finished or fallen.
     ///
-    /// Rows are built from <see cref="DashEvent.Results"/> when the card opens rather than pre-made one per
+    /// Rows are built from <see cref="RaceEvent.Results"/> when the card opens rather than pre-made one per
     /// grid slot, so a field of two does not carry fourteen hidden rows around with it. Each is tinted with
     /// its athlete's own colour, which — with the house rule that athletes keep the textures they were
     /// imported with — is the same colour their trail was wearing on the deck a moment earlier.
@@ -21,7 +21,7 @@ namespace PoDecath.UI
     public class ResultsView : UiRoot
     {
         [Header("Wiring")]
-        public DashEvent race;
+        public RaceEvent race;
         [Tooltip("Put away while the results are up; the live HUD reads through the dimmed backdrop otherwise.")]
         public HudView hud;
         [Tooltip("Also put away: the broadcast overlay, which is a live picture over a finished race.")]
@@ -54,14 +54,14 @@ namespace PoDecath.UI
             if (race != null) race.RaceComplete -= Show;
         }
 
-        public void Show(List<DashEvent.RaceResult> results)
+        public void Show(List<RaceEvent.RaceResult> results)
         {
             if (_rows == null) return;
             _rows.Clear();
 
             for (int i = 0; i < results.Count; i++)
             {
-                DashEvent.RaceResult r = results[i];
+                RaceEvent.RaceResult r = results[i];
                 var row = new VisualElement();
                 row.AddToClassList("result-row");
                 if (r.finished && r.rank <= 3) row.AddToClassList("result-row--podium");

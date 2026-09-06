@@ -29,7 +29,7 @@ namespace PoDecath.Env
         [Header("Wiring")]
         public Volume volume;
         public BroadcastDirector director;
-        public DashEvent race;
+        public RaceEvent race;
         [Tooltip("Left empty, the tagged main camera is used. Cinemachine drives one camera, so this is it.")]
         public Camera view;
 
@@ -104,7 +104,7 @@ namespace PoDecath.Env
             return Vector3.Dot(p - t.position, t.forward);
         }
 
-        static Vector3 Position(DashEvent.Athlete a)
+        static Vector3 Position(RaceEvent.Athlete a)
         {
             Vector3 p = a.IsRL ? a.rig.BasePosition : (a.go != null ? a.go.transform.position : Vector3.zero);
             return p + Vector3.up * 0.9f;   // the head and chest, which is what a close-up is focused on

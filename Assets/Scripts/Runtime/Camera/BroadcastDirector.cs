@@ -30,7 +30,7 @@ namespace PoDecath.Cam
         public enum Shot { StartLine, OffTheGun, Rail, Bend, Wide, HeadOn, Finish }
 
         [Header("Wiring")]
-        public DashEvent race;
+        public RaceEvent race;
         public TrackPath path;
         [Tooltip("Set for the long jump; the director then cuts the runway instead of the loop.")]
         public LongJumpPit pit;
@@ -71,7 +71,7 @@ namespace PoDecath.Cam
         /// shown, or the competitor on the runway. This is what a lower third would carry, so the broadcast
         /// overlay reads it rather than working the leader out a second time.
         /// </summary>
-        public DashEvent.Athlete Featured { get; private set; }
+        public RaceEvent.Athlete Featured { get; private set; }
 
         /// <summary>True when the shot on air is framed on one athlete rather than on the whole field.</summary>
         public bool OnIndividual => Current != Shot.Wide && Current != Shot.StartLine;
@@ -83,7 +83,7 @@ namespace PoDecath.Cam
         int _knownFallen, _knownFinished;
         float _startS, _finishS;
         // Long jump: the competitor and stage last seen, so a change of either is a cut.
-        DashEvent.Athlete _jumpCompetitor;
+        RaceEvent.Athlete _jumpCompetitor;
         LongJumpEvent.Stage _jumpStage;
         float _jumpStageAge;
 
@@ -125,7 +125,7 @@ namespace PoDecath.Cam
                 _shotAge = minShotSeconds;   // a new race may open on its own shot straight away
             }
 
-            DashEvent.Athlete leader = Leader(out DashEvent.Athlete faller, out int fallen, out int finished);
+            RaceEvent.Athlete leader = Leader(out RaceEvent.Athlete faller, out int fallen, out int finished);
             Vector3 centroid = FieldCentre();
             if (leader != null) _leaderSubject.position = Subject(leader);
             _fieldSubject.position = centroid;
@@ -159,10 +159,10 @@ namespace PoDecath.Cam
             Apply();
         }
 
-        Shot Choose(DashEvent.Athlete leader, int finished, float leaderS)
+        Shot Choose(RaceEvent.Athlete leader, int finished, float leaderS)
         {
-            if (race.Current == DashEvent.Phase.Countdown || race.Current == DashEvent.Phase.Idle) return Shot.StartLine;
-            if (race.Current == DashEvent.Phase.Finished) return Shot.Finish;
+            if (race.Current == RaceEvent.Phase.Countdown || race.Current == RaceEvent.Phase.Idle) return Shot.StartLine;
+            if (race.Current == RaceEvent.Phase.Finished) return Shot.Finish;
             if (_incidentLeft > 0f) return Shot.Wide;
             if (leader == null) return Shot.Finish;
 
@@ -221,7 +221,7 @@ namespace PoDecath.Cam
 
         void DirectJump(LongJumpEvent jump)
         {
-            DashEvent.Athlete who = jump.Competitor;
+            RaceEvent.Athlete who = jump.Competitor;
             Featured = who;
             bool cutNow = false;
             if (who != _jumpCompetitor || jump.CurrentStage != _jumpStage || race.Attempt != _lastAttempt)
@@ -252,8 +252,8 @@ namespace PoDecath.Cam
 
         Shot ChooseJump(LongJumpEvent jump, float x)
         {
-            if (race.Current == DashEvent.Phase.Finished) return Shot.Wide;
-            if (race.Current != DashEvent.Phase.Running || jump.Competitor == null) return Shot.StartLine;
+            if (race.Current == RaceEvent.Phase.Finished) return Shot.Wide;
+            if (race.Current != RaceEvent.Phase.Running || jump.Competitor == null) return Shot.StartLine;
             switch (jump.CurrentStage)
             {
                 case LongJumpEvent.Stage.Approach:
@@ -292,10 +292,10 @@ namespace PoDecath.Cam
         }
 
         /// <summary>Leader of the race still being run; once everyone is done, whoever got furthest.</summary>
-        DashEvent.Athlete Leader(out DashEvent.Athlete faller, out int fallen, out int finished)
+        RaceEvent.Athlete Leader(out RaceEvent.Athlete faller, out int fallen, out int finished)
         {
             faller = null; fallen = 0; finished = 0;
-            DashEvent.Athlete racing = null, any = null;
+            RaceEvent.Athlete racing = null, any = null;
             foreach (var a in race.Athletes)
             {
                 if (a.fell) { fallen++; if (faller == null) faller = a; }
@@ -315,7 +315,7 @@ namespace PoDecath.Cam
             return n > 0 ? sum / n : transform.position;
         }
 
-        static Vector3 Subject(DashEvent.Athlete a)
+        static Vector3 Subject(RaceEvent.Athlete a)
         {
             Vector3 p = a.IsRL ? a.rig.BasePosition : (a.go != null ? a.go.transform.position : Vector3.zero);
             return p + Vector3.up * 0.25f;   // aim at the chest, not the hips
@@ -328,7 +328,7 @@ namespace PoDecath.Cam
         /// the global scan: <see cref="TrackPath.Project"/> searches a few metres around the value handed
         /// to it, so seeding it from the start line would park the moving cameras on the grid all race.
         /// </summary>
-        float ArcOf(DashEvent.Athlete a)
+        float ArcOf(RaceEvent.Athlete a)
         {
             if (a.follower != null) return a.follower.S;
             if (a.heuristic != null && a.heuristic.path == path) return a.heuristic.S;

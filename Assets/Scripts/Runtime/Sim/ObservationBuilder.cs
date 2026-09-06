@@ -43,7 +43,7 @@ namespace PoDecath.Sim
             }
         }
 
-        public void Fill(float[] obs, CreatureRig rig, Vector3 commandExt, float[] lastAction, float[] jointPosExt, float[] jointVelExt)
+        public void Fill(float[] obs, AthleteRig rig, Vector3 commandExt, float[] lastAction, float[] jointPosExt, float[] jointVelExt)
         {
             int o = 0;
             float clip = _cfg.observationClip;

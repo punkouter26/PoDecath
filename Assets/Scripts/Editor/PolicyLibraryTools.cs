@@ -16,7 +16,7 @@ namespace PoDecath.EditorTools
         public const string PoliciesDir = "Assets/Policies";
         public const string ResourcesDir = "Assets/Policies/Resources";
         public const string LibraryPath = ResourcesDir + "/PolicyLibrary.asset";
-        public const string DefaultConfigPath = PoliciesDir + "/Go2_Flat_PolicyConfig.asset";
+        public const string DefaultConfigPath = PoliciesDir + "/Athlete_PolicyConfig.asset";
 
         [MenuItem("PoDecath/Refresh Policy Library")]
         public static void Refresh()

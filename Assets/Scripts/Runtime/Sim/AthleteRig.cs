@@ -6,9 +6,9 @@ namespace PoDecath.Sim
     /// <summary>
     /// Thin adapter over an ArticulationBody hierarchy. Exposes joint state in the
     /// external (Isaac Lab / MuJoCo) sign convention and applies PD position targets.
-    /// The creature's forward axis is Unity +X (external +X), up is Unity +Y.
+    /// The athlete's forward axis is Unity +X (external +X), up is Unity +Y.
     /// </summary>
-    public class CreatureRig : MonoBehaviour
+    public class AthleteRig : MonoBehaviour
     {
         public ArticulationBody root;
         [Tooltip("Filled by Bind(): joints in policy order.")]
@@ -61,7 +61,7 @@ namespace PoDecath.Sim
                 JointSpec spec = cfg.joints[i];
                 if (!_lookup.TryGetValue(spec.name, out var ab))
                 {
-                    Debug.LogError($"[CreatureRig] Joint '{spec.name}' not found under '{name}'.", this);
+                    Debug.LogError($"[AthleteRig] Joint '{spec.name}' not found under '{name}'.", this);
                     ok = false;
                     continue;
                 }

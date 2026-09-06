@@ -46,7 +46,7 @@ namespace PoDecath.Audio
 
         [Header("Wiring")]
         public AudioBank bank;
-        public DashEvent race;
+        public RaceEvent race;
         [Tooltip("Optional. Without it there is no whoosh under a cut, and nothing else changes.")]
         public BroadcastDirector director;
         [Tooltip("The 3D crowd. Without it the bed falls back to a single 2D source on this object.")]
@@ -66,10 +66,10 @@ namespace PoDecath.Audio
         AudioSource _wind;
         AudioSource _flat;            // countdown and stings: broadcast furniture, not things in the stadium
 
-        DashEvent.Phase _lastPhase = DashEvent.Phase.Idle;
+        RaceEvent.Phase _lastPhase = RaceEvent.Phase.Idle;
         BroadcastDirector.Shot _lastShot;
         LongJumpEvent.Stage _lastStage;
-        DashEvent.Athlete _lastFeatured;
+        RaceEvent.Athlete _lastFeatured;
         int _lastAttempt = -1;
         int _knownFinished, _knownFallen, _knownRecoveries, _lastBeep = -1;
         bool _bellRung;
@@ -165,9 +165,9 @@ namespace PoDecath.Audio
         {
             switch (race.Current)
             {
-                case DashEvent.Phase.Idle: return Mood.Waiting;
-                case DashEvent.Phase.Countdown: return Mood.Hush;
-                case DashEvent.Phase.Finished: return _moodAge < 2.5f && _mood == Mood.Roar ? Mood.Roar : Mood.Applause;
+                case RaceEvent.Phase.Idle: return Mood.Waiting;
+                case RaceEvent.Phase.Countdown: return Mood.Hush;
+                case RaceEvent.Phase.Finished: return _moodAge < 2.5f && _mood == Mood.Roar ? Mood.Roar : Mood.Applause;
             }
 
             // A jump competition has no field spread over a course to read; it has one competitor and a
@@ -183,7 +183,7 @@ namespace PoDecath.Audio
 
             float lead = -1f, second = -1f;
             bool anyDown = false, anyHome = false;
-            foreach (DashEvent.Athlete a in race.Athletes)
+            foreach (RaceEvent.Athlete a in race.Athletes)
             {
                 if (a.fell && race.RaceTime - a.time < 2.5f) anyDown = true;
                 if (a.finished && race.RaceTime - a.time < 2.5f) anyHome = true;
@@ -206,7 +206,7 @@ namespace PoDecath.Audio
             if (race.raceDistance > 0f)
             {
                 float lead = 0f;
-                foreach (DashEvent.Athlete a in race.Athletes) lead = Mathf.Max(lead, a.distance);
+                foreach (RaceEvent.Athlete a in race.Athletes) lead = Mathf.Max(lead, a.distance);
                 progress = Mathf.Clamp01(lead / race.raceDistance);
             }
             return mood switch
@@ -251,7 +251,7 @@ namespace PoDecath.Audio
             float height = 0f;
             if (view != null && race != null)
             {
-                DashEvent.Athlete r = race.Reference;
+                RaceEvent.Athlete r = race.Reference;
                 float ground = r != null ? (r.IsRL ? r.rig.BasePosition.y : (r.go != null ? r.go.transform.position.y : 0f)) : 0f;
                 height = Mathf.Max(0f, view.transform.position.y - ground);
             }
@@ -263,19 +263,19 @@ namespace PoDecath.Audio
 
         void Cues()
         {
-            DashEvent.Phase phase = race.Current;
+            RaceEvent.Phase phase = race.Current;
             Vector3 line = race.startLine + Vector3.up * 1.2f;
 
             // The gun, from behind the grid where the starter stands. A long jump opens each attempt on the
             // same countdown and gets the same shot.
-            if (phase == DashEvent.Phase.Running && _lastPhase == DashEvent.Phase.Countdown)
+            if (phase == RaceEvent.Phase.Running && _lastPhase == RaceEvent.Phase.Countdown)
             {
                 Vector3 at = race.startLine - race.direction.normalized * 3f + Vector3.up * 1.8f;
                 Spatial(bank != null ? bank.pistol : null, at, 1f);
                 AudioMix.Duck(AudioMix.Bus.Crowd, 0.55f);   // the report clears the crowd out for a moment
                 AudioMix.Release(AudioMix.Bus.Crowd);
             }
-            if (phase == DashEvent.Phase.Countdown)
+            if (phase == RaceEvent.Phase.Countdown)
             {
                 int tick = Mathf.CeilToInt(race.Countdown);
                 if (tick != _lastBeep && tick > 0 && race.Countdown > 0.05f)
@@ -284,12 +284,12 @@ namespace PoDecath.Audio
             }
             else _lastBeep = -1;
 
-            if (phase == DashEvent.Phase.Finished && _lastPhase != DashEvent.Phase.Finished)
+            if (phase == RaceEvent.Phase.Finished && _lastPhase != RaceEvent.Phase.Finished)
                 Crowd(bank != null ? bank.crowdApplause : bank != null ? bank.crowdSwell : null, 1f, 0.97f);
             _lastPhase = phase;
 
             int finished = 0, fallen = 0, recovered = 0;
-            foreach (DashEvent.Athlete a in race.Athletes)
+            foreach (RaceEvent.Athlete a in race.Athletes)
             {
                 if (a.finished) finished++;
                 if (a.fell) fallen++;
@@ -330,9 +330,9 @@ namespace PoDecath.Audio
         void Bell(Vector3 line)
         {
             if (_bellRung || !(race is LapEvent lap) || lap.laps < 2 || lap.path == null) return;
-            if (race.Current != DashEvent.Phase.Running) return;
+            if (race.Current != RaceEvent.Phase.Running) return;
             float bellAt = (lap.laps - 1) * lap.path.LapLength;
-            foreach (DashEvent.Athlete a in race.Athletes)
+            foreach (RaceEvent.Athlete a in race.Athletes)
             {
                 if (a.fell || a.distance < bellAt) continue;
                 Spatial(bank != null ? bank.lapBell : null, line, 0.8f);
@@ -350,7 +350,7 @@ namespace PoDecath.Audio
 
             if (stage == LongJumpEvent.Stage.Settle && _lastStage == LongJumpEvent.Stage.Flight)
             {
-                DashEvent.Athlete who = jump.Competitor;
+                RaceEvent.Athlete who = jump.Competitor;
                 Vector3 at = who != null
                     ? (who.IsRL ? who.rig.BasePosition : who.go.transform.position)
                     : (pit != null ? pit.SandPoint(pit.pitNearX + 1f) : transform.position);
@@ -375,10 +375,10 @@ namespace PoDecath.Audio
         void LowerThirdSting()
         {
             if (director == null || !director.OnIndividual) return;
-            DashEvent.Athlete featured = director.Featured;
+            RaceEvent.Athlete featured = director.Featured;
             if (featured == _lastFeatured) return;
             _lastFeatured = featured;
-            if (featured == null || race.Current != DashEvent.Phase.Running) return;
+            if (featured == null || race.Current != RaceEvent.Phase.Running) return;
             Flat(bank != null ? bank.sting : null, 0.22f, AudioMix.Bus.Broadcast);
         }
 

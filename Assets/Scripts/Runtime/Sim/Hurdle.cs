@@ -13,7 +13,7 @@ namespace PoDecath.Sim
     /// that it tips forward instead, which is both the correct behaviour and the one that gives a runner
     /// something to trip over rather than something to be hit by.
     ///
-    /// Attribution is by walking up from whatever collider made contact to the <see cref="CreatureRig"/> or
+    /// Attribution is by walking up from whatever collider made contact to the <see cref="AthleteRig"/> or
     /// <see cref="HeuristicRunner"/> that owns it, because an athlete's colliders are several levels below
     /// its athlete object and the hierarchy root is the spawner, not the runner.
     /// </summary>
@@ -44,7 +44,7 @@ namespace PoDecath.Sim
         public bool Knocked { get; private set; }
 
         /// <summary>The physics athlete last in contact before it went over, if it was one.</summary>
-        public CreatureRig ByRig { get; private set; }
+        public AthleteRig ByRig { get; private set; }
 
         /// <summary>The kinematic bot last in contact before it went over, if it was one.</summary>
         public HeuristicRunner ByBot { get; private set; }
@@ -124,7 +124,7 @@ namespace PoDecath.Sim
         {
             if (Knocked || c.collider == null) return;
             Clipped(c);
-            CreatureRig rig = c.collider.GetComponentInParent<CreatureRig>();
+            AthleteRig rig = c.collider.GetComponentInParent<AthleteRig>();
             if (rig != null) { ByRig = rig; ByBot = null; return; }
             HeuristicRunner bot = c.collider.GetComponentInParent<HeuristicRunner>();
             if (bot != null) { ByBot = bot; ByRig = null; }

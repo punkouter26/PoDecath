@@ -21,7 +21,7 @@ namespace PoDecath.UI
     {
         [Header("Wiring")]
         [Tooltip("When set, the HUD shows the event instead of the arena episode loop.")]
-        public DashEvent dash;
+        public RaceEvent dash;
         public PolicyRunner runner;
         public CameraRig cameraRig;
         public TouchPerturbation perturbation;
@@ -113,7 +113,7 @@ namespace PoDecath.UI
         {
             if (dash != null)
             {
-                DashEvent.Athlete r = dash.Reference;
+                RaceEvent.Athlete r = dash.Reference;
                 string model = r != null && r.runner != null ? r.runner.ModelName : (r != null ? r.name : "-");
                 SetText(_model, $"{(r != null ? r.name : "event")}  |  {model}");
 

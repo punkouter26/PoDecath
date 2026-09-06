@@ -5,14 +5,14 @@ namespace PoDecath.Sim
     /// <summary>
     /// Lap race around the rooftop TrackPath. RL athletes chase a carrot placed by TrackFollower; the
     /// heuristic bot follows the path kinematically. Distance is progress along the track, so
-    /// raceDistance = laps x lap length. Everything else (countdown, falls, results, restart) is DashEvent.
+    /// raceDistance = laps x lap length. Everything else (countdown, falls, results, restart) is RaceEvent.
     ///
-    /// The field lines up on DashEvent's staggered grid — <see cref="DashEvent.maxLanes"/> abreast, further
+    /// The field lines up on RaceEvent's staggered grid — <see cref="RaceEvent.maxLanes"/> abreast, further
     /// rows set back along the track. The deck is only 5.3 m wide and the lane pitch is solved for five
     /// abreast, so eight in a row would start off the roof. Each runner still covers a full lap measured from its own start point
     /// (TrackFollower.Progress counts from wherever it was reset), so the stagger costs nobody distance.
     /// </summary>
-    public class LapEvent : DashEvent
+    public class LapEvent : RaceEvent
     {
         public TrackPath path;
         public int laps = 1;
@@ -40,7 +40,7 @@ namespace PoDecath.Sim
             maxRaceSeconds = Mathf.Clamp(laps * secondsPerLap, 30f, maxRaceSecondsCap);
         }
 
-        // The grid itself is DashEvent's (maxLanes abreast, rowSpacing between rows); the lap only maps a
+        // The grid itself is RaceEvent's (maxLanes abreast, rowSpacing between rows); the lap only maps a
         // slot onto the loop. Set maxLanes to 2 here: that keeps every runner within 0.54 m of the centre
         // line, the band the policies were trained on. Measured over a field of eight, every runner at
         // +-0.54 m finished and every runner at +-1.61 m fell, because a 1.6 m offset turns the 8.8 m bend

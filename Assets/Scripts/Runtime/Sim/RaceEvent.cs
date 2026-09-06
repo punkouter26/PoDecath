@@ -6,13 +6,21 @@ using UnityEngine;
 namespace PoDecath.Sim
 {
     /// <summary>
-    /// 100 m dash on the rooftop straight. Zero-interaction: countdown, race, result, auto-restart.
-    /// RL athletes are driven by their run-to-target policy toward a point past the finish line;
-    /// a fall marks DNF (get-up policy is a placeholder). Heuristic athletes run a kinematic pace profile.
-    /// Exposes the reference (first RL) athlete's stats for the HUD.
+    /// The race, whichever race it is. Countdown, run, result, auto-restart, with no interaction.
+    ///
+    /// This is the base every event derives from -- <see cref="LapEvent"/> for the loop distances and
+    /// the hurdles, <see cref="LongJumpEvent"/> for the pit -- and it owns the parts they all share:
+    /// the athlete list, the phase machine, the reference athlete the HUD and the broadcast follow.
+    /// On its own it runs the straight-line dash on the rooftop straight, which is the development
+    /// scene rather than a listed event.
+    ///
+    /// RL athletes are driven by their policy toward a point past the finish line; heuristic athletes
+    /// run a kinematic pace profile. A fall is no longer automatically a DNF: where the scene has a
+    /// get-up policy, <see cref="RecoveryController"/> takes the body, and the DNF is booked only if
+    /// the recovery gives up.
     /// </summary>
     [DefaultExecutionOrder(-30)]
-    public class DashEvent : MonoBehaviour
+    public class RaceEvent : MonoBehaviour
     {
         public enum Phase { Idle, Countdown, Running, Finished }
 
@@ -23,7 +31,7 @@ namespace PoDecath.Sim
             public AthleteKind kind;
             public Color color;
             public GameObject go;
-            public CreatureRig rig;
+            public AthleteRig rig;
             public PolicyRunner runner;
             public VelocityCommandSource command;
             public HeuristicRunner heuristic;
@@ -90,7 +98,7 @@ namespace PoDecath.Sim
 
         /// <summary>
         /// One finished competitor, ranked. The dash sorts finishers by time and non-finishers by
-        /// distance behind them; <see cref="DashEvent.Rank"/> and <see cref="DashEvent.StatusFor"/>
+        /// distance behind them; <see cref="RaceEvent.Rank"/> and <see cref="RaceEvent.StatusFor"/>
         /// let an event that is not a timed race order and label its own board.
         /// </summary>
         public readonly struct RaceResult

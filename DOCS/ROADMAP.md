@@ -7,7 +7,7 @@ scaffolded as a placeholder so later phases plug into the same athlete, event an
 
 | # | Event | Training task | Unity controller | Status |
 |---|---|---|---|---|
-| 1 | 100 m dash | `run_to_target` | `DashEvent` | Phase 1 |
+| 1 | 100 m dash | `run_to_target` | `RaceEvent` | Phase 1 |
 | 2 | Long jump | run-up = `run_to_target` with a carrot; take-off scripted (one vertical impulse), flight and landing are PhysX; a real take-off policy is still to train | `LongJumpEvent` + `LongJumpPit` on the infield deck (`LongJumpBuilder`), menu `PoDecath/Build Long Jump Scene` | playable, 3 rounds each |
 | 3 | Shot put | throw (placeholder) | placeholder | placeholder |
 | 4 | High jump | run-up + jump-over-bar (placeholder) | placeholder | placeholder |

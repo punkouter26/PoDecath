@@ -11,7 +11,7 @@ namespace PoDecath.UI
     /// left, splits beside it, a lower third that wipes in on every cut, and the countdown over the middle
     /// of the picture.
     ///
-    /// None of it is new information — <see cref="DashEvent"/> already knows the order, the gaps and the
+    /// None of it is new information — <see cref="RaceEvent"/> already knows the order, the gaps and the
     /// clock, and <see cref="BroadcastDirector"/> already knows who is on air. What is new is that it
     /// moves. A running order that silently swaps two rows tells you nothing; one where the row that
     /// gained a place slides up and flashes green tells you a pass just happened, which is the single
@@ -27,7 +27,7 @@ namespace PoDecath.UI
     public class BroadcastView : UiRoot
     {
         [Header("Wiring")]
-        public DashEvent race;
+        public RaceEvent race;
         [Tooltip("Optional. Without it the lower third never appears; everything else still works.")]
         public BroadcastDirector director;
 
@@ -45,7 +45,7 @@ namespace PoDecath.UI
         {
             public VisualElement element;
             public Label rank, name, gap;
-            public DashEvent.Athlete athlete;
+            public RaceEvent.Athlete athlete;
             public int place = -1;
             public float flash;      // seconds left on the gained/lost highlight
             public bool gained;
@@ -157,8 +157,8 @@ namespace PoDecath.UI
         void Refresh()
         {
             if (race == null) return;
-            List<DashEvent.Athlete> order = race.LiveOrder();
-            DashEvent.Athlete leader = order.Count > 0 ? order[0] : null;
+            List<RaceEvent.Athlete> order = race.LiveOrder();
+            RaceEvent.Athlete leader = order.Count > 0 ? order[0] : null;
 
             TopBar(order, leader);
             RecordSplits(leader);
@@ -166,13 +166,13 @@ namespace PoDecath.UI
             LowerThirdText(order);
         }
 
-        void TopBar(List<DashEvent.Athlete> order, DashEvent.Athlete leader)
+        void TopBar(List<RaceEvent.Athlete> order, RaceEvent.Athlete leader)
         {
             SetText(_stage, Stage(leader));
             SetText(_clock, Clock());
             if (_lead == null) return;
 
-            if (race.Current == DashEvent.Phase.Countdown) { SetText(_lead, "ON YOUR MARKS", Color.white); return; }
+            if (race.Current == RaceEvent.Phase.Countdown) { SetText(_lead, "ON YOUR MARKS", Color.white); return; }
             if (leader == null) { SetText(_lead, ""); return; }
 
             if (Jump != null)
@@ -180,7 +180,7 @@ namespace PoDecath.UI
                 SetText(_lead, leader.finished ? $"{leader.name} leads with {leader.distance:F2} m" : $"{leader.name} leads", leader.color);
                 return;
             }
-            DashEvent.Athlete second = order.Count > 1 ? order[1] : null;
+            RaceEvent.Athlete second = order.Count > 1 ? order[1] : null;
             if (second == null) { SetText(_lead, leader.name, leader.color); return; }
             if (leader.finished && second.finished) { SetText(_lead, $"{leader.name} by {second.time - leader.time:F2} s", leader.color); return; }
             float gap = leader.distance - second.distance;
@@ -188,7 +188,7 @@ namespace PoDecath.UI
         }
 
         /// <summary>Where the event has got to, in the words the event itself would use.</summary>
-        string Stage(DashEvent.Athlete leader)
+        string Stage(RaceEvent.Athlete leader)
         {
             LongJumpEvent jump = Jump;
             if (jump != null) return $"ROUND {jump.Round} / {Mathf.Max(1, jump.attemptsEach)}";
@@ -203,7 +203,7 @@ namespace PoDecath.UI
 
         string Clock()
         {
-            if (race.Current == DashEvent.Phase.Countdown) return Mathf.CeilToInt(Mathf.Max(0f, race.Countdown)).ToString();
+            if (race.Current == RaceEvent.Phase.Countdown) return Mathf.CeilToInt(Mathf.Max(0f, race.Countdown)).ToString();
             return Fmt(race.RaceTime);
         }
 
@@ -211,11 +211,11 @@ namespace PoDecath.UI
         /// A split per completed lap, taken off whoever is leading at the time. Recorded on the way past,
         /// so the board keeps them even after that runner has been caught.
         /// </summary>
-        void RecordSplits(DashEvent.Athlete leader)
+        void RecordSplits(RaceEvent.Athlete leader)
         {
             LapEvent lap = Lap;
             if (lap == null || lap.path == null || lap.laps <= 1 || leader == null) return;
-            if (race.Current != DashEvent.Phase.Running) { PaintSplits(false); return; }
+            if (race.Current != RaceEvent.Phase.Running) { PaintSplits(false); return; }
 
             float lapLength = lap.path.LapLength;
             bool fresh = false;
@@ -247,7 +247,7 @@ namespace PoDecath.UI
         /// from where it used to be and released, so the style system slides it into place; the direction
         /// it moved decides which colour it flashes.
         /// </summary>
-        void OrderStrip(List<DashEvent.Athlete> order, DashEvent.Athlete leader)
+        void OrderStrip(List<RaceEvent.Athlete> order, RaceEvent.Athlete leader)
         {
             for (int i = 0; i < _rows.Count; i++)
             {
@@ -256,7 +256,7 @@ namespace PoDecath.UI
                 Show(row.element, used);
                 if (!used) { row.athlete = null; row.place = -1; continue; }
 
-                DashEvent.Athlete a = order[i];
+                RaceEvent.Athlete a = order[i];
                 int wasPlace = row.athlete == a ? row.place : PlaceOf(a);
 
                 SetText(row.rank, (i + 1).ToString());
@@ -291,7 +291,7 @@ namespace PoDecath.UI
             if (hidden > 0) SetText(_overflow, $"+{hidden} more");
         }
 
-        int PlaceOf(DashEvent.Athlete a)
+        int PlaceOf(RaceEvent.Athlete a)
         {
             foreach (Row r in _rows) if (r.athlete == a) return r.place;
             return -1;
@@ -311,7 +311,7 @@ namespace PoDecath.UI
         }
 
         /// <summary>What goes in the right-hand column: a mark, a time, a deficit, or why there is none.</summary>
-        string Gap(DashEvent.Athlete a, DashEvent.Athlete leader, int index)
+        string Gap(RaceEvent.Athlete a, RaceEvent.Athlete leader, int index)
         {
             if (Jump != null) return a.finished ? $"{a.distance:F2} m" : "—";
             // Down but not out. This is the single most interesting line the overlay can carry, so it wins
@@ -320,14 +320,14 @@ namespace PoDecath.UI
             if (a.recovering) return "DOWN";
             if (a.fell) return "DNF";
             if (a.finished) return index == 0 ? Fmt(a.time) : $"+{a.time - leader.time:F2}";
-            if (leader == null || a == leader) return race.Current == DashEvent.Phase.Running ? $"{a.speed:F1} m/s" : "";
+            if (leader == null || a == leader) return race.Current == RaceEvent.Phase.Running ? $"{a.speed:F1} m/s" : "";
             return $"+{Mathf.Max(0f, leader.distance - a.distance):F1} m";
         }
 
         // ---------------------------------------------------------------- lower third
 
         bool Showing => director != null && director.OnIndividual && director.Featured != null
-                        && race.Current != DashEvent.Phase.Idle;
+                        && race.Current != RaceEvent.Phase.Idle;
 
         void LowerThirdVisibility()
         {
@@ -337,10 +337,10 @@ namespace PoDecath.UI
             _lowerThird.EnableInClassList("lower-third--out", !show);
         }
 
-        void LowerThirdText(List<DashEvent.Athlete> order)
+        void LowerThirdText(List<RaceEvent.Athlete> order)
         {
             if (_lowerName == null || director == null) return;
-            DashEvent.Athlete a = director.Featured;
+            RaceEvent.Athlete a = director.Featured;
             if (a == null) return;
 
             SetText(_lowerName, a.name, a.color);
@@ -377,7 +377,7 @@ namespace PoDecath.UI
         void Countdown()
         {
             if (_countdown == null) return;
-            bool on = race.Current == DashEvent.Phase.Countdown;
+            bool on = race.Current == RaceEvent.Phase.Countdown;
             if (!on)
             {
                 _countdown.EnableInClassList("countdown--off", true);

@@ -34,7 +34,7 @@ namespace PoDecath.Diag
     {
         [Header("Wiring")]
         [Tooltip("Optional; adds the policy and athlete rows when a race is running.")]
-        public DashEvent race;
+        public RaceEvent race;
         [Tooltip("Optional; adds what the crowd is doing.")]
         public RaceAudio audioMix;
 
@@ -230,7 +230,7 @@ namespace PoDecath.Diag
         {
             if (race == null) { Set("Athletes", "-"); return; }
             int total = race.Athletes.Count, rl = 0, down = 0;
-            foreach (DashEvent.Athlete a in race.Athletes)
+            foreach (RaceEvent.Athlete a in race.Athletes)
             {
                 if (a.IsRL) rl++;
                 if (a.fell) down++;

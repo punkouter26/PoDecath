@@ -40,7 +40,7 @@ namespace PoDecath.EditorTools
         /// Replaces the single-athlete chase rig with the broadcast gallery, then adds the overlay, the
         /// results card and the diagnostics panel over it.
         /// </summary>
-        public static BroadcastDirector BuildBroadcastAndResults(DashEvent dash, TrackPath path, CameraRig camRig,
+        public static BroadcastDirector BuildBroadcastAndResults(RaceEvent dash, TrackPath path, CameraRig camRig,
                                                                  HudView hud, LongJumpPit pit = null)
         {
             // The chase/side pair follows one athlete; with a whole field the director owns the camera.
@@ -88,7 +88,7 @@ namespace PoDecath.EditorTools
         /// The diagnostics panel. It is in every scene the game ships, closed, on F3 — a performance
         /// overlay that has to be added by hand before it can be used is one that never gets used.
         /// </summary>
-        public static TelemetryOverlay AddTelemetry(DashEvent dash)
+        public static TelemetryOverlay AddTelemetry(RaceEvent dash)
         {
             var telemetry = UiBakery.AddScreen<TelemetryOverlay>("Telemetry", UiBakery.TelemetryUxml, TelemetryOrder);
             if (telemetry == null) return null;
@@ -98,7 +98,7 @@ namespace PoDecath.EditorTools
         }
 
         /// <summary>The HUD document: the developer stats card and the control bar.</summary>
-        public static HudView BuildHud(DashEvent dash, CameraRig camRig, bool handsOn)
+        public static HudView BuildHud(RaceEvent dash, CameraRig camRig, bool handsOn)
         {
             var hud = UiBakery.AddScreen<HudView>("HUD", UiBakery.HudUxml, HudOrder);
             if (hud == null) return null;

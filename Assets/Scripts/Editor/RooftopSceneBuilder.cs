@@ -250,7 +250,7 @@ namespace PoDecath.EditorTools
             // Event + spawner
             // The dash scales with the track: on the residence roof the straight is far shorter
             // than 100 m, so the race distance and lane pitch come from the track that got built.
-            DashEvent dash;
+            RaceEvent dash;
             if (jumpMode)
             {
                 var eventGo = new GameObject($"LongJumpEvent{Mathf.RoundToInt(pit.RunwayLength)}m");
@@ -275,8 +275,8 @@ namespace PoDecath.EditorTools
             }
             else
             {
-                var eventGo = new GameObject($"DashEvent{Mathf.RoundToInt(track.dashLength)}m");
-                dash = eventGo.AddComponent<DashEvent>();
+                var eventGo = new GameObject($"RaceEvent{Mathf.RoundToInt(track.dashLength)}m");
+                dash = eventGo.AddComponent<RaceEvent>();
                 dash.raceDistance = track.dashLength;
             }
             dash.startLine = track.straightStart;

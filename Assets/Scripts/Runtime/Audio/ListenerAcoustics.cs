@@ -22,7 +22,7 @@ namespace PoDecath.Audio
         [Header("Distance")]
         [Tooltip("What the camera is listening to. The featured athlete if a race is wired, else the "
                + "listener's own position, which makes the low pass a no-op.")]
-        public DashEvent race;
+        public RaceEvent race;
         [Tooltip("Closer than this, nothing is filtered.")]
         public float nearDistance = 12f;
         [Tooltip("At this distance the low pass is fully closed to closedHz.")]
@@ -88,8 +88,8 @@ namespace PoDecath.Audio
         {
             position = Vector3.zero;
             if (race == null) return false;
-            DashEvent.Athlete a = null;
-            foreach (DashEvent.Athlete candidate in race.Athletes)
+            RaceEvent.Athlete a = null;
+            foreach (RaceEvent.Athlete candidate in race.Athletes)
             {
                 if (candidate.fell || candidate.finished) continue;
                 if (a == null || candidate.distance > a.distance) a = candidate;

@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a01b12dbf88fc654cb100c8aed0516b2, type: 3}
-  m_Name: Go2_Flat_PolicyConfig
+  m_Name: Athlete_PolicyConfig
   m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Sim.PolicyConfig
   joints:
   - name: FL_hip_joint

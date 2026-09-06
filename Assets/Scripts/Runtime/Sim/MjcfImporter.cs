@@ -31,7 +31,7 @@ namespace PoDecath.Sim
         public class Result
         {
             public GameObject root;
-            public CreatureRig rig;
+            public AthleteRig rig;
             public JointSpec[] joints;
             public string[] bodyNames;
             public float physicsTimestep = 0.005f;
@@ -95,7 +95,7 @@ namespace PoDecath.Sim
             var bodyNames = new List<string>();
             var rootGo = new GameObject("MjcfCreature");
             rootGo.layer = opt.layer;
-            var rig = rootGo.AddComponent<CreatureRig>();
+            var rig = rootGo.AddComponent<AthleteRig>();
 
             foreach (XmlNode n in world.ChildNodes)
             {
@@ -183,7 +183,7 @@ namespace PoDecath.Sim
                     var info = new JointInfo { name = jname, axisExt = axisExt, lowerRad = lo, upperRad = hi, damping = jd, body = ab };
                     if (actuators.TryGetValue(jname, out var g)) { info.kp = g.kp; info.kv = g.kv; info.forceLimit = g.fl; }
                     joints.Add(info);
-                    go.name = jname;   // CreatureRig binds joints by GameObject name
+                    go.name = jname;   // AthleteRig binds joints by GameObject name
                     ab.jointType = ArticulationJointType.RevoluteJoint;
                     ab.matchAnchors = true;
                     ab.anchorPosition = Vector3.zero;

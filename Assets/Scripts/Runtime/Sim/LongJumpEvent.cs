@@ -13,7 +13,7 @@ namespace PoDecath.Sim
     /// 18 m runway, the flight is PhysX, and the landing is a real collision with the sand, measured
     /// where the body actually broke it. The one scripted moment is the take-off itself — a single
     /// upward velocity added to the base at the board, standing in for the take-off leg's extension,
-    /// because no jump policy has been trained yet (the same reason DashEvent animates its pull-up).
+    /// because no jump policy has been trained yet (the same reason RaceEvent animates its pull-up).
     /// Everything either side of that one impulse is the simulation's own answer, so the marks differ
     /// run to run exactly as the run-up speed and the stride pattern into the board differ.
     ///
@@ -21,7 +21,7 @@ namespace PoDecath.Sim
     /// the athlete took off from, so arriving short of the board costs real metres; and the mark is the
     /// break in the sand *nearest* the board, so sitting back on landing costs metres too.
     /// </summary>
-    public class LongJumpEvent : DashEvent
+    public class LongJumpEvent : RaceEvent
     {
         /// <summary>Where one attempt has got to.</summary>
         public enum Stage { Waiting, Approach, Flight, Settle }
@@ -449,7 +449,7 @@ namespace PoDecath.Sim
         }
 
         /// <summary>
-        /// Parks an athlete on its waiting mark and pins it there. Same reasoning as DashEvent's pull-up:
+        /// Parks an athlete on its waiting mark and pins it there. Same reasoning as RaceEvent's pull-up:
         /// the policies have no stand-still behaviour, so a competitor left under policy control folds up
         /// while it waits its turn.
         /// </summary>
