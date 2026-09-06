@@ -75,6 +75,13 @@ def main() -> None:
     ap.add_argument("--desired-kl", type=float, default=0.01,
                     help="KL the adaptive learning rate steers toward. Raise it for a task whose reward is "
                          "noisy enough that the controller otherwise pins the rate at its floor.")
+    ap.add_argument("--no-domain-rand", action="store_true",
+                    help="train on the bare MJCF: one friction, one mass set, one gain pair, no sensor "
+                         "noise, no actuation latency. Policies trained this way overfit MuJoCo and do "
+                         "not transfer to Unity's PhysX -- which is what happened to athlete_getup.onnx.")
+    ap.add_argument("--dr-strength", type=float, default=1.0,
+                    help="scales every randomisation range about its nominal value. 0 is equivalent to "
+                         "--no-domain-rand; 2 doubles every spread.")
     ap.add_argument("--keep-old-runs", action="store_true")
     ap.add_argument("--no-tensorboard", action="store_true")
     ap.add_argument("--unity-policies", default=os.path.join(HERE, "..", "Assets", "Policies"))
@@ -97,7 +104,26 @@ def main() -> None:
     if not args.no_tensorboard:
         launch_tensorboard(tb_root, args.tb_port)
 
-    env = env_cls(args.xml, args.num_envs, device=device, seed=args.seed, target_speed=args.target_speed)
+    domain_rand = not args.no_domain_rand and args.dr_strength > 0.0
+    k = args.dr_strength
+    dr_kwargs = {
+        "friction": (1.0 - 0.3 * k, 1.0 + 0.3 * k),
+        "mass": (1.0 - 0.1 * k, 1.0 + 0.1 * k),
+        "kp": (1.0 - 0.2 * k, 1.0 + 0.25 * k),
+        "kv": (1.0 - 0.2 * k, 1.0 + 0.25 * k),
+        "obs_noise": k,
+        "action_delay_prob": min(0.5, 0.15 * k),
+        "push_vel": 0.6 * k,
+    } if domain_rand else None
+    env = env_cls(args.xml, args.num_envs, device=device, seed=args.seed, target_speed=args.target_speed,
+                  domain_rand=domain_rand, dr_kwargs=dr_kwargs)
+    if domain_rand:
+        print(f"[domain-rand] on, strength {k:g}: friction x{dr_kwargs['friction']}, "
+              f"mass x{dr_kwargs['mass']}, kp x{dr_kwargs['kp']}, kv x{dr_kwargs['kv']}, "
+              f"obs noise {dr_kwargs['obs_noise']:g}, action delay p={dr_kwargs['action_delay_prob']:.2f}, "
+              f"push {dr_kwargs['push_vel']:.2f} m/s")
+    else:
+        print("[domain-rand] OFF -- policy will be fitted to MuJoCo exactly and is unlikely to transfer")
     cfg = PPOConfig(steps_per_env=args.steps, lr=args.lr, desired_kl=args.desired_kl,
                     entropy_coef=args.entropy_coef)
     ppo = PPO(env.obs_dim, env.A, args.num_envs, device, cfg)

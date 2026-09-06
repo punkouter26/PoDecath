@@ -11,13 +11,15 @@ from __future__ import annotations
 import json
 import math
 import os
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import mujoco
 import mujoco_warp as mjw
 import numpy as np
 import torch
 import warp as wp
+
+from .domain_rand import DomainRandomizer
 
 
 def quat_rotate_inverse(q: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
@@ -41,7 +43,8 @@ class RunToTargetEnv:
     def __init__(self, xml_path: str, num_envs: int, device: str = "cuda", seed: int = 0,
                  control_decimation: int = 4, episode_len_s: float = 20.0, action_scale: float = 0.5,
                  target_speed: float = 3.5, target_dist: Tuple[float, float] = (6.0, 16.0),
-                 nconmax: int = 24, njmax: int = 96, verbose: bool = False):
+                 nconmax: int = 24, njmax: int = 96, verbose: bool = False,
+                 domain_rand: bool = True, dr_kwargs: Optional[dict] = None):
         wp.init()
         wp.config.verbose_warnings = verbose
         self.device = device
@@ -95,6 +98,10 @@ class RunToTargetEnv:
         self.gravity_world = torch.tensor([0.0, 0.0, -1.0], device=device).expand(N, 3)
         self._acc = {k: torch.zeros((), device=device) for k in
                      ("ret_sum", "len_sum", "fell_sum", "done_n", "v_sum", "reach_sum", "upright_sum", "steps")}
+
+        # Built before the first reset: `_apply_reset` resamples through it, so it has to exist by then.
+        self.dr = DomainRandomizer(self.mw, self.dw, num_envs, device, self.rng,
+                                   dt=self.dt, **(dr_kwargs or {})) if domain_rand else None
         self.reset()
 
     # ---- helpers -------------------------------------------------------------------------------
@@ -130,6 +137,8 @@ class RunToTargetEnv:
         self.episode_return = torch.where(mask, torch.zeros_like(self.episode_return), self.episode_return)
         self.episode_len = torch.where(mask, torch.zeros_like(self.episode_len), self.episode_len)
         self.targets = torch.where(m1, self._random_targets(q[:, :2]), self.targets)
+        if self.dr is not None:
+            self.dr.resample(mask)
 
     def reset(self) -> torch.Tensor:
         self._apply_reset(torch.ones(self.N, dtype=torch.bool, device=self.device))
@@ -160,15 +169,23 @@ class RunToTargetEnv:
                          self.qpos[:, 7:] - self.default_joint,
                          self.qvel[:, 6:],
                          self.last_action], dim=-1)
+        if self.dr is not None:
+            obs = self.dr.noisy(obs, self.A)
         return torch.nan_to_num(obs).clamp(-100.0, 100.0)
 
     # ---- step ----------------------------------------------------------------------------------
     def step(self, action: torch.Tensor):
         action = action.clamp(-5.0, 5.0)
+        # The observation reports what the policy asked for; the actuators may be handed last step's
+        # command instead. Unity's read -> infer -> write loop cannot land a target sooner than the
+        # next physics tick, so a zero-latency trainer is training against a loop that does not exist.
+        applied = self.dr.delay(action, self.last_action) if self.dr is not None else action
         self.prev_action = self.last_action
         self.last_action = action
-        target = (self.default_joint + action * self.action_scale).clamp(self.ctrl_lo, self.ctrl_hi)
+        target = (self.default_joint + applied * self.action_scale).clamp(self.ctrl_lo, self.ctrl_hi)
         self.ctrl.copy_(target)
+        if self.dr is not None:
+            self.dr.maybe_push(self.qvel)
         for _ in range(self.decimation):
             mjw.step(self.mw, self.dw)
         self.step_count = self.step_count + 1.0
