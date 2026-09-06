@@ -82,6 +82,15 @@ def main() -> None:
     ap.add_argument("--dr-strength", type=float, default=1.0,
                     help="scales every randomisation range about its nominal value. 0 is equivalent to "
                          "--no-domain-rand; 2 doubles every spread.")
+    ap.add_argument("--dr-ramp-iters", type=int, default=2000,
+                    help="iterations over which randomisation ramps from --dr-start-strength to full. "
+                         "Randomisation makes the task harder, and get-up at full strength from the "
+                         "first step converges on lying still rather than standing (measured: return "
+                         "23 -> 484 while stood fell 0.15 -> 0.07). Ramping lets the policy learn to "
+                         "stand in near-nominal physics first and hardens it afterwards. 0 disables "
+                         "the ramp.")
+    ap.add_argument("--dr-start-strength", type=float, default=0.15,
+                    help="randomisation strength at iteration 0, as a fraction of --dr-strength.")
     ap.add_argument("--keep-old-runs", action="store_true")
     ap.add_argument("--no-tensorboard", action="store_true")
     ap.add_argument("--unity-policies", default=os.path.join(HERE, "..", "Assets", "Policies"))
@@ -118,10 +127,12 @@ def main() -> None:
     env = env_cls(args.xml, args.num_envs, device=device, seed=args.seed, target_speed=args.target_speed,
                   domain_rand=domain_rand, dr_kwargs=dr_kwargs)
     if domain_rand:
-        print(f"[domain-rand] on, strength {k:g}: friction x{dr_kwargs['friction']}, "
+        ramp = (f"ramping {args.dr_start_strength:g} -> 1 over {args.dr_ramp_iters} iters"
+                if args.dr_ramp_iters > 0 else "no ramp, full from iteration 0")
+        print(f"[domain-rand] on, full strength {k:g} ({ramp}): friction x{dr_kwargs['friction']}, "
               f"mass x{dr_kwargs['mass']}, kp x{dr_kwargs['kp']}, kv x{dr_kwargs['kv']}, "
               f"obs noise {dr_kwargs['obs_noise']:g}, action delay p={dr_kwargs['action_delay_prob']:.2f}, "
-              f"push {dr_kwargs['push_vel']:.2f} m/s")
+              f"push {dr_kwargs['push_vel']:.2f} m/s -- these are the values at full strength")
     else:
         print("[domain-rand] OFF -- policy will be fitted to MuJoCo exactly and is unlikely to transfer")
     cfg = PPOConfig(steps_per_env=args.steps, lr=args.lr, desired_kl=args.desired_kl,
@@ -147,6 +158,11 @@ def main() -> None:
     print(f"obs_dim={env.obs_dim} act_dim={env.A} envs={args.num_envs} control_dt={env.dt:.3f}s")
     for it in range(start_iter, args.iters):
         t0 = time.time()
+        if env.dr is not None:
+            # Ramp the randomisation rather than applying it all at once; see --dr-ramp-iters.
+            frac = 1.0 if args.dr_ramp_iters <= 0 else min(1.0, it / float(args.dr_ramp_iters))
+            env.dr.set_strength(args.dr_strength *
+                                (args.dr_start_strength + (1.0 - args.dr_start_strength) * frac))
         with torch.no_grad():
             for _ in range(args.steps):
                 act = ppo.act(obs)
@@ -164,6 +180,8 @@ def main() -> None:
         for k, v in stats.items():
             writer.add_scalar(f"ppo/{k}", v, it)
         writer.add_scalar("perf/fps", fps, it)
+        if env.dr is not None:
+            writer.add_scalar("env/dr_strength", env.dr.strength, it)
         if it % 10 == 0:
             el = time.time() - t_start
             # The get-up task has nothing to run toward, so it prints what it is actually doing instead.

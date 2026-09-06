@@ -60,12 +60,16 @@ class DomainRandomizer:
                  obs_noise: float = 1.0, action_delay_prob: float = 0.15,
                  push_interval_s: float = 2.0, push_vel: float = 0.6, dt: float = 0.02):
         self.mw, self.dw, self.N, self.device, self.rng = mw, dw, num_envs, device, rng
-        self.friction_rng, self.mass_rng = friction, mass
-        self.kp_rng, self.kv_rng = kp, kv
-        self.obs_noise = obs_noise
-        self.action_delay_prob = action_delay_prob
+        # Full-strength targets. `strength` interpolates between "nominal model" and these; see
+        # set_strength for why that dial exists.
+        self._friction_full, self._mass_full = friction, mass
+        self._kp_full, self._kv_full = kp, kv
+        self._obs_noise_full = obs_noise
+        self._delay_full = action_delay_prob
+        self._push_full = push_vel
         self.push_every = max(1, int(round(push_interval_s / dt)))
-        self.push_vel = push_vel
+        self.strength = 1.0
+        self._apply_strength()
 
         # Expand the shared (world-axis == 1) model fields to one row per environment. Keep a reference
         # to every tensor handed to warp: `wp.from_torch` does not take ownership, so dropping these
@@ -85,6 +89,34 @@ class DomainRandomizer:
 
         self._step = 0
         self.resample(torch.ones(num_envs, dtype=torch.bool, device=device))
+
+    # ---- strength ------------------------------------------------------------------------------
+    def set_strength(self, s: float) -> None:
+        """Scale every range between "nominal model" (0) and the configured spread (1).
+
+        Randomisation is not free: it makes the task harder, and a task that is too hard at the start
+        is not learned slowly, it is learned wrongly. Get-up has a well-documented local optimum --
+        lie still in the most upright posture the body can hold and collect shaping reward forever --
+        and full-strength randomisation from the first step walks straight into it. Measured on this
+        rig: return climbed 23 -> 484 over 300 iterations while `stood` *fell* from 0.15 to 0.07 and
+        the action noise collapsed from 0.80 to 0.67, which is that optimum exactly.
+
+        So the policy learns to stand in near-nominal physics first and is hardened afterwards. The
+        trainer moves this each iteration.
+        """
+        self.strength = max(0.0, float(s))
+        self._apply_strength()
+
+    def _apply_strength(self) -> None:
+        k = self.strength
+        lerp = lambda rng: (1.0 - (1.0 - rng[0]) * k, 1.0 + (rng[1] - 1.0) * k)
+        self.friction_rng = lerp(self._friction_full)
+        self.mass_rng = lerp(self._mass_full)
+        self.kp_rng = lerp(self._kp_full)
+        self.kv_rng = lerp(self._kv_full)
+        self.obs_noise = self._obs_noise_full * k
+        self.action_delay_prob = self._delay_full * k
+        self.push_vel = self._push_full * k
 
     # ---- setup ---------------------------------------------------------------------------------
     def _expand(self, field: str) -> torch.Tensor:
