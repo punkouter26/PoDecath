@@ -29,15 +29,36 @@ namespace PoDecath.UI
         /// Shows or hides the whole screen. Used by the results card, which takes the live HUD and the
         /// broadcast overlay off the picture while it is up — a feed that is still counting metres over a
         /// finished race is the clearest way to look unfinished.
+        ///
+        /// Toggles the element the UXML calls "root", not the document's own root. They are not the same
+        /// thing: UIDocument wraps every tree in a container of its own, so setting display on that
+        /// container leaves the authored root untouched — and any screen whose UXML starts life with the
+        /// hidden class stays hidden however many times it is shown. That is exactly how the diagnostics
+        /// panel came to report itself visible while drawing nothing at all.
         /// </summary>
         public void SetScreenVisible(bool visible)
         {
-            if (Root == null) return;
-            Root.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            VisualElement target = ScreenRoot;
+            if (target == null) return;
+            target.EnableInClassList("hidden", !visible);
+            target.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         /// <summary>Whether the screen is currently on the picture.</summary>
-        public bool ScreenVisible => Root != null && Root.style.display != DisplayStyle.None;
+        public bool ScreenVisible
+        {
+            get
+            {
+                VisualElement target = ScreenRoot;
+                return target != null && !target.ClassListContains("hidden") && target.style.display != DisplayStyle.None;
+            }
+        }
+
+        /// <summary>
+        /// The authored root of this screen, falling back to the document's own if it has none.
+        /// Not named "Screen": that shadows UnityEngine.Screen, which this class reads for the safe area.
+        /// </summary>
+        VisualElement ScreenRoot => Root?.Q<VisualElement>("root") ?? Root;
 
         VisualElement _safe;
         Rect _lastSafeArea;

@@ -31,7 +31,7 @@ namespace PoDecath.UI
         VisualElement _rootEl, _modal, _rows;
         Label _title, _subtitle;
         Button _again, _change;
-        bool _hidStats, _hidOverlay;
+        bool _hidStats, _hidHud, _hidOverlay;
 
         protected override void Build()
         {
@@ -132,11 +132,15 @@ namespace PoDecath.UI
             if (!visible)
             {
                 _hidStats = hud != null && hud.StatsOpen;
+                _hidHud = hud != null && hud.ScreenVisible;
                 _hidOverlay = overlay != null && overlay.ScreenVisible;
-                if (hud != null) hud.SetStatsVisible(false);
+                // The whole HUD, not just the stats card. A Restart button sitting under a modal scrim is
+                // dimmed but still plainly there, and a control you can see and cannot press reads as a bug.
+                if (hud != null) hud.SetScreenVisible(false);
                 if (overlay != null) overlay.SetScreenVisible(false);
                 return;
             }
+            if (hud != null && _hidHud) hud.SetScreenVisible(true);
             if (hud != null && _hidStats) hud.SetStatsVisible(true);
             if (overlay != null && _hidOverlay) overlay.SetScreenVisible(true);
         }

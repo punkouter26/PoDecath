@@ -181,7 +181,14 @@
     transition-timing-function: ease-in-out;
 }
 
-.order-row--lead { background-color: var(--row-lead); }
+.order-row--lead {
+    /* Marked with an accent edge rather than a lighter fill. Lightening the leader's row is the one change
+       that hurts exactly the text it is meant to emphasise: an athlete colour is picked to read against
+       asphalt, and green or yellow on a pale strip is the least legible row on the board. */
+    background-color: rgba(46, 191, 140, 0.14);
+    border-left-width: 4px;
+    border-left-color: var(--accent);
+}
 .order-row--gained { background-color: rgba(46, 191, 140, 0.28); }
 .order-row--lost { background-color: rgba(255, 108, 92, 0.22); }
 
@@ -213,6 +220,10 @@
     background-color: var(--overlay);
     border-radius: var(--radius-sm);
     padding: var(--gap-2) var(--gap-3);
+    /* Clears the HUD's control bar. That bar lives in a different UIDocument, so its height cannot be
+       measured from here — it is one 88 px button plus the bar's own padding, and this is that plus room
+       to breathe. Without it the lower third is drawn underneath the buttons and half a name shows. */
+    margin-bottom: 136px;
     /* Wipes in from the left rather than fading: it is a graphic being pushed on, not a ghost. */
     transition-property: opacity, translate;
     transition-duration: 0.24s;
