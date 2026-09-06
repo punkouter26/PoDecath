@@ -1,44 +1,47 @@
 """Domain randomisation for the MuJoCo Warp tasks.
 
-Why this exists
----------------
-Every policy in this project is trained in MuJoCo and executed in Unity on PhysX. Until this module
-existed the training side had *no* randomisation at all: one friction value, one mass set, one pair of
-PD gains, noiseless observations and a zero-latency control loop. A policy trained that way is not
-learning to stand up, it is learning to stand up *in MuJoCo* -- and the measured result was exactly
-that. `athlete_getup.onnx` holds a stand in essentially every MuJoCo episode and, dropped into Unity,
-drives uprightness from 0.03 to about 0.35 and falls back down.
+Why this exists -- and what it is *not* for
+-------------------------------------------
+Every policy here is trained in MuJoCo and executed in Unity on PhysX, and until this module existed
+the training side had no randomisation at all: one friction value, one mass set, one pair of PD gains,
+noiseless observations and a control loop with zero latency. That is worth fixing on its own terms. A
+policy that has only ever felt one set of dynamics treats its actuators as exact rather than closing
+the loop on feedback, and the Isaac Lab twin of this same body has always randomised friction, mass,
+pushes and observation noise (see AGENTS.md) while the MuJoCo run had none.
 
-Get-up is the task where this bites hardest, and not by accident. A running policy spends its life with
-two feet on the deck; a get-up starts with a whole humanoid lying on it -- torso, both arms, both legs,
-head -- and every newton it uses to leave the floor is routed through a contact. Contact is precisely
-where MuJoCo's soft constraint solver and PhysX's iterative rigid solver disagree most, so the get-up
-policy is the one most tightly overfitted to its trainer.
+This module was originally written to fix something else, and that reason was wrong. The project's
+headline open item was that `athlete_getup.onnx` "does not transfer" to PhysX, and this looked like
+the textbook cause. It was not. Measured afterwards with the same policy, on a supine athlete in
+RooftopRace: peak uprightness 0.947, stand held for 7.44 s out of 8. The policy had always transferred.
+What failed was RecoveryController, whose floor raycast hit the athlete's own chest collider and so
+could never satisfy its standing test -- it booked a DNF for every athlete that stood up. One layer
+mask.
+
+So: randomisation here buys robustness margin. It is not load bearing for sim-to-sim transfer on this
+rig, and a run that omits it is not thereby broken. Reach for it when a policy needs to survive
+dynamics it has not seen, not as a reflex when something downstream looks wrong -- measure first.
 
 What is randomised, and why each one earns its place
 ----------------------------------------------------
-* **PD gains (kp, kv)** -- the single most important term for this project. MuJoCo drives joints with a
-  `<position>` actuator; Unity drives them with an `ArticulationDrive` in Force mode, whose stiffness is
-  per-radian and therefore nominally the same number. "Nominally" is doing real work in that sentence:
-  MuJoCo integrates actuator damping implicitly (`implicitfast`), PhysX does not, and at the gains this
-  rig uses -- kp 200, kv 10 on the hips and knees -- that is a visible difference in how hard a joint
-  actually pulls. A policy that has only ever felt one gain set treats its actuators as exact; one
-  trained across a spread has to close the loop with feedback instead.
-* **Sliding friction** -- a get-up is a sequence of pushes against the floor. MuJoCo's friction pyramid
-  and PhysX's average-combine of two 1.0 materials are not the same contact.
-* **Body mass** -- cheap insurance against inertia and centre-of-mass differences between the MJCF and
-  the imported ArticulationBody chain.
+* **PD gains (kp, kv)** -- MuJoCo drives joints with a `<position>` actuator and Unity with an
+  `ArticulationDrive` in Force mode, whose stiffness is per-radian and therefore nominally the same
+  number. MuJoCo integrates actuator damping implicitly (`implicitfast`) and PhysX does not, so at the
+  gains this rig uses -- kp 200, kv 10 on the hips and knees -- the two differ in how hard a joint
+  actually pulls.
+* **Sliding friction** -- a get-up is a sequence of pushes against the floor, and MuJoCo's friction
+  pyramid is not PhysX's average-combine of two 1.0 materials.
+* **Body mass** -- inertia and centre-of-mass differences between the MJCF and the imported
+  ArticulationBody chain.
 * **Action latency** -- Unity reads joint state, runs inference, then writes drive targets, and the
-  result lands on the next physics tick. The trainer applied actions instantly. A policy tuned on a
-  zero-latency loop can rely on reactions the real loop cannot deliver.
+  result lands on the next physics tick. The trainer applied actions instantly.
 * **Observation noise** -- ArticulationBody joint velocities are differentiated by the solver and are
-  measurably noisier than MuJoCo's `qvel`. Noiseless training produces policies that trust velocity.
-* **Pushes** -- an unmodelled shove is the cheapest proxy there is for "the dynamics are not what you
-  think", and it is what stops a policy from riding one exact trajectory.
+  measurably noisier than MuJoCo's `qvel`.
+* **Pushes** -- the cheapest proxy for "the dynamics are not what you think", and what stops a policy
+  riding one exact trajectory.
 
-Everything is per-environment and resampled on reset, so a single training run covers the spread rather
-than visiting one point of it per run. `mujoco_warp` stores model fields with a leading world axis
-(size 1 when shared); expanding that axis to `num_envs` is what makes per-env physics possible at all.
+Everything is per-environment and resampled on reset, so one run covers the spread rather than visiting
+one point of it. `mujoco_warp` stores model fields with a leading world axis (size 1 when shared);
+expanding that axis to `num_envs` is what makes per-env physics possible at all.
 """
 from __future__ import annotations
 

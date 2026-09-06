@@ -155,8 +155,20 @@ reported a five-second stand from an athlete that had never left its feet: heigh
 measured in world space on a roof 25 m up, and the hands-off lap scene kept resetting the body
 mid-measurement.
 
-Measured baseline, pre-randomisation `athlete_getup.onnx`, from a flat supine start (upright
-0.000): peak uprightness **0.074** over 8 s, never stands.
+Measured, `athlete_getup.onnx` as shipped, from a flat supine start (upright 0.051) in
+`RooftopRace`: **peak uprightness 0.947, stand held 7.44 s of 8**. The policy transfers to PhysX and
+always did. The long-standing "does not transfer" open item was `RecoveryController.FloorY` casting a
+ray down from above the pelvis with mask `~0`, hitting the athlete's own chest collider, and so never
+satisfying its own standing test -- so every athlete that got up was still booked as a DNF at the
+give-up timeout. Fixed with a layer mask; before/after through the controller reads recoveries 0 ->
+recoveries 3.
+
+Two lessons in that, both of which this probe learned by getting them wrong first. Silencing the race
+events leaves a fallen runner switched off, because the events own `PolicyRunner.enabled` and only
+switch an RL athlete on when the countdown ends -- so an unguarded probe measures passive ragdoll and
+reports it as a result. And disabling a MonoBehaviour does not stop its coroutines, so the race setup
+will stand an athlete back up after you have laid it down. The probe now refuses to report unless the
+policy actually stepped and the intended model actually drove the body.
 
 ## Dropping in a new checkpoint
 

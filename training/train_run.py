@@ -145,7 +145,9 @@ def main() -> None:
               f"obs noise {dr_kwargs['obs_noise']:g}, action delay p={dr_kwargs['action_delay_prob']:.2f}, "
               f"push {dr_kwargs['push_vel']:.2f} m/s -- these are the values at full strength")
     else:
-        print("[domain-rand] OFF -- policy will be fitted to MuJoCo exactly and is unlikely to transfer")
+        print("[domain-rand] OFF -- policy is fitted to MuJoCo exactly. That is a robustness choice, "
+              "not a broken run: the get-up policy trained this way was measured getting a supine "
+              "athlete up in Unity and holding the stand for 7.4 s of 8.")
     cfg = PPOConfig(steps_per_env=args.steps, lr=args.lr, desired_kl=args.desired_kl,
                     entropy_coef=args.entropy_coef)
     ppo = PPO(env.obs_dim, env.A, args.num_envs, device, cfg)
