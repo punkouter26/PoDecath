@@ -45,9 +45,21 @@ Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
 
 ## Known gaps
 
-- Get-up policy trained (`--task getup`). A fallen RL athlete now switches to it and tries to rejoin the
-  race; it is only a DNF once `RecoveryController` gives up. How well it actually recovers is a question
-  about the policy, not the plumbing — watch `env/hold_frac` on the training run.
+- **Get-up transfers poorly from MuJoCo to PhysX, and this is the top open item.** The policy is good in
+  the trainer — 2400 iterations reach stood 1.00 / stand 0.78 / hold 0.59 at full difficulty — and the Unity
+  plumbing around it is verified in play mode: a fallen athlete hands control to `athlete_getup.onnx`,
+  `RecoveryController` runs its state machine, and a failed attempt becomes a DNF without stalling the race.
+  But measured in the editor, the policy takes uprightness from 0.03 to roughly 0.35 and falls back; it
+  never completes the stand.
+
+  Getting up is the worst possible case for sim-to-sim transfer, because the entire motion is ground
+  contact: friction, contact stiffness and how a many-limbed body resting on a surface is solved. The
+  running policies transfer because a runner is airborne or on one foot most of the time and barely
+  touches the regime where the two engines disagree. Things to try, roughly in order of expected value:
+  domain randomisation over friction and contact parameters during training (Isaac's transfer only worked
+  once randomisation was added, per `DOCS/COMPARISON.md`); matching PhysX's solver iteration count and the
+  foot `PhysicsMaterial` to the MJCF's contact parameters; and checking the articulation drive gains hold
+  up under the sustained high torque a get-up needs, which is a very different load from running.
 - **No athlete can clear a hurdle.** The hurdles event is playable and physical — 0.762 m bars on 9 kg
   frames that topple when hit, knocks counted per runner and shown on the results board — but every
   policy runs straight into them. Measured over a 3-strong RL field before the get-up policy existed: all
