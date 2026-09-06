@@ -279,7 +279,7 @@ function Resolve-Device($adb) {
     return $serials[0]
 }
 
-function Shot($adb, $serial, $name) {
+function Shot($adb, $serial, $name, $quiet = $false) {
     $remote = "/sdcard/podecath-shot.png"
     # Via a file on the device rather than `exec-out ... > file`: PowerShell's redirection is text, and
     # a PNG through it comes out corrupt in a way that is not obvious until you try to open it.
@@ -287,7 +287,7 @@ function Shot($adb, $serial, $name) {
     $local = Join-Path $ShotDir "$name.png"
     & $adb -s $serial pull $remote $local 2>&1 | Out-Null
     & $adb -s $serial shell rm -f $remote | Out-Null
-    if (Test-Path $local) { Ok "screenshot: $local" } else { Warn "screenshot '$name' failed" }
+    if (Test-Path $local) { if (-not $quiet) { Ok "screenshot: $local" } } else { Warn "screenshot '$name' failed" }
 }
 
 # ---------------------------------------------------------------- go
@@ -331,6 +331,43 @@ Say "Launching"
 Start-Sleep -Seconds 12
 Shot $adb $serial "01-menu"
 
+$fail = @()
+
+# The panel is 1080x1920 with match 0.5, so one reference pixel is this many device pixels. Both the
+# START tap and the DEBUG tap below are computed from it rather than hardcoded for one phone.
+$wm = (& $adb -s $serial shell wm size) -replace '.*:\s*',''
+$sw, $sh = $wm.Trim() -split 'x' | ForEach-Object { [int]$_ }
+$scale = [Math]::Pow(2, (([Math]::Log($sw / 1080.0, 2)) + ([Math]::Log($sh / 1920.0, 2))) / 2)
+
+# Press START, because the game opens on the event picker and waits. Without this the app sits on the
+# menu for the whole run, no race is ever run, no agent is ever sampled, and the telemetry export is
+# empty - which is exactly how v0.1.4 was "verified".
+#
+# The tap is verified rather than assumed. START is 112 reference pixels tall sitting 144 above the
+# bottom of the safe area, and the safe area's bottom inset is the gesture bar, whose height this script
+# cannot know - so a single computed point can miss low on a device with a tall inset. Each candidate is
+# tried and the screen is compared against the menu: if the picture has not changed, the tap missed and
+# the next candidate is tried. A race that never starts is a failure, not a quiet no-op.
+Say "Starting the race"
+$menuHash = (Get-FileHash (Join-Path $ShotDir "01-menu.png")).Hash
+$started = $false
+foreach ($dy in 200, 260, 150, 320) {
+    $tapY = [int]($sh - $dy * $scale)
+    & $adb -s $serial shell input tap ([int]($sw / 2)) $tapY | Out-Null
+    Start-Sleep -Seconds 6
+    Shot $adb $serial "02-running" $true
+    if ((Get-FileHash (Join-Path $ShotDir "02-running.png")).Hash -ne $menuHash) {
+        Ok "START took at y = $tapY"
+        $started = $true
+        break
+    }
+    Warn "tap at y = $tapY did not change the screen; trying higher"
+}
+if (-not $started) {
+    Warn "START never took, so no race ran and there will be nothing to export."
+    $fail += "the race never started (START tap missed on every candidate)"
+}
+
 Say "Running for $RunSeconds s"
 Start-Sleep -Seconds ([Math]::Max(1, $RunSeconds - 12))
 Shot $adb $serial "02-running"
@@ -346,9 +383,6 @@ Shot $adb $serial "02-running"
 # the device reports a bottom safe-area inset, which shifts the whole row up by the height of the gesture
 # bar and is the difference between opening the sheet and pressing the home gesture.
 Say "Opening the DEBUG sheet"
-$wm = (& $adb -s $serial shell wm size) -replace '.*:\s*',''
-$sw, $sh = $wm.Trim() -split 'x' | ForEach-Object { [int]$_ }
-$scale = [Math]::Pow(2, (([Math]::Log($sw / 1080.0, 2)) + ([Math]::Log($sh / 1920.0, 2))) / 2)
 $tapX = [int](106 * $scale)
 $tapY = [int]($sh - (92 * $scale))
 & $adb -s $serial shell input tap $tapX $tapY | Out-Null
@@ -369,7 +403,7 @@ Ok "log: $RunLog"
 
 # ---------------------------------------------------------------- verify
 
-$fail = @()
+# $fail was opened before the run, so a race that never started is already recorded in it.
 
 $exceptions = Select-String -Path $RunLog -Pattern "(AndroidRuntime: FATAL|Unhandled Exception|NullReferenceException|Exception: )" -ErrorAction SilentlyContinue
 if ($exceptions) {

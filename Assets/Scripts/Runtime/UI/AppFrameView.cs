@@ -25,9 +25,11 @@ namespace PoDecath.UI
     {
         /// <summary>
         /// The height of one frame row in reference pixels, matching <c>.frame-row</c> in Theme.uss.
-        /// Published so the screens that have to keep out of the frame's way — the HUD's control bar, the
-        /// broadcast lower third — can be pushed clear by this rather than by a literal copied into each
-        /// of them and then forgotten when the frame changes height.
+        ///
+        /// The clearance itself is applied in USS, by the <c>--frame-clear</c> token that
+        /// <c>.setup</c>, <c>.control-bar</c> and <c>.lower-third</c> pad themselves by; a C# constant
+        /// cannot reach a stylesheet. This is here for code that has to reason about the frame's height —
+        /// and as the number to change in both places together, because they cannot check each other.
         /// </summary>
         public const float RowHeight = 112f;
 

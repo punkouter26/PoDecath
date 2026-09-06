@@ -65,6 +65,13 @@
     --gap-4:          32px;
     --gap-5:          48px;
 
+    /* The frame's row height (AppFrameView.RowHeight) and that plus a gap, which is what any screen
+       anchoring content to the bottom of the display has to pad itself by to stay out from under DEBUG
+       and the version. It is a token because three screens need it and the frame is in a different
+       UIDocument, so none of them can measure it. */
+    --frame-row:     112px;
+    --frame-clear:   144px;
+
     --radius:         12px;
     --radius-sm:       8px;
 }
@@ -232,10 +239,11 @@
     background-color: var(--overlay);
     border-radius: var(--radius-sm);
     padding: var(--gap-2) var(--gap-3);
-    /* Clears the HUD's control bar. That bar lives in a different UIDocument, so its height cannot be
-       measured from here — it is one 88 px button plus the bar's own padding, and this is that plus room
-       to breathe. Without it the lower third is drawn underneath the buttons and half a name shows. */
-    margin-bottom: 136px;
+    /* Clears the HUD's control bar, which lives in a different UIDocument so its height cannot be
+       measured from here — one 88 px button plus the bar's own padding, plus room to breathe. Without it
+       the lower third is drawn underneath the buttons and half a name shows. The bar now also pads
+       itself clear of the frame, so this has to clear both. */
+    margin-bottom: 248px;
     /* Wipes in from the left rather than fading: it is a graphic being pushed on, not a ghost. */
     transition-property: opacity, translate;
     transition-duration: 0.24s;
@@ -278,6 +286,8 @@
     flex-direction: row;
     align-items: center;
     padding: var(--gap-2);
+    /* Same reason as .setup: this bar sits on the bottom edge, and the frame's bottom row is over it. */
+    padding-bottom: var(--frame-clear);
 }
 
 .control-bar .btn { flex-grow: 1; margin-left: var(--gap-1); margin-right: var(--gap-1); }
@@ -328,7 +338,10 @@
 
 /* ------------------------------------------------------------------ setup menu */
 
-.setup { padding: var(--gap-4); flex-grow: 1; }
+/* The bottom padding clears the frame. START is the last thing in this column and is anchored to the
+   bottom of a tall screen, so without it the button is drawn under DEBUG and the version number - which
+   is exactly how it shipped in v0.1.4. */
+.setup { padding: var(--gap-4); padding-bottom: var(--frame-clear); flex-grow: 1; }
 
 .event-grid { flex-direction: row; flex-wrap: wrap; margin-bottom: var(--gap-3); }
 
@@ -417,9 +430,13 @@
  *
  * Five fixed positions that every screen shares: name, frame rate, MENU, DEBUG, version. Both rows are
  * absolute so the frame never reflows the screen underneath it, and both are 112 px tall — an 80 px
- * touch target plus 16 px of padding either side. AppFrameView publishes that number as RowHeight, and
- * the HUD's control bar and the broadcast lower third are pushed clear of it by that much rather than by
- * a literal copied into three files.
+ * touch target plus 16 px of padding either side.
+ *
+ * Because the rows are absolute, nothing moves out of their way on its own: any screen that anchors
+ * content to the bottom of the display has to pad itself by --frame-clear, and .setup, .control-bar and
+ * .lower-third all do. That is not a style preference. v0.1.4 shipped with the setup screen's START
+ * button drawn underneath DEBUG and the version number, because this file asserted the clearance existed
+ * and no rule anywhere applied it.
  */
 
 .frame-row {
