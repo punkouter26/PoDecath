@@ -258,11 +258,16 @@ namespace PoDecath.Sim
             Set(_abdX, Mathf.Clamp(-0.4f * roll, -0.3f, 0.3f));
 
             // ---- arms, antiphase to the leg on the same side ----
+            //
+            // Swung about the rest pose, not about zero. The MJCF keyframe stands this athlete with
+            // shoulder_x at -1.36 and +1.36 -- arms down by the sides -- and zero is the T-pose. Writing
+            // a bare sine into those joints therefore held the bot in a T-pose for every frame the gait
+            // ran, which is exactly how it looked on screen and which no number in the probe reported.
             float swingL = Mathf.Sin(phaseL * 2f * Mathf.PI);
-            Set(_shXL, -armSwing * swingL);
-            Set(_shXR, armSwing * swingL);          // mirrored range; opposite sign is the same motion
-            Set(_elbL, -elbowBend);
-            Set(_elbR, elbowBend);
+            Set(_shXL, Default(_shXL) - armSwing * swingL);
+            Set(_shXR, Default(_shXR) + armSwing * swingL);   // mirrored range; opposite sign, same motion
+            Set(_elbL, Default(_elbL) - elbowBend * 0.3f);
+            Set(_elbR, Default(_elbR) + elbowBend * 0.3f);
 
             rig.ApplyTargets(_targets);
         }
@@ -331,5 +336,8 @@ namespace PoDecath.Sim
         {
             if (i >= 0 && i < _n) _targets[i] = radians;
         }
+
+        /// <summary>The rig's own rest angle for a joint, or 0 if it has no such joint.</summary>
+        float Default(int i) => i >= 0 && i < _n ? rig.DefaultPosition(i) : 0f;
     }
 }
