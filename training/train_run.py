@@ -75,7 +75,21 @@ def main() -> None:
                          "--speed-ramp-iters. Asking a humanoid for sprint pace from a standing start "
                          "trains falling over; asking for it gradually trains running.")
     ap.add_argument("--speed-ramp-iters", type=int, default=1500,
-                    help="iterations over which --target-speed reaches --target-speed-final.")
+                    help="iterations over which --target-speed reaches --target-speed-final. Ignored "
+                         "when --speed-adaptive is set.")
+    ap.add_argument("--speed-adaptive", action="store_true",
+                    help="raise the target speed only while the athlete is staying on its feet, and "
+                         "back off when it is not, instead of climbing on a fixed schedule. A clock "
+                         "does not know where the body's limit is: ramping 4.0 -> 7.0 linearly walked "
+                         "this rig off a cliff at about 5.5 m/s, where the fall rate went 0.04 -> 0.50 "
+                         "in one window and episodes halved. This searches for the fastest pace the "
+                         "policy can actually hold.")
+    ap.add_argument("--speed-fall-low", type=float, default=0.05,
+                    help="fall rate below which --speed-adaptive asks for more speed.")
+    ap.add_argument("--speed-fall-high", type=float, default=0.15,
+                    help="fall rate above which --speed-adaptive backs the target off.")
+    ap.add_argument("--speed-step", type=float, default=0.05,
+                    help="m/s the adaptive target moves per measured iteration.")
     ap.add_argument("--resume", default="")
     ap.add_argument("--save-every", type=int, default=50)
     ap.add_argument("--tb-port", type=int, default=6006)
@@ -176,7 +190,7 @@ def main() -> None:
         # which is precisely backwards: the reason to resume a competent policy is to harden it
         # gradually from where it is.
         run_it = it - start_iter
-        if args.target_speed_final > 0.0:
+        if args.target_speed_final > 0.0 and not args.speed_adaptive:
             frac = 1.0 if args.speed_ramp_iters <= 0 else min(1.0, run_it / float(args.speed_ramp_iters))
             env.target_speed = (args.target_speed +
                                 (args.target_speed_final - args.target_speed) * frac)
@@ -205,6 +219,17 @@ def main() -> None:
         if env.dr is not None:
             writer.add_scalar("env/dr_strength", env.dr.strength, it)
         writer.add_scalar("env/target_speed", env.target_speed, it)
+
+        # Adaptive speed curriculum. Only acts on iterations where episodes actually ended -- this task
+        # runs 20 s episodes that reset in lockstep, so most iterations report no completed episode and
+        # a fall rate of 0.0 that means "no data", not "nobody fell". Treating those as success would
+        # ratchet the target up every step regardless of what the body is doing.
+        if args.speed_adaptive and args.target_speed_final > 0.0 and s.get("ep_len_s", 0.0) > 0.0:
+            fr = s.get("fall_rate", 0.0)
+            if fr < args.speed_fall_low:
+                env.target_speed = min(args.target_speed_final, env.target_speed + args.speed_step)
+            elif fr > args.speed_fall_high:
+                env.target_speed = max(args.target_speed, env.target_speed - args.speed_step)
         if it % 10 == 0:
             el = time.time() - t_start
             # The get-up task has nothing to run toward, so it prints what it is actually doing instead.
