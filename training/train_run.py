@@ -64,7 +64,18 @@ def main() -> None:
     ap.add_argument("--iters", type=int, default=1500)
     ap.add_argument("--steps", type=int, default=24)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--target-speed", type=float, default=3.5)
+    ap.add_argument("--target-speed", type=float, default=3.5,
+                    help="speed the running reward is peaked at, in m/s. Note this is a target, not a "
+                         "floor: r_track is a Gaussian centred on it and r_prog is clamped to it, so "
+                         "the policy is rewarded for hitting this speed and gains nothing by exceeding "
+                         "it. 3.5 is why the RL athletes top out near 4.5 m/s while the heuristic bot "
+                         "runs 9.")
+    ap.add_argument("--target-speed-final", type=float, default=0.0,
+                    help="if > 0, ramp the target speed from --target-speed to this over "
+                         "--speed-ramp-iters. Asking a humanoid for sprint pace from a standing start "
+                         "trains falling over; asking for it gradually trains running.")
+    ap.add_argument("--speed-ramp-iters", type=int, default=1500,
+                    help="iterations over which --target-speed reaches --target-speed-final.")
     ap.add_argument("--resume", default="")
     ap.add_argument("--save-every", type=int, default=50)
     ap.add_argument("--tb-port", type=int, default=6006)
@@ -158,6 +169,10 @@ def main() -> None:
     print(f"obs_dim={env.obs_dim} act_dim={env.A} envs={args.num_envs} control_dt={env.dt:.3f}s")
     for it in range(start_iter, args.iters):
         t0 = time.time()
+        if args.target_speed_final > 0.0:
+            frac = 1.0 if args.speed_ramp_iters <= 0 else min(1.0, it / float(args.speed_ramp_iters))
+            env.target_speed = (args.target_speed +
+                                (args.target_speed_final - args.target_speed) * frac)
         if env.dr is not None:
             # Ramp the randomisation rather than applying it all at once; see --dr-ramp-iters.
             frac = 1.0 if args.dr_ramp_iters <= 0 else min(1.0, it / float(args.dr_ramp_iters))
@@ -182,6 +197,7 @@ def main() -> None:
         writer.add_scalar("perf/fps", fps, it)
         if env.dr is not None:
             writer.add_scalar("env/dr_strength", env.dr.strength, it)
+        writer.add_scalar("env/target_speed", env.target_speed, it)
         if it % 10 == 0:
             el = time.time() - t_start
             # The get-up task has nothing to run toward, so it prints what it is actually doing instead.
