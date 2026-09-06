@@ -94,15 +94,28 @@ class DomainRandomizer:
     def set_strength(self, s: float) -> None:
         """Scale every range between "nominal model" (0) and the configured spread (1).
 
-        Randomisation is not free: it makes the task harder, and a task that is too hard at the start
-        is not learned slowly, it is learned wrongly. Get-up has a well-documented local optimum --
-        lie still in the most upright posture the body can hold and collect shaping reward forever --
-        and full-strength randomisation from the first step walks straight into it. Measured on this
-        rig: return climbed 23 -> 484 over 300 iterations while `stood` *fell* from 0.15 to 0.07 and
-        the action noise collapsed from 0.80 to 0.67, which is that optimum exactly.
+        Randomisation is not free: every bit of it widens the distribution the policy has to solve,
+        and get-up is already a hard exploration problem. The shape of that problem is on record in
+        `training/logs/train_getup.log`, the run that produced the working MuJoCo policy:
 
-        So the policy learns to stand in near-nominal physics first and is hardened afterwards. The
-        trainer moves this each iteration.
+            iter  230   return  514   stood 0.03   action std 0.61     <- looks like failure
+            iter  590   return  928   stood 0.04   action std 0.87     <- entropy re-widens
+            iter  710   return 1141   stood 0.35
+            iter 1520   return 1774   stood 1.00   hold 0.13           <- breakthrough
+            iter 1880   return 2616   stood 1.00   hold 0.59
+
+        The first five hundred iterations *look* exactly like the lying-down local optimum -- return
+        climbing while the policy stands less and its action noise collapses -- and are not. That is
+        the task finding the basin before it finds the way out, and the escape depends on the entropy
+        bonus re-widening the policy around iteration 500-700.
+
+        That window is the reason for this dial. Full-strength randomisation applied across it is
+        noise added to the one phase that has to stay explorable. Ramping keeps the physics near
+        nominal while the policy learns to stand at all, then hardens it once standing is reliable.
+
+        (Read the log before concluding a run has failed. A run of this task was killed at iteration
+        330 on the belief that a falling `stood` meant the lying-down trap; the successful run's own
+        curve, quoted above, was lower at the same point.)
         """
         self.strength = max(0.0, float(s))
         self._apply_strength()

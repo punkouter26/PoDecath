@@ -8,7 +8,7 @@ using PoDecath.Sim;
 namespace PoDecath.UI
 {
     /// <summary>
-    /// The development main menu: checkpoint selector, arena picker, quality tier, frame-rate target, start.
+    /// The development main menu: checkpoint selector, quality tier, frame-rate target, start.
     ///
     /// The tier picker is new and is the one control here that is not a development convenience. The
     /// project ships two render pipeline assets with genuinely different budgets now — the mobile one at
@@ -18,9 +18,12 @@ namespace PoDecath.UI
     /// </summary>
     public class MainMenuView : UiRoot
     {
-        public string arenaSceneName = "Arena";
+        [UnityEngine.Serialization.FormerlySerializedAs("arenaSceneName")]
+        [Tooltip("Scene the Start button loads. RaceSetup is the game's entry point; this used to "
+               + "be the Go2 arena, which has been retired.")]
+        public string playSceneName = "RaceSetup";
 
-        DropdownField _policy, _arena, _tier;
+        DropdownField _policy, _tier;
         Toggle _fps60;
         Button _start;
         Label _info;
@@ -33,7 +36,6 @@ namespace PoDecath.UI
             Application.targetFrameRate = 60;
 
             _policy = Find<DropdownField>("policy");
-            _arena = Find<DropdownField>("arena");
             _tier = Find<DropdownField>("tier");
             _fps60 = Find<Toggle>("fps60");
             _start = Find<Button>("start");
@@ -56,11 +58,6 @@ namespace PoDecath.UI
                 _policy.choices = names;
                 _policy.index = Mathf.Clamp(SessionSettings.PolicyIndex, 0, names.Count - 1);
             }
-            if (_arena != null)
-            {
-                _arena.choices = new List<string> { "Flat Track", "Stepped Platforms", "Obstacle Lane" };
-                _arena.index = Mathf.Clamp((int)SessionSettings.Arena, 0, 2);
-            }
             if (_tier != null)
             {
                 _tier.choices = new List<string> { "Mobile (0.8 scale, 1 cascade)", "PC (MSAA 4x, SSAO, depth of field)" };
@@ -81,13 +78,12 @@ namespace PoDecath.UI
         public void StartSimulation()
         {
             SessionSettings.PolicyIndex = _policy != null ? Mathf.Max(0, _policy.index) : 0;
-            SessionSettings.Arena = _arena != null ? (ArenaType)Mathf.Max(0, _arena.index) : ArenaType.FlatTrack;
             SessionSettings.TargetFrameRate = _fps60 != null && _fps60.value ? 60 : 30;
             SessionSettings.Save();
             SessionSettings.ApplyQuality();
             RenderTier.Apply();
             Time.timeScale = 1f;
-            SceneManager.LoadScene(arenaSceneName);
+            SceneManager.LoadScene(playSceneName);
         }
     }
 }

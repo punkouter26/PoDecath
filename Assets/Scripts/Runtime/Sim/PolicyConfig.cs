@@ -15,7 +15,7 @@ namespace PoDecath.Sim
         [Tooltip("Upper limit, radians, external convention.")]
         public float upper;
         [Tooltip("Sign between the external joint angle and the Unity ArticulationBody angle. " +
-                 "-1 when the Unity joint axis is the reflected external axis (default for rigs built by QuadrupedFactory).")]
+                 "-1 when the Unity joint axis is the reflected external axis.")]
         public float sign;
         [Tooltip("Per-joint PD stiffness (N m / rad). 0 = use the config-wide value.")]
         public float stiffness;

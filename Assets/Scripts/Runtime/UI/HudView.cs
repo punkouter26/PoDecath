@@ -20,7 +20,6 @@ namespace PoDecath.UI
     public class HudView : UiRoot
     {
         [Header("Wiring")]
-        public EpisodeManager episodes;
         [Tooltip("When set, the HUD shows the event instead of the arena episode loop.")]
         public DashEvent dash;
         public PolicyRunner runner;
@@ -73,7 +72,6 @@ namespace PoDecath.UI
             Show(_stats, !handsOn);
             Show(_statsCard, !statsHiddenAtStart);
 
-            if (episodes != null) episodes.EpisodeEnded += OnEpisodeEnded;
             if (dash != null) dash.RaceFinished += OnRaceFinished;
             if (perturbation != null) perturbation.enabled = SessionSettings.PerturbationEnabled;
 
@@ -83,7 +81,6 @@ namespace PoDecath.UI
 
         void OnDisable()
         {
-            if (episodes != null) episodes.EpisodeEnded -= OnEpisodeEnded;
             if (dash != null) dash.RaceFinished -= OnRaceFinished;
         }
 
@@ -133,11 +130,6 @@ namespace PoDecath.UI
 
             if (runner != null)
                 SetText(_model, $"{runner.ModelName}  |  {(runner.config != null ? runner.config.ControlHz : 0f):F0} Hz");
-            if (episodes == null) return;
-            SetText(_speed, $"{episodes.Speed:F2} m/s");
-            SetText(_distance, $"{episodes.Distance:F1} m   {episodes.EpisodeTime:F1} s");
-            SetText(_stability, $"{episodes.Stability * 100f:F0} %");
-            SetText(_attempt, (episodes.EpisodeIndex + 1).ToString());
         }
 
         void OnRaceFinished(string summary)
@@ -150,13 +142,9 @@ namespace PoDecath.UI
                 : "Last: " + summary);
         }
 
-        void OnEpisodeEnded(EpisodeResult r) =>
-            SetText(_lastResult, $"Last: {r.reason}  {r.distance:F1} m in {r.duration:F1} s");
-
         void OnRestart()
         {
             if (dash != null) dash.RestartNow();
-            else if (episodes != null) episodes.RestartNow();
         }
 
         void SetSlowMo(bool slow)

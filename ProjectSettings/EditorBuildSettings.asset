@@ -12,9 +12,6 @@ EditorBuildSettings:
     path: Assets/Scenes/MainMenu.unity
     guid: 03d96bfca534d6e478a220db6c6fe2d2
   - enabled: 1
-    path: Assets/Scenes/Arena.unity
-    guid: 02b5256792c710b47bf7fbc8c3483694
-  - enabled: 1
     path: Assets/Scenes/Rooftop.unity
     guid: eae77106c088e1c49b6a134f6f9ef86b
   - enabled: 1

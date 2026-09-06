@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The development main menu: which checkpoint to run, which arena to run it in, and the frame-rate and
+    The development main menu: which checkpoint to run, and the frame-rate and
     quality-tier settings. This is the door into the Arena evaluation scene, not into the game — the game
     opens on RaceSetup.
 -->
@@ -21,7 +21,6 @@
                 <ui:DropdownField name="policy" class="label-small" style="margin-bottom: 24px;" />
 
                 <ui:Label class="label-micro" text="ARENA" style="margin-bottom: 8px;" />
-                <ui:DropdownField name="arena" class="label-small" style="margin-bottom: 24px;" />
 
                 <ui:Label class="label-micro" text="QUALITY TIER" style="margin-bottom: 8px;" />
                 <ui:DropdownField name="tier" class="label-small" style="margin-bottom: 24px;" />
