@@ -43,7 +43,7 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
 | 100 m dash event with RED heuristic bot and GREEN RL bot | `DashEvent.cs`, `AthleteSpawner.cs`, `HeuristicRunner.cs` | done |
 | Lap race around the roof loop (carrot follower + lap policy) | `TrackPath.cs`, `TrackFollower.cs`, `LapEvent.cs`, `training/envs/run_track.py`, menu `PoDecath/Build Rooftop Lap Scene` | done: 100 m lap in 25 s, no falls |
 | Balance / get-up policy: fallen-pose resets on a widening tilt curriculum, reward on uprightness then height then a one-second hold, timeout-only termination | `training/envs/get_up.py`, `train_run.py --task getup` | trains well **in MuJoCo**: 2400 iterations gives stood 1.00, standing 78% of steps, a held second 59% of steps, at full difficulty (flat on the back). Exports `Assets/Policies/athlete_getup.onnx` |
-| Recovery at runtime: a fallen athlete switches to the get-up policy and rejoins the race instead of taking a DNF; gives up after a timeout so a wedged body cannot stall the event | `RecoveryController.cs`, `PolicyRunner.recoveryModel`, `DashEvent.DetectFall` | plumbing verified end to end in play mode (fall -> get-up policy drives -> give-up -> DNF -> race continues). **The policy itself does not transfer yet**: in Unity it drives uprightness from 0.03 to about 0.35 and falls back, where in MuJoCo it stands every time. See the open item below |
+| Recovery at runtime: a fallen athlete switches to the get-up policy and rejoins the race instead of taking a DNF; gives up after a timeout so a wedged body cannot stall the event | `RecoveryController.cs`, `PolicyRunner.recoveryModel`, `DashEvent.DetectFall` | plumbing verified end to end in play mode (fall -> get-up policy drives -> give-up -> DNF -> race continues). **The policy itself does not transfer yet**, and it is now measured rather than watched: `PoDecath/Probe Get-Up Transfer` drops the athlete flat on its back (upright 0.000) and records every physics step. The pre-randomisation policy reaches a **peak uprightness of 0.074 over 8 s and never stands**. (The 0.35 quoted here previously came from a partially propped race fall, not a flat one.) Cause identified: the MuJoCo training had no domain randomisation at all, so the policy was fitted to one simulator -- see `training/envs/domain_rand.py` |
 | Long jump on an infield deck inside the loop (ProBuilder runway, board, recessed sand pit; sequential attempts, 3 rounds, best mark; broadcast cuts + results modal; picked from the setup menu) | `LongJumpBuilder.cs`, `LongJumpPit.cs`, `LongJumpEvent.cs`, menu `PoDecath/Build Long Jump Scene` | done: scene `Assets/Scenes/RooftopLongJump.unity`; take-off impulse scripted until a jump policy exists |
 | Lap distances: 400 m (4 laps) and 1500 m (15 laps), picked on the menu; one scene, `SessionSettings.Laps` | `LapEvent`, `RaceSetupController` | done |
 | Hurdles: 0.762 m bars on 9 kg toppling frames along the straights, knocks booked per runner | `HurdleSet.cs`, `Hurdle.cs` | playable; no policy clears one yet |
@@ -84,6 +84,15 @@ DOCS/                           this summary and the roadmap
   (TensorBoard opens on http://localhost:6006; stale runs are cleared first).
 - Train the get-up (exports `Assets/Policies/athlete_getup.onnx`):
   `.venv/Scripts/python.exe train_run.py --task getup --num-envs 4096 --iters 3000 --desired-kl 0.02 --entropy-coef 0.012`
+  Domain randomisation is on by default and ramps from `--dr-start-strength` to full over
+  `--dr-ramp-iters` (both curricula are measured from the start of *this* run, so a `--resume`
+  fine-tune ramps from where it is rather than starting already finished). Two things worth knowing
+  before reading a curve: the first ~500 iterations of a from-scratch get-up *look* like the
+  lying-down local optimum -- return climbing while `stood` falls and the action noise collapses --
+  and are not; the reference run in `training/logs/train_getup.log` sits at `stood` 0.03 at iteration
+  230 and reaches `stood` 1.00 by 1520. And randomising from scratch fights the entropy rebound that
+  escape depends on, so the cheaper route to a hardened policy is `--resume` from a checkpoint that
+  already stands and let the ramp harden it.
   The curriculum and the raised entropy are not optional garnish: trained against the full range of fallen
   poses at a default entropy, the policy converges on lying down well — return climbs while it never once
   holds a stand. Watch `env/hold_frac` in TensorBoard; that is the metric that means anything here.
@@ -96,6 +105,11 @@ DOCS/                           this summary and the roadmap
 - Surfaces, effects, look and UI panel: `PoDecath/Bake Surfaces`, `Bake Effects`, `Bake Look`, `Bake UI Panel`.
   Like the audio, the scene builders call these themselves; the menu items are for re-baking after a recipe
   changes. Every one of them is deterministic, so a re-bake does not churn the repository.
+- Measure, do not squint: `PoDecath/Sweep All Scenes` plays every scene in the build list and writes
+  `training/logs/scene_sweep.json` (errors, rigs bound, policies loaded, draw calls) plus a PNG each;
+  `PoDecath/Probe Get-Up Transfer` scores a recovery policy from a supine start into
+  `training/logs/getup_transfer.json`. Both run through the Unity CLI
+  (`unity command menu --path "..."`), so they work headless against the open editor.
 - Diagnostics: F3 in any scene opens the telemetry overlay (frame graph, draw calls, GC, memory, athletes,
   audio voices, crowd mood). It is the thing to open before believing any performance claim.
 - Long jump: menu `PoDecath/Build Long Jump Scene` (also rebuilds `RaceSetup.unity`), then play

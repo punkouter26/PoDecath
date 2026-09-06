@@ -21,8 +21,8 @@ Unity ML-Agents is not used and must not be added.
 Assets/
   Scripts/Runtime/Sim/      CoordinateTransform, PolicyConfig, PolicyLibrary, CreatureRig,
                             ObservationBuilder, PolicyRunner, VelocityCommandSource,
-                            EpisodeManager, ArenaGenerator, QuadrupedFactory, ArenaBootstrap,
-                            SessionSettings, FootContactSensor
+                            SessionSettings, FootContactSensor, RecoveryController,
+                            DashEvent, LapEvent, LongJumpEvent, HurdleSet, TrackPath
   Scripts/Runtime/UI/       UiRoot + MainMenuView, SetupView, HudView, BroadcastView, ResultsView,
                             TouchPerturbation
   Scripts/Runtime/Fx/       VfxBank, VfxLibrary, RaceVfx, FootstepDust, AthleteTrail, BlobShadow
@@ -33,11 +33,14 @@ Assets/
   UI/                       UXML layouts + Theme.uss (design tokens), PoDecathPanel, PoDecath.tss
   Scripts/Runtime/Camera/   CameraRig
   Scripts/Editor/           PoDecathSceneBuilder (menu PoDecath/Build Everything),
-                            PolicyLibraryTools (+ AssetPostprocessor)
-  Scenes/                   MainMenu.unity, Arena.unity (build list order)
+                            RooftopSceneBuilder, LongJumpBuilder, KartTrackBuilder, RaceUiBuilder,
+                            the *Bakery bakers, PolicyLibraryTools (+ AssetPostprocessor),
+                            SceneSweep + GetUpTransferProbe (measurement, see below)
+  Scenes/                   RaceSetup, MainMenu, Rooftop, RooftopLap, RooftopRace,
+                            RooftopLongJump (build list order)
   Policies/                 *.onnx checkpoints, Go2_Flat_PolicyConfig.asset,
                             Resources/PolicyLibrary.asset (auto-maintained)
-  Prefabs/Quadruped.prefab  12-DoF placeholder rig (Go2 proportions)
+  Models/                   WhiteHouse.glb, Athlete_Matt.glb, athlete.xml
   Models/                   Blender .glb skins (1 unit = 1 m, origins at joint pivots)
   Materials/                URP Lit materials wearing generated maps, Fx_* particle materials,
                             VfxBank, Foot.physicMaterial (mu = 1.0)
@@ -117,7 +120,7 @@ joints by GameObject name, so a Blender-skinned rig only has to keep these names
 | Control decimation | 4 (policy at 50 Hz) | `PolicyConfig.controlDecimation` |
 | Solver iterations | 8 position / 2 velocity | `Physics.default*` and `ArticulationBody.solverIterations` on the root |
 | PD gains (Go2) | Kp 25, Kd 0.5, torque limit 23.7 N m | `PolicyConfig` |
-| Friction | feet 1.0 / ground 1.0, average combine | `Foot.physicMaterial`, `ArenaGenerator.groundFriction` |
+| Friction | feet 1.0 / ground 1.0, average combine | `Foot.physicMaterial`, deck colliders |
 | Slow-mo | `Time.timeScale = 0.5` (fixed step unchanged) | `GameplayHUD` |
 
 `PolicyRunner.FixedUpdate` runs the policy on every `controlDecimation`-th physics step:
@@ -127,22 +130,33 @@ compute targets -> `ArticulationBody.SetDriveTarget`. Input tensor and all float
 allocated once in `Initialize`; the fixed-step path allocates nothing on the CPU backend.
 GPU backends work but the readback allocates.
 
-## Evaluation loop (zero interaction)
+## Measuring a policy in Unity
 
-`EpisodeManager` checks every physics step after `settleSteps`:
+Two editor tools, both driven from the `PoDecath` menu and both usable through the Unity CLI
+(`unity command menu --path "..."`). They exist because "I watched it in play mode" cannot say
+whether a change helped, and cannot be re-run against the next checkpoint.
 
-| Termination | Condition |
-|---|---|
-| Fell | `dot(base_up, world_up) < minUprightDot` (0.3) |
-| LowHeight | base height above local floor `< minBaseHeight` (0.12 m) |
-| OutOfBounds | base outside `ArenaGenerator.Bounds` |
-| TargetReached | horizontal distance to target marker `< targetReachRadius` (0.5 m) |
-| Timeout | `episodeSeconds` (20 s) |
+| Tool | Question it answers | Output |
+|---|---|---|
+| `PoDecath/Sweep All Scenes` | does every scene in the build list still play without throwing? | `training/logs/scene_sweep.json` + one PNG per scene |
+| `PoDecath/Probe Get-Up Transfer` | does the recovery policy get a supine athlete back on its feet? | `training/logs/getup_transfer.json` + a per-step CSV trace |
 
-On termination it records `EpisodeResult`, appends a row to
-`Application.persistentDataPath/podecath_eval.csv`, resets the rig (`TeleportRoot` + joint
-snap to defaults), samples a new target, and starts the next episode. `VelocityCommandSource`
-steers toward the target (`TowardTarget`), or use `Constant` / `RandomResample`.
+Both step play mode one `EditorApplication.Step()` per editor update and keep their state in
+`SessionState`. That is not fussiness: the Editor will not advance play-mode frames while
+unfocused, the Pipeline server aborts any main-thread call over five seconds, and entering play
+mode triggers a domain reload that wipes statics. Neither reports a frame rate, because under
+stepped play mode that number measures the stepping loop rather than the game -- use the F3
+overlay in a normal play session for frame timing.
+
+The probe is configured by `training/logs/getup_probe_config.json`
+(`scene`, `model`, `seconds`, `label`) and refuses to report at all if the athlete is not actually
+supine when its window opens. Both of those guards were added after its first run cheerfully
+reported a five-second stand from an athlete that had never left its feet: heights were being
+measured in world space on a roof 25 m up, and the hands-off lap scene kept resetting the body
+mid-measurement.
+
+Measured baseline, pre-randomisation `athlete_getup.onnx`, from a flat supine start (upright
+0.000): peak uprightness **0.074** over 8 s, never stands.
 
 ## Dropping in a new checkpoint
 
@@ -152,9 +166,12 @@ steers toward the target (`TowardTarget`), or use `Constant` / `RandomResample`.
    `PolicyLibrary` entry using `Go2_Flat_PolicyConfig` (or run `PoDecath/Refresh Policy Library`).
 3. If the observation layout differs, duplicate the config asset, adjust the toggles, scales,
    joints, `actionScale`, gains and decimation, and assign it on the library entry.
-4. Press Play in `Arena.unity` (or go through `MainMenu.unity`). `PolicyRunner` validates that the
-   model's static input width equals `PolicyConfig.ObservationSize` and logs an error otherwise.
-5. Check `podecath_eval.csv` for per-episode distance, duration, mean speed and stability.
+4. Press Play in `RooftopLap.unity` (or run `PoDecath/Sweep All Scenes`). `PolicyRunner` validates
+   that the model's static input width equals `PolicyConfig.ObservationSize` and logs an error
+   otherwise -- a mismatch is exactly what retired the old Go2 arena scene, which spent its last
+   weeks feeding a 48-wide observation to a 75-wide policy on every tick.
+5. For a recovery policy, run `PoDecath/Probe Get-Up Transfer` and compare
+   `peak_upright` / `longest_hold_s` against the previous checkpoint.
 
 With no checkpoint present the runner holds the default pose, which is how the scaffolding was
 verified: all four feet in contact, base height 0.318 m, joint angles at their defaults, gravity

@@ -169,13 +169,18 @@ def main() -> None:
     print(f"obs_dim={env.obs_dim} act_dim={env.A} envs={args.num_envs} control_dt={env.dt:.3f}s")
     for it in range(start_iter, args.iters):
         t0 = time.time()
+        # Both curricula run over *this run's* iterations, not the checkpoint's absolute count. A
+        # fine-tuning run resumed at iteration 2400 would otherwise start every ramp already finished,
+        # which is precisely backwards: the reason to resume a competent policy is to harden it
+        # gradually from where it is.
+        run_it = it - start_iter
         if args.target_speed_final > 0.0:
-            frac = 1.0 if args.speed_ramp_iters <= 0 else min(1.0, it / float(args.speed_ramp_iters))
+            frac = 1.0 if args.speed_ramp_iters <= 0 else min(1.0, run_it / float(args.speed_ramp_iters))
             env.target_speed = (args.target_speed +
                                 (args.target_speed_final - args.target_speed) * frac)
         if env.dr is not None:
             # Ramp the randomisation rather than applying it all at once; see --dr-ramp-iters.
-            frac = 1.0 if args.dr_ramp_iters <= 0 else min(1.0, it / float(args.dr_ramp_iters))
+            frac = 1.0 if args.dr_ramp_iters <= 0 else min(1.0, run_it / float(args.dr_ramp_iters))
             env.dr.set_strength(args.dr_strength *
                                 (args.dr_start_strength + (1.0 - args.dr_start_strength) * frac))
         with torch.no_grad():
