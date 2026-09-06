@@ -98,7 +98,20 @@ DOCS/                           this summary and the roadmap
   holds a stand. Watch `env/hold_frac` in TensorBoard; that is the metric that means anything here.
 - Train laps (fine-tune from the sprint policy; exports `Assets/Policies/athlete_track.onnx`):
   `.venv/Scripts/python.exe train_run.py --task track --resume checkpoints/run_to_target/latest.pt --iters 2300 --target-speed 4.0`
-- Evaluate: `.venv/Scripts/python.exe eval_100m.py --runs 5`
+- Evaluate a **sprint** policy: `.venv/Scripts/python.exe eval_100m.py --runs 5`
+- Evaluate a **lap** policy: `.venv/Scripts/python.exe eval_lap.py --ckpt checkpoints/run_track/latest.pt`
+  Use the right one. `eval_100m.py` runs a straight line at a target 108 m away, which holds the
+  observation's `min(dist, 10) / 10` slot at 1.0 for the first 98 m; a `run_track` policy has never
+  seen that, because its carrot sits 6 m ahead and that slot reads 0.6 for the whole of training.
+  Ranking lap policies on the sprint is measuring the wrong task, and it is how a policy that could
+  not hold the line once looked 41% faster. `eval_lap.py` runs the real one -- same carrot, same
+  5.3 m deck, actor mean rather than sampled actions, as Unity executes it -- and reports the number
+  that decides whether "faster" is better: how many athletes finish clean.
+- Export any checkpoint to ONNX (not just the newest):
+  `.venv/Scripts/python.exe export_checkpoint.py --ckpt <file.pt> --out <file.onnx>`
+  Needed because a run trained against a limit does not improve monotonically: the adaptive speed
+  curriculum hunts around the fastest sustainable pace, so consecutive checkpoints alternate between
+  clean and fall-heavy and the last iteration is not reliably the best one.
 - Unity: menu `PoDecath/Build Rooftop Scene`, then play `Assets/Scenes/Rooftop.unity`.
 - Audio: menu `PoDecath/Bake Audio Clips` synthesises the whole sound set into `Assets/Audio/` and points
   `AudioBank.asset` at it. The scene builders run it themselves, so this is only needed to re-bake by hand.

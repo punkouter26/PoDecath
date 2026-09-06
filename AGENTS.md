@@ -140,6 +140,18 @@ whether a change helped, and cannot be re-run against the next checkpoint.
 |---|---|---|
 | `PoDecath/Sweep All Scenes` | does every scene in the build list still play without throwing? | `training/logs/scene_sweep.json` + one PNG per scene |
 | `PoDecath/Probe Get-Up Transfer` | does the recovery policy get a supine athlete back on its feet? | `training/logs/getup_transfer.json` + a per-step CSV trace |
+| `training/eval_lap.py` | how fast does a lap policy go, and how many athletes finish clean? | stdout |
+| `training/eval_100m.py` | how fast is a **sprint** policy over a straight 100 m? | stdout |
+| `training/export_checkpoint.py` | ONNX from any checkpoint, not just the newest | a .onnx |
+
+**Check what a metric counts before trusting it.** Two in this project did not count what their names
+implied, and both cost real work. `RunTrackEnv` added `off_deck` to `done` *after* `RunToTargetEnv.step`
+had already written its statistics, so `fall_rate` counted athletes that fell over and never athletes
+that ran off the 5.3 m deck -- the one failure mode that gets worse the faster they run. A speed
+curriculum gated on that number raised the target while the field left the roof, reporting 5% falls
+against a measured 0% clean laps. And `get_stats` zeroes every accumulator, so `lap_progress_m`, which
+read its value afterwards, reported 0.0 for its whole existence. Both are fixed; the habit is not
+optional.
 
 Both step play mode one `EditorApplication.Step()` per editor update and keep their state in
 `SessionState`. That is not fussiness: the Editor will not advance play-mode frames while
