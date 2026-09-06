@@ -60,21 +60,24 @@ Thumbs.db
 desktop.ini
 
 # ---- Python training side ----
-__pycache__/
+# Every rule here is scoped to /training/ on purpose. A bare `env/` also matched
+# Assets/Scripts/Runtime/Env on case-insensitive (Windows/macOS) checkouts and
+# silently kept three runtime scripts out of the repository.
+/training/**/__pycache__/
 *.py[cod]
-*.egg-info/
-.venv/
-venv/
-env/
+/training/**/*.egg-info/
+/training/**/.venv/
+/training/**/venv/
+/training/**/env/
 .pytest_cache/
 .ipynb_checkpoints/
 
 # Training run output (large; regenerate with training/train_run.py)
-training/logs/
-training/checkpoints/
-*.pt
-*.pth
-*.ckpt
+/training/logs/
+/training/checkpoints/
+/training/**/*.pt
+/training/**/*.pth
+/training/**/*.ckpt
 
 # Editor capture scratch: verification screenshots taken through the Unity CLI.
 Assets/_Recovery/
