@@ -136,6 +136,34 @@ DOCS/                           this summary and the roadmap
   34.7 x 12.3 m, so the runway is 17.9 m and the pit 8 m (regulation 40 m + 9 m does not fit); the event
   runs 2.4 m south of the loop centre line to clear the White House flagpole.
 
+## How fast the athletes can go, and why
+
+The RL athletes are capped by their own reward, and then by the track. Both matter, and they bind in
+different places.
+
+The reward first: `r_track` is a Gaussian centred on `target_speed` and `r_prog` clamps to it, so
+exceeding the target pays nothing and costs something. At the shipped default of 3.5 m/s (4.0 for
+track) an athlete peaking near 4.5 m/s has done exactly what was asked. `--target-speed-final` with
+`--speed-adaptive` raises the ask while the athlete keeps its feet.
+
+Then the geometry, which is the binding constraint for the lap. The loop is 44.8 m of straight and
+55.3 m of bend at 8.8 m radius, so **55% of a lap is cornering**:
+
+| speed | lateral acceleration | measured outcome |
+|---|---|---|
+| 4.08 m/s | 1.89 m/s2 (0.19 g) | shipped policy, 24.54 s lap, 100% of athletes clean |
+| 5.50 m/s | 3.44 m/s2 (0.35 g) | fall rate 0.6 - 1.0 |
+| 8.33 m/s | 7.89 m/s2 (0.80 g) | straight-line sprint peak; not available on an 8.8 m bend |
+
+So the athlete really can sprint at 8+ m/s -- `eval_100m.py` measures that, and on a straight it is
+real -- and really cannot corner at 8.8 m radius much above 5 m/s without learning to bank into the
+turn. Raising `target_speed` buys speed on 45% of the lap and falls on the other 55%. Training runs
+that pushed past ~5 m/s ended with 0% of athletes completing a clean lap.
+
+Making the lap meaningfully faster therefore wants one of: a larger bend radius (a track change, not a
+policy change), a reward that pays for leaning into the turn, or an event on the straight where the
+sprint speed is usable. It is not a matter of training the current task harder.
+
 ## Bot roster rules
 
 Heuristic bots are RED, the reference RL bot is GREEN, custom RL bots use owner-supplied textures and
