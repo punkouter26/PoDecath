@@ -26,9 +26,13 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
   centre line, no falls.
 - Trainer comparison: the same body was also trained in **Isaac Lab** (`training/isaac/`, separate venv). Its
   policy is the YELLOW athlete "Matt Isaac"; results and lessons in `DOCS/COMPARISON.md`.
-- Mobile performance (Task 8): 522 static renderers, ~837k triangles, ~700 batches in the Editor. Static
-  batching is on and the target is 60 FPS, but the 122 MB building mesh needs decimation/LODs from Blender
-  before a phone build; profile on device.
+- Mobile performance (Task 8): measured 2026-09-12 by `PoDecath/Sweep All Scenes`, the rooftop scenes
+  render **2.0-2.4M triangles** at 183-363 draw calls (Rooftop 2,389,352 / 363; RooftopLap 2,152,268 / 248;
+  RooftopRace 2,040,756 / 183; RooftopLongJump 953,898 / 147). The older figure here, ~837k triangles and
+  ~700 batches, predates the 2026-09-04 glb re-export and was wrong by roughly 2.7x; do not plan against it.
+  Static batching is on and the target is 60 FPS, but against a mobile budget of under 200k on screen that
+  is a **10x gap**, so the 122 MB building mesh needs decimation/LODs from Blender before a phone build is
+  worth profiling. Re-run the sweep after any change to the building and compare, rather than estimating.
 
 ## Phase 1 scope (current)
 
@@ -80,6 +84,16 @@ DOCS/                           this summary and the roadmap
 
 ## Running things
 
+- **First, on any fresh checkout: `git lfs pull`.** The `.glb` models are Git LFS objects
+  (`.gitattributes`: `*.glb filter=lfs`), and a clone without them leaves 134-byte pointer files where
+  `WhiteHouse.glb` (122,651,496 bytes) and `Athlete_Matt.glb` (3,262,100 bytes) should be. This fails
+  quietly and expensively: the scenes still open, still enter play mode, still bind rigs and run their
+  events, so nothing looks broken — but every rooftop scene logs `Missing Prefab Asset: 'WhiteHouse
+  (guid d70df9d664107d142963865ea83d04a6)'`, the building is absent, the athletes fall back to red
+  capsule primitives because `SkinBinder` has no skin to bind, and the triangle count drops to about 4%
+  of the real figure. The physics rig comes from `athlete.xml`, which is not an LFS object, which is
+  exactly why the athletes still run and the damage is easy to miss. If a sweep reports suspiciously low
+  triangles, check `ls -la Assets/Models/*.glb` before anything else.
 - Train: `cd training && .venv/Scripts/python.exe train_run.py --num-envs 4096 --iters 1500`
   (TensorBoard opens on http://localhost:6006; stale runs are cleared first).
 - Train the get-up (exports `Assets/Policies/athlete_getup.onnx`):

@@ -133,9 +133,28 @@ GPU backends work but the readback allocates.
 
 ## Measuring a policy in Unity
 
-Two editor tools, both driven from the `PoDecath` menu and both usable through the Unity CLI
-(`unity command menu --path "..."`). They exist because "I watched it in play mode" cannot say
-whether a change helped, and cannot be re-run against the next checkpoint.
+Two editor tools, both driven from the `PoDecath` menu. They exist because "I watched it in play mode"
+cannot say whether a change helped, and cannot be re-run against the next checkpoint.
+
+**How to trigger a menu item without touching the editor.** There are two routes and only one of them
+is reliably present. The Unity CLI (`unity command menu --path "..."`) is what the rest of this file
+assumes, and it is a separate install that may well not be on the machine — it was not on 2026-09-12.
+The route that needs nothing installed is the MCP bridge from `com.anklebreaker.unity-mcp`, which
+auto-starts inside the editor on loopback port 7890 and takes no credential:
+
+```bash
+curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"menuPath":"PoDecath/Sweep All Scenes"}' \
+  http://127.0.0.1:7890/api/editor/execute-menu-item
+```
+
+Useful companions: `editor/state` (is it playing, is it compiling), `console/log` and `console/clear`
+(clear before a run so what you read is this run), `scene/open` with `{"path": "..."}`, and
+`_meta/routes` for the full list. All are POST. Two cautions learned the hard way: the call returns as
+soon as the menu item is *invoked*, not when it finishes, so poll for the tool's output file rather
+than trusting the response; and while a probe is stepping play mode it holds the editor main thread,
+so the bridge stops answering until it is done — an unresponsive bridge usually means "busy", not
+"dead". Check `Unity.exe` is still alive before concluding anything.
 
 | Tool | Question it answers | Output |
 |---|---|---|

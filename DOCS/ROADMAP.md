@@ -45,21 +45,16 @@ Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
 
 ## Known gaps
 
-- **Get-up transfers poorly from MuJoCo to PhysX, and this is the top open item.** The policy is good in
-  the trainer — 2400 iterations reach stood 1.00 / stand 0.78 / hold 0.59 at full difficulty — and the Unity
-  plumbing around it is verified in play mode: a fallen athlete hands control to `athlete_getup.onnx`,
-  `RecoveryController` runs its state machine, and a failed attempt becomes a DNF without stalling the race.
-  But measured in the editor, the policy takes uprightness from 0.03 to roughly 0.35 and falls back; it
-  never completes the stand.
-
-  Getting up is the worst possible case for sim-to-sim transfer, because the entire motion is ground
-  contact: friction, contact stiffness and how a many-limbed body resting on a surface is solved. The
-  running policies transfer because a runner is airborne or on one foot most of the time and barely
-  touches the regime where the two engines disagree. Things to try, roughly in order of expected value:
-  domain randomisation over friction and contact parameters during training (Isaac's transfer only worked
-  once randomisation was added, per `DOCS/COMPARISON.md`); matching PhysX's solver iteration count and the
-  foot `PhysicsMaterial` to the MJCF's contact parameters; and checking the articulation drive gains hold
-  up under the sustained high torque a get-up needs, which is a very different load from running.
+- ~~Get-up transfers poorly from MuJoCo to PhysX~~ — **closed 2026-09-06; it always transferred.** Kept
+  here because the wrong diagnosis stood for weeks and the shape of the mistake is worth remembering.
+  Measured with `PoDecath/Probe Get-Up Transfer` from a flat supine start (upright 0.051), the shipped
+  `athlete_getup.onnx` reaches **peak uprightness 0.947 and holds the stand 7.44 s of 8**. The fault was in
+  the watcher, not the policy: `RecoveryController.FloorY` cast a ray down from above the pelvis with mask
+  `~0`, hit the athlete's own chest collider, drove `heightFrac` negative, and so `standing` — the only exit
+  from `Recovering` — could never be true. Every athlete that stood up was run to `giveUpSeconds` and booked
+  a DNF anyway. One layer mask; before/after reads **recoveries 0 -> 3**. See `DOCS/README.md` and
+  `AGENTS.md` for the full account. The lesson is the general one: before blaming a policy for a behaviour,
+  confirm the thing measuring it can see what it claims to measure.
 - **No athlete can clear a hurdle.** The hurdles event is playable and physical — 0.762 m bars on 9 kg
   frames that topple when hit, knocks counted per runner and shown on the results board — but every
   policy runs straight into them. Measured over a 3-strong RL field before the get-up policy existed: all
