@@ -1,7 +1,8 @@
 # PoDecath — agent and contributor guide
 
 Physics-driven creature evaluation runtime for **mobile portrait (9:16)**. Policies are trained
-**externally** (NVIDIA Isaac Lab / MuJoCo) and executed in Unity through **Unity Inference Engine**
+**externally** (MuJoCo Warp / Newton; Isaac Lab kept only as a cross-check) and executed in Unity
+through **Unity Inference Engine**
 (package `com.unity.ai.inference`, the Unity 6.2+ name for Sentis; namespace `Unity.InferenceEngine`).
 Unity ML-Agents is not used and must not be added.
 
@@ -250,20 +251,78 @@ observation (0, 0, -1).
 
 ## House rules (from the project owner, apply to every session)
 
+These are the owner's standing instructions. Where one is not satisfied by the code yet, the gap is
+named so nobody has to rediscover it.
+
+### Workflow
+
 1. **Branches:** only work on `master`. Use another branch only when explicitly asked.
 2. **Orientation:** check the `DOCS/` folder at the repo root first for the project summary.
-3. **TensorBoard:** always start TensorBoard when training starts so progress can be viewed
-   (`train_run.py` does this automatically on port 6006).
-4. **Stale runs:** before starting training, remove obsolete behaviours/runs from the TensorBoard log
-   directory so they do not take up room (`train_run.py` clears `logs/tb/<task>_*` unless `--keep-old-runs`).
-5. **Skins:** athletes keep the original textures from their imported model (`.glb`); do not tint them.
-   This replaces the earlier RED heuristic / GREEN reference / custom-colour rule (owner decision,
-   2026-09-05). `AthleteSpawner.skinTintStrength` is the dial: 0 (default) leaves the model textures
-   alone, 1 applies a flat house colour, and values between multiply the base map so it stays readable.
-   `AthleteDefinition.Tint` still feeds the UI, so results and menu rows stay colour-coded.
-6. **Roster:** every RL learning app has a heuristic-coded bot, a reference RL bot, and zero or more
-   custom bots, often with custom skinned meshes (`AthleteDefinition` assets).
-7. **Answers:** any reply longer than 100 words ends with a 20-word TL;DR.
+3. **Git sync:** commit every outstanding change *before* syncing/pushing. No dirty-tree syncs.
+4. **Answers:** write for a non-technical reader — say what happened and what it means for the next
+   decision, not how the plumbing works. Any reply longer than 100 words ends with a 20-word TL;DR.
+
+### Training stack
+
+5. **MuJoCo / Newton only.** Training is `mujoco_warp` PPO (`training/train_run.py`, envs in
+   `training/envs/`), moving to Newton as it matures. Unity ML-Agents is not used and must not be
+   added. The Isaac Lab twin under `training/isaac/` is kept for cross-checking only — new training
+   work does not go there (owner decision, 2026-09-12).
+6. **Ask for the skinned mesh first.** Do not start training until the owner has supplied the model.
+   The rig comes *out of that model*: `training/rig_to_mjcf.py` reads the glb bone hierarchy into
+   `training/models/athlete.xml` (21 DoF) / `athlete_chain.xml` (one hinge per body, required for the
+   Isaac importer). Rig descriptions live in `training/rigs/*.json`. Unity binds the same skeleton by
+   bone name via `SkinBinder` + `AthleteDefinition.boneMap`, so the names must survive the round trip.
+7. **One model, all behaviours, first.** More creature/human models will arrive later; until then,
+   train the initial athlete through every behaviour it needs (run-to-target, track lap, get-up, the
+   `DOCS/ROADMAP.md` events) rather than adding skeletons.
+8. **TensorBoard:** always start it when training starts (`train_run.py` launches it on port 6006).
+9. **Stale runs:** before starting training, remove obsolete behaviours/runs from the TensorBoard log
+   directory (`train_run.py` clears `logs/tb/<task>_*` unless `--keep-old-runs`).
+10. **Show the simulator UI.** The owner wants to *watch* the creature during and after training, in
+    MuJoCo's own viewer (or Newton's, if that turns out to be the better window). **Not implemented:**
+    `train_run.py` is headless — there is no `mujoco.viewer` launch and no rollout playback anywhere in
+    `training/`. Adding a viewer/replay path is outstanding work, not an optional nicety.
+11. **Long runs lock the editor out.** A run of 30+ minutes: close the Unity Editor first (save work),
+    tell the owner it is closed, and tell them when training has finished and they can reopen it.
+    `deploy_android.ps1` refuses to build while the editor holds the project lock for the same reason.
+    (The owner's note says "unreal editor"; this project is Unity — the rule is about the Unity Editor.)
+12. **Android MuJoCo builds:** compile with https://github.com/joanllobera/mujoco-bin/ . This is
+    separate from shipping the Unity game to a phone, which stays `training/deploy_android.ps1`.
+
+### Creature realism
+
+13. **Earth gravity and real bodies.** Gravity 9.81 m/s^2, link masses and inertias derived from the
+    creature's actual size, joint limits from anatomy — in both MuJoCo and the PhysX rig, or the policy
+    will not transfer.
+14. **Human joint speed and force.** Torque limits and velocity limits for a human athlete come from
+    human data, not from whatever makes PPO converge. Keep `PolicyConfig` gains and the MJCF
+    `forcerange`/`kp`/`kv` in step with each other (see *Stepping* above).
+15. **Skins:** athletes keep the original textures from their imported model (`.glb`); do not tint them.
+    This replaces the earlier RED heuristic / GREEN reference / custom-colour rule (owner decision,
+    2026-09-05). `AthleteSpawner.skinTintStrength` is the dial: 0 (default) leaves the model textures
+    alone, 1 applies a flat house colour, and values between multiply the base map so it stays readable.
+    `AthleteDefinition.Tint` still feeds the UI, so results and menu rows stay colour-coded.
+16. **Roster:** every RL learning app has a heuristic-coded bot, a reference RL bot, and zero or more
+    custom bots, often with custom skinned meshes (`AthleteDefinition` assets).
+
+### Scene authoring and Unity MCP
+
+17. **Prefabs over code.** Author static scene content (props, track furniture, spawn markers, cameras,
+    lights) as real prefabs and scene objects through the Unity MCP tools so the owner can drag them
+    around in the editor. Reserve builder scripts for what must be computed — the ProBuilder track
+    solve, ray-cast leg placement, anything driven by measurement. Note the tension with the existing
+    "re-run `PoDecath/Build Everything` instead of editing scene YAML" rule: anything the owner is
+    expected to hand-place must be a prefab the builder *instantiates and leaves alone*, not geometry
+    the builder recreates from scratch every run, or their edits get overwritten.
+18. **Which MCP to use** — whichever gives the best result for the job:
+    - `com.anklebreaker.unity-mcp` (https://github.com/AnkleBreaker-Studio/unity-mcp-plugin) is already
+      in `Packages/manifest.json` and auto-starts an HTTP bridge on 127.0.0.1:7890 with no credential —
+      see *Measuring a policy in Unity* above for the menu-item call and its two gotchas.
+    - https://github.com/CoplayDev/unity-mcp
+    - https://github.com/IvanMurzak/Unity-MCP — configured as MCP server `UnityMCP` at
+      http://127.0.0.1:8080/mcp. It refuses connections unless the editor is open with that plugin
+      installed; a refusal means "not running", not "not available".
 
 ## Phase 1 game direction (2026-09-04)
 
@@ -278,6 +337,32 @@ observation (0, 0, -1).
   (3 s after a fall, 4 s after a finish). `RooftopLap.unity` is built with `handsOff: true` and the RED
   pacer hidden (`AthleteSpawner.includeHeuristic = false`). New humanoids = new `AthleteDefinition`
   assets pointing at their rigged glb (`skinOverride`), with `boneMap`/`skinRootEuler` per skeleton.
+- **Adding a humanoid is now two steps, neither of them typing:** drop the `.glb`/`.fbx` into
+  `Assets/Models/Characters/`, run `PoDecath/Rebuild Athlete Roster`, then rebuild the race and long jump
+  scenes so the spawner rosters and the setup menu pick it up. `SkeletonMapper` infers the twelve-body
+  `boneMap` and `skinRootEuler` from the skeleton's *shape*, not its names, which is what lets one rule
+  cover Mixamo (`LeftLeg`), AccuRig (`CC_Base_L_Calf`) and a numbered export (`bone_27`). Three things it
+  learned the hard way, all of which looked fine on most of the roster first: the leg splits on the two
+  longest steps but the **arm must be counted out from the chest** (chest, collarbone, humerus, forearm),
+  because these models are hand-posed and RIGGED_Matt's right collarbone is longer than its own forearm;
+  the second leg is found by **where the two chains part company in metres, not in hops**, because AccuRig
+  hangs both legs off an extra zero-length `CC_Base_Pelvis`; and **facing comes off the hips and the
+  shoulders averaged**, with the toes only choosing its sign. Not the feet: a figure standing with one
+  foot advanced has an ankle line that says nothing about which way it faces, and trusting it put Grandpa
+  14 degrees off square. Not the hips alone either — the doggy model's pelvis is 9 degrees round from the
+  rest of it. Across the eight models the hips and shoulders agree within 3 degrees of each other while
+  the ankles disagree with both by up to 15, so averaging the two structural pairs brings every model in
+  to within 3 degrees of square. Watch the sign: the legs are found lowest-first, so on six of the eight
+  it is the *right* leg that is found first and the body's lateral axis runs right-to-left.
+  `AthleteDefinition.skinScale` (0 = auto) then sizes the skin to the rig at bind time by least-squares
+  over every mapped bone, so a 1.15 m Trump and a 1.84 m Matt drive the same MJCF body. The inferred map
+  is written into the asset and **never re-inferred**, so a hand correction survives a rebuild; clear
+  `boneMap` to ask for it again.
+- **An FBX does not arrive dressed.** Unity imports the mesh, builds a material and leaves the embedded
+  textures inside the file, so the athlete races flat grey with nothing in the import log to say why.
+  `AthleteRosterBuilder.DressFbx` extracts them to `<model>_Textures/`, binds them to a real material in
+  `<model>_Materials/` and remaps the importer onto it. glTF needs none of this; glTFast unpacks images
+  as a matter of course.
 - **Isaac Lab twin (`training/isaac/`):** Isaac Sim 5.1 + IsaacLab 2.3 in a separate Python 3.11 venv.
   The MJCF importer maps a multi-joint body onto one D6 joint with PhysX's fixed X/Y/Z axis order, which
   swapped the abdomen axes and bent the shoulder sideways (measured with body-quaternion probes). Always

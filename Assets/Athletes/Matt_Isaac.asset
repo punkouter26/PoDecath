@@ -22,5 +22,6 @@ MonoBehaviour:
   skinOverride: {fileID: 0}
   boneMap: []
   skinRootEuler: {x: 0, y: 90, z: 0}
+  skinScale: 0
   customTexture: {fileID: 0}
   customTint: {r: 1, g: 0.85, b: 0.1, a: 1}

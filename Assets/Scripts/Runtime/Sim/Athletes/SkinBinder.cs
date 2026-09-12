@@ -34,6 +34,8 @@ namespace PoDecath.Sim
         };
         [Tooltip("Rotation applied to the skin root so its rest pose faces the rig's forward axis (+X).")]
         public Vector3 skinRootEuler = new Vector3(0f, 90f, 0f);
+        [Tooltip("Uniform scale for the skin. 0 = fit it to the rig automatically (see FitScale).")]
+        public float skinScale = 0f;
         public GameObject skin;
 
         struct Link { public Transform body; public Transform bone; public Quaternion rotOffset; public Vector3 posOffset; }
@@ -51,6 +53,13 @@ namespace PoDecath.Sim
             skin.transform.localRotation = Quaternion.Euler(skinRootEuler);
             skin.transform.localScale = Vector3.one;
 
+            // Most rigged characters ship with an idle clip. An Animator playing it would pose the same
+            // bones this component drives, on the same frame, and whichever wrote last would win — so the
+            // athlete would run with a twitch nobody could trace back to a race script. The physics body is
+            // the only thing allowed to move these bones.
+            foreach (var animator in skin.GetComponentsInChildren<Animator>(true)) animator.enabled = false;
+            foreach (var legacy in skin.GetComponentsInChildren<Animation>(true)) legacy.enabled = false;
+
             var bodies = new Dictionary<string, Transform>();
             foreach (var t in rig.GetComponentsInChildren<Transform>(true))
                 if (!bodies.ContainsKey(t.name)) bodies[t.name] = t;
@@ -59,6 +68,10 @@ namespace PoDecath.Sim
             foreach (var t in skin.GetComponentsInChildren<Transform>(true))
                 if (!bones.ContainsKey(t.name)) bones[t.name] = t;
 
+            // Two passes. The pairs are resolved first so the skin can be sized against the rig before any
+            // offset is measured: scaling the skin moves every bone, so an offset taken before the fit
+            // would bake in exactly the error the fit is there to remove.
+            var pairs = new List<(Transform body, Transform bone)>();
             foreach (BoneMap m in map)
             {
                 Transform body = FindBody(rig, bodies, m.body);
@@ -67,12 +80,64 @@ namespace PoDecath.Sim
                     Debug.LogWarning($"[SkinBinder] Could not bind body '{m.body}' to bone '{m.bone}'.", this);
                     continue;
                 }
+                pairs.Add((body, bone));
+            }
+
+            float s = skinScale > 0f ? skinScale : FitScale(pairs);
+            if (!Mathf.Approximately(s, 1f)) skin.transform.localScale = Vector3.one * s;
+
+            foreach ((Transform body, Transform bone) in pairs)
+            {
                 Quaternion inv = Quaternion.Inverse(body.rotation);
                 _links.Add(new Link { body = body, bone = bone, rotOffset = inv * bone.rotation, posOffset = inv * (bone.position - body.position) });
             }
 
             foreach (var smr in skin.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 smr.updateWhenOffscreen = true;
+        }
+
+        /// <summary>
+        /// The uniform scale that makes this skeleton the same size as the physics rig.
+        ///
+        /// Athletes arrive from different generators at whatever height their author chose — 1.84 m for
+        /// the reference Matt, 1.62 m for Grandpa, 1.15 m for the Trump model — while every one of them
+        /// is driven by the one MJCF body. Without a fit the mesh is stretched onto the rig limb by limb
+        /// and the shorter models come out looking pulled apart.
+        ///
+        /// The fit is a least squares over every mapped bone: each one's distance from the anchor (hips)
+        /// should be the rig's distance from the same anchor, and the single scale that best satisfies all
+        /// of them at once is the ratio of the two sums below. Bones near the hips contribute little and
+        /// the feet dominate, which is the right weighting — leg length is what a running stride shows.
+        /// </summary>
+        static float FitScale(List<(Transform body, Transform bone)> pairs)
+        {
+            if (pairs.Count < 2) return 1f;
+
+            // Anchor on the pair nearest the top of the articulation chain — the pelvis, in every map
+            // written so far, but derived rather than assumed so a reordered map still fits.
+            int anchor = 0;
+            for (int i = 1; i < pairs.Count; i++)
+                if (Depth(pairs[i].body) < Depth(pairs[anchor].body)) anchor = i;
+
+            Vector3 bodyOrigin = pairs[anchor].body.position, boneOrigin = pairs[anchor].bone.position;
+            float num = 0f, den = 0f;
+            for (int i = 0; i < pairs.Count; i++)
+            {
+                if (i == anchor) continue;
+                float dBody = Vector3.Distance(pairs[i].body.position, bodyOrigin);
+                float dBone = Vector3.Distance(pairs[i].bone.position, boneOrigin);
+                num += dBody * dBone;
+                den += dBone * dBone;
+            }
+            if (den < 1e-6f) return 1f;
+            return Mathf.Clamp(num / den, 0.2f, 5f);
+        }
+
+        static int Depth(Transform t)
+        {
+            int d = 0;
+            while (t.parent != null) { d++; t = t.parent; }
+            return d;
         }
 
         static Transform FindBody(AthleteRig rig, Dictionary<string, Transform> byName, string bodyName)

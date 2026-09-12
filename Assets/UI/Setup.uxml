@@ -26,6 +26,8 @@
 
                 <ui:VisualElement class="row" style="margin-top: 16px;">
                     <ui:Label name="total" class="label-small muted" text="Total 0 / 16" style="flex-grow: 1;" />
+                    <ui:Button name="none" class="btn btn--ghost btn--chip" text="NONE" />
+                    <ui:Button name="all" class="btn btn--ghost btn--chip" text="ONE EACH" />
                 </ui:VisualElement>
 
                 <ui:Button name="start" class="btn btn--primary" text="START" style="margin-top: 16px; min-height: 112px; font-size: 40px;" />

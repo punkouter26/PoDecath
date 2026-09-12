@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c6e225210831c5343946af1fe961ebdc, type: 3}
+  m_Name: Char_NICK_RiggedDoggy
+  m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Sim.AthleteDefinition
+  displayName: Nick Doggy
+  kind: 2
+  model: {fileID: 5022602860645237092, guid: a8269c2479fa3ae4aa1406384be837e1, type: 3}
+  mjcfOverride: {fileID: 0}
+  actionScale: 0.5
+  topSpeed: 9
+  accelSeconds: 3
+  skinOverride: {fileID: 919132149155446097, guid: 29ab4310c16717049ac7b8e49235eafe, type: 3}
+  boneMap:
+  - body: pelvis
+    bone: CC_Base_Hip
+  - body: torso
+    bone: CC_Base_Waist
+  - body: thigh_r
+    bone: CC_Base_R_Thigh
+  - body: shin_r
+    bone: CC_Base_R_Calf
+  - body: foot_r
+    bone: CC_Base_R_Foot
+  - body: thigh_l
+    bone: CC_Base_L_Thigh
+  - body: shin_l
+    bone: CC_Base_L_Calf
+  - body: foot_l
+    bone: CC_Base_L_Foot
+  - body: upper_arm_l
+    bone: CC_Base_L_Upperarm
+  - body: forearm_l
+    bone: CC_Base_L_Forearm
+  - body: upper_arm_r
+    bone: CC_Base_R_Upperarm
+  - body: forearm_r
+    bone: CC_Base_R_Forearm
+  skinRootEuler: {x: 0, y: 86.84457, z: 0}
+  skinScale: 0
+  customTexture: {fileID: 0}
+  customTint: {r: 0.95, g: 0.45, b: 0.1, a: 1}

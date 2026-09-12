@@ -1,1 +1,6 @@
 *.glb filter=lfs diff=lfs merge=lfs -text
+*.fbx filter=lfs diff=lfs merge=lfs -text
+# Character textures, extracted from the FBX files above and just as binary and just as large
+# (12 MB apiece). Scoped to this folder on purpose: the small generated surface maps under
+# Assets/Textures/ are a few hundred KB each and stay ordinary blobs.
+Assets/Models/Characters/**/*.png filter=lfs diff=lfs merge=lfs -text

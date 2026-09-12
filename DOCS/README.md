@@ -61,6 +61,8 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
 | Audio: synthesised crowd bed/swell/groan/applause/chant, wind, pistol, countdown, bell, clatter, hurdle clip, sand, whoosh, sting, breathing, 10 footfalls across 3 surfaces | `AudioBakery.cs` -> `Assets/Audio/` | done |
 | Spatial mix: crowd ring round the deck, 3D one-shot cue pool, code buses with ducking, reverb + distance low pass on the listener, crowd mood machine | `CrowdRing.cs`, `SpatialCue.cs`, `AudioMix.cs`, `ListenerAcoustics.cs`, `RaceAudio.cs` | done |
 | Diagnostics overlay (F3): FPS + 1% low + frame graph, draw calls / batches / SetPass / triangles, GC per frame, memory, athlete and audio-voice counts, crowd mood | `TelemetryOverlay.cs`, `Assets/UI/Telemetry.uxml` | done |
+| Character roster: every rigged model in `Assets/Models/Characters` becomes an athlete, bone map and facing worked out from the skeleton's shape, skin sized to the rig at bind time | `SkeletonMapper.cs`, `AthleteRosterBuilder.cs`, menu `PoDecath/Rebuild Athlete Roster` | done: 8 models (Matt Avaturn, Grandma, Grandpa, Matt, Nick, Nick Doggy, Trump, Zombie Accurig), all 12 bodies bound on each, every one within 3 degrees of square |
+| Picking the field: one counter per roster entry on the setup menu, ONE EACH / NONE, 1-16 runners | `SetupView.cs`, `Assets/UI/Setup.uxml` | done |
 | Other events (high jump, throws, ...) | `DOCS/ROADMAP.md` | placeholders |
 
 ## Folder map
@@ -77,6 +79,8 @@ Assets/Textures                 generated surface maps and particle sprites (PoD
 Assets/Audio                    generated clips + AudioBank (PoDecath/Bake Audio Clips)
 Assets/Scripts/Editor           scene/prefab builders (PoDecath menu)
 Assets/Models                   WhiteHouse.glb, Athlete_Matt.glb, athlete.xml (copied from training)
+Assets/Models/Characters        rigged athlete models (.glb/.fbx); drop one in and rebuild the roster
+Assets/Athletes                 one AthleteDefinition per roster entry (Char_*.asset are the characters)
 Assets/Policies                 ONNX checkpoints + PolicyLibrary (auto-refreshed)
 training/                       Python: MJCF generation, MuJoCo Warp env, PPO, eval, TensorBoard logs
 DOCS/                           this summary and the roadmap
@@ -180,5 +184,41 @@ sprint speed is usable. It is not a matter of training the current task harder.
 
 ## Bot roster rules
 
-Heuristic bots are RED, the reference RL bot is GREEN, custom RL bots use owner-supplied textures and
-skinned meshes. Roster entries are `AthleteDefinition` assets under `Assets/Athletes/`.
+Every event has a heuristic-coded bot, a reference RL bot, and zero or more custom bots. Roster entries
+are `AthleteDefinition` assets under `Assets/Athletes/`. Athletes keep the textures their model was
+imported with and are **not** tinted (house rule, owner decision 2026-09-05, replacing the earlier
+RED/GREEN/custom colour scheme); the colour on a definition survives only in the UI, where it is the
+menu swatch, the results row and the trail ribbon that tell a field apart on the deck.
+
+The field is picked on the setup menu: one row per roster entry, a stepper either side of a count, 1 to
+16 runners in total, with ONE EACH and NONE for setting the whole list at once. A count of 0 leaves that
+athlete out. The grid is filled round-robin so each starting row gets a mix rather than one policy per
+row. The menu opens with one of everybody.
+
+### Adding an athlete
+
+1. Drop the rigged model — `.glb` or `.fbx` — into `Assets/Models/Characters/`.
+2. Run `PoDecath/Rebuild Athlete Roster`, then `PoDecath/Build Race Scenes` and
+   `PoDecath/Build Long Jump Scene` so the scenes and the menu pick it up.
+
+That is the whole procedure; nothing needs typing by hand. `SkeletonMapper` reads the twelve MJCF bodies
+off the skeleton's shape rather than off its bone names, which is what lets one rule cover Mixamo
+(`LeftLeg`), AccuRig (`CC_Base_L_Calf`) and an export that numbers its bones `bone_27`. It also works
+out which way the model faces. `SkinBinder` then sizes the skin to the physics rig as it binds, by
+fitting every mapped bone at once, so models authored at different heights — 1.84 m for Matt, 1.15 m for
+Trump — all drive the same body without anyone editing a scale.
+
+Two things worth knowing when it goes wrong. The inferred map is written into the definition as plain
+bone names and is **only ever inferred once**, so a correction by hand survives the next rebuild; delete
+the `boneMap` list to have it inferred again. And an FBX does not arrive dressed: Unity imports the mesh
+and leaves the embedded textures inside the file, so the roster builder extracts them into
+`<model>_Textures/`, binds them to a real material in `<model>_Materials/` and remaps the importer onto
+it. Without that step the athlete races as flat grey and nothing in the import log says why.
+
+The eight models on the roster today are Matt Avaturn, Grandma, Grandpa, Matt, Nick, Nick Doggy, Trump
+and Zombie Accurig, all twelve bodies bound on each, alongside the heuristic sprinter and the reference
+Matt RL. They all run the same lap policy — the skeleton and the skin are what differ, not the brain —
+so a race between them is a beauty contest, not a comparison of policies. Three of them are heavy:
+Trump, the zombie and the doggy are around 50k triangles apiece against roughly 10k for the rest, so a
+full field of sixteen is worth re-checking with `PoDecath/Sweep All Scenes` rather than assuming the
+figures in this file still hold.

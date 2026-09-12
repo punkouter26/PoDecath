@@ -37,6 +37,9 @@ namespace PoDecath.Sim
         public System.Collections.Generic.List<SkinBinder.BoneMap> boneMap = new System.Collections.Generic.List<SkinBinder.BoneMap>();
         [Tooltip("Rotation applied to the glb root so its rest pose faces the rig's forward axis (+X). Mixamo/glTF characters need (0, 90, 0).")]
         public Vector3 skinRootEuler = new Vector3(0f, 90f, 0f);
+        [Tooltip("Uniform scale for the skin. 0 (default) fits it to the rig automatically by matching hip "
+               + "height, which is what lets models authored at different heights share one physics body.")]
+        public float skinScale = 0f;
         [Tooltip("Custom texture for CustomRL athletes.")]
         public Texture2D customTexture;
         [Tooltip("Tint override. Ignored for Heuristic (red) and ReferenceRL (green).")]

@@ -54,7 +54,7 @@ namespace PoDecath.EditorTools
         public static void BuildRace()
         {
             BuildScene(Mode.Race);
-            RaceUiBuilder.BuildSetupScene(EnsureRoster(AssetDatabase.LoadAssetAtPath<ModelAsset>(TrackOnnxPath)));
+            RaceUiBuilder.BuildSetupScene(EnsureRoster(AssetDatabase.LoadAssetAtPath<ModelAsset>(TrackOnnxPath), true));
         }
 
         /// <summary>The long jump scene, then the setup menu again so it offers both events.</summary>
@@ -62,7 +62,7 @@ namespace PoDecath.EditorTools
         public static void BuildLongJump()
         {
             BuildScene(Mode.LongJump);
-            RaceUiBuilder.BuildSetupScene(EnsureRoster(AssetDatabase.LoadAssetAtPath<ModelAsset>(TrackOnnxPath)));
+            RaceUiBuilder.BuildSetupScene(EnsureRoster(AssetDatabase.LoadAssetAtPath<ModelAsset>(TrackOnnxPath), true));
         }
 
         static void BuildScene(Mode mode)
@@ -112,7 +112,7 @@ namespace PoDecath.EditorTools
             }
             if (mjcf == null) Debug.LogWarning($"[PoDecath] {MjcfPath} missing; run training/rig_to_mjcf.py and copy models/athlete.xml here.");
 
-            List<AthleteDefinition> roster = EnsureRoster(onnx);
+            List<AthleteDefinition> roster = EnsureRoster(onnx, fieldMode);
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -429,7 +429,7 @@ namespace PoDecath.EditorTools
             return cm;
         }
 
-        static List<AthleteDefinition> EnsureRoster(ModelAsset onnx)
+        static List<AthleteDefinition> EnsureRoster(ModelAsset onnx, bool includeCharacters)
         {
             PolicyLibraryTools.EnsureFolder(AthletesDir);
             var list = new List<AthleteDefinition>();
@@ -444,6 +444,19 @@ namespace PoDecath.EditorTools
                 EditorUtility.SetDirty(isaac);
                 list.Add(isaac);
             }
+            // Everyone in Assets/Models/Characters. Same rig, same policy, their own skin and skeleton;
+            // the setup menu offers one counter per entry, so this is what the owner picks a field from.
+            //
+            // Only for the scenes that race a picked field. Rooftop and RooftopLap are the development
+            // scenes -- one runner round the loop, watched -- and they spawn their whole roster because
+            // nothing has chosen one for them, so handing them the characters would quietly turn the
+            // hands-off showcase into a nine-runner race.
+            if (!includeCharacters) return list;
+            var report = new System.Text.StringBuilder();
+            List<AthleteDefinition> characters = AthleteRosterBuilder.BuildCharacters(onnx, report);
+            list.AddRange(characters);
+            if (characters.Count > 0)
+                Debug.Log($"[PoDecath] Roster: {characters.Count} character model(s).\n{report}");
             return list;
         }
 

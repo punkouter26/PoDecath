@@ -45,6 +45,7 @@ namespace PoDecath.UI
             [NonSerialized] public int count;
             [NonSerialized] public Label countLabel;
             [NonSerialized] public Button minus, plus;
+            [NonSerialized] public VisualElement row;
         }
 
         public List<RunnerRow> rows = new List<RunnerRow>();
@@ -54,7 +55,7 @@ namespace PoDecath.UI
 
         VisualElement _eventHost, _runnerHost;
         Label _hint, _total;
-        Button _start;
+        Button _start, _all, _none;
         readonly List<Button> _eventButtons = new List<Button>();
         int _event;
 
@@ -75,10 +76,17 @@ namespace PoDecath.UI
             _hint = Find<Label>("hint");
             _total = Find<Label>("total");
             _start = Find<Button>("start");
+            _all = Find<Button>("all");
+            _none = Find<Button>("none");
 
             BuildEvents();
             BuildRunners();
             if (_start != null) _start.clicked += StartRace;
+            // Clearing the field one tap at a time was fine with three athletes on the roster. With the
+            // character models on it there are ten, and somebody who wants to watch Trump race the zombie
+            // should not have to press minus eight times to say so.
+            if (_all != null) _all.clicked += () => SetEveryone(1);
+            if (_none != null) _none.clicked += () => SetEveryone(0);
 
             SelectEvent(0);
             Refresh();
@@ -104,14 +112,19 @@ namespace PoDecath.UI
             if (_runnerHost == null) return;
             _runnerHost.Clear();
 
-            // An even split of the field across whatever definitions this build has, remainder to the first.
-            int perRow = rows.Count > 0 ? Max / rows.Count : 0;
+            // One of each to start with, which is the field that shows the owner every athlete the project
+            // has. It used to be an even split of all sixteen places, and that stopped being a sensible
+            // default the moment the roster grew past a handful: the split silently decided that six of
+            // somebody were in and made the remainder row -- whichever happened to be listed first -- into
+            // the biggest team in the race. One each is the same answer however long the roster gets, and
+            // the steppers are right there for anyone who wants eight Grandmas.
+            int used = 0;
             for (int i = 0; i < rows.Count; i++)
             {
                 RunnerRow row = rows[i];
                 if (row.definition == null) continue;
-                row.count = perRow;
-                if (i == 0) row.count += Max - perRow * rows.Count;
+                row.count = used < Max ? 1 : 0;
+                used += row.count;
 
                 var element = new VisualElement();
                 element.AddToClassList("runner-row");
@@ -148,6 +161,7 @@ namespace PoDecath.UI
                 row.countLabel = count;
                 row.minus = minus;
                 row.plus = plus;
+                row.row = element;
             }
         }
 
@@ -179,6 +193,23 @@ namespace PoDecath.UI
             Refresh();
         }
 
+        /// <summary>
+        /// Puts the same number in every row. NONE is allowed to empty the field completely, which the
+        /// steppers are not: it is the start of "clear this and pick two", and START stays greyed out
+        /// until somebody has been picked, so an empty grid can never reach a race scene.
+        /// </summary>
+        void SetEveryone(int count)
+        {
+            int used = 0;
+            foreach (RunnerRow r in rows)
+            {
+                if (r.definition == null) continue;
+                r.count = used + count <= Max ? count : 0;
+                used += r.count;
+            }
+            Refresh();
+        }
+
         void Refresh()
         {
             int total = Total();
@@ -187,6 +218,7 @@ namespace PoDecath.UI
                 if (r.countLabel != null) SetText(r.countLabel, r.count.ToString());
                 if (r.minus != null) r.minus.SetEnabled(r.count > 0 && total > 1);
                 if (r.plus != null) r.plus.SetEnabled(total < Max);
+                r.row?.EnableInClassList("runner-row--out", r.count == 0);
             }
             SetText(_total, $"Total  {total} / {Max}");
             if (_start != null) _start.SetEnabled(total >= 1);

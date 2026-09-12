@@ -3,26 +3,68 @@
 Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the technical contract
 (tensor layouts, coordinate transforms, stepping rates, editor automation quirks).
 
-## House rules
+## House rules (from the project owner — apply to every session)
+
+### Workflow
 
 1. Only use the `master` branch for all work. Use other branches only when specifically asked.
 2. Check the `DOCS/` folder in the repo root for an overall summary of the project before working.
-3. Always start TensorBoard when training is started so progress can be viewed (`training/train_run.py`
-   launches it on http://localhost:6006).
-4. When starting training, check that there are no obsolete behaviours/runs on TensorBoard taking up
-   room. If there are, remove them (`train_run.py` clears `training/logs/tb/<task>_*` by default).
-5. Athletes keep the original textures from their imported model (`.glb`). Do not tint the skin.
-   This replaces the earlier rule that heuristic bots were RED, the reference RL policy GREEN and
-   variations owner-supplied colours (owner decision, 2026-09-05). Tell athletes apart by name;
-   `AthleteSpawner.skinTintStrength` dials a house colour back in if it is ever wanted (0 = model
-   textures, the default; 1 = flat colour).
-6. RL learning apps always have a heuristic-coded bot, a reference RL bot, and zero-to-many custom bots,
-   often with custom skinned meshes.
-7. At the end of any answer longer than 100 words, add a 20-word TL;DR.
+3. Before any git sync/push, commit all outstanding changes first. Never sync a dirty tree.
+4. Explain results in plain, non-technical language so the owner can decide the next step without
+   decoding jargon. Keep the numbers, drop the vocabulary.
+5. At the end of any answer longer than 100 words, add a 20-word TL;DR.
+
+### Training
+
+6. All training runs on **MuJoCo / Newton** (`mujoco_warp` today, Newton as it lands). No Unity
+   ML-Agents. The Isaac Lab twin in `training/isaac/` stays as a comparison reference only — new
+   training work goes to the MuJoCo/Newton path.
+7. **Ask the owner for a skinned mesh before attempting to train.** Read the rig (bone hierarchy,
+   pivots, limits) out of that model and import it into MuJoCo/Newton
+   (`training/rig_to_mjcf.py` -> `training/models/*.xml`) instead of inventing a skeleton.
+8. More creature/human models are coming later. For now, train the one initial model through every
+   behaviour it needs before branching out to new skeletons.
+9. Always start TensorBoard when training starts so progress can be watched
+   (`training/train_run.py` launches it on http://localhost:6006).
+10. Before starting training, check TensorBoard for obsolete behaviours/runs taking up room and
+    remove them (`train_run.py` clears `training/logs/tb/<task>_*` by default).
+11. Show the simulator's own UI (MuJoCo viewer, or Newton's viewer if that is the better option) so
+    the creature can be watched moving during and after training — not just reward curves.
+12. When a run needs 30+ minutes, close the Unity Editor first (saving work), say so, and tell the
+    owner explicitly when training is over and the editor can be reopened.
+13. Android builds of MuJoCo come from https://github.com/joanllobera/mujoco-bin/ . (The Unity APK
+    is a separate path: `training/deploy_android.ps1`.)
+
+### Creature realism
+
+14. Creatures move under real Earth gravity (9.81 m/s^2), with joint ranges and link masses that
+    match the creature's real size.
+15. Joints move at speeds and forces a real human could produce (when the agent is human) — torque
+    limits and velocity limits set from human data, not whatever trains fastest.
+16. Athletes keep the original textures from their imported model (`.glb`). Do not tint the skin.
+    This replaces the earlier rule that heuristic bots were RED, the reference RL policy GREEN and
+    variations owner-supplied colours (owner decision, 2026-09-05). Tell athletes apart by name;
+    `AthleteSpawner.skinTintStrength` dials a house colour back in if it is ever wanted (0 = model
+    textures, the default; 1 = flat colour).
+17. RL learning apps always have a heuristic-coded bot, a reference RL bot, and zero-to-many custom
+    bots, often with custom skinned meshes.
+
+### Unity scene authoring
+
+18. Build as much of the scene as possible as real prefabs/objects through the Unity MCP tools, so
+    static object positions can be nudged in the editor instead of being hard-coded in a builder
+    script.
+19. Drive Unity through whichever of these gives the best result:
+    - `com.anklebreaker.unity-mcp` (already in `Packages/manifest.json`; HTTP bridge on
+      127.0.0.1:7890, see `AGENTS.md`)
+    - https://github.com/CoplayDev/unity-mcp
+    - https://github.com/IvanMurzak/Unity-MCP (the `UnityMCP` server on 127.0.0.1:8080)
 
 ## Hard constraints
 
-- No Unity ML-Agents. Policies are trained externally (MuJoCo Warp) and run through Unity Inference Engine.
+- No Unity ML-Agents. Policies are trained externally (MuJoCo / Newton) and run through Unity
+  Inference Engine.
 - Never hand-edit `.meta` files, `Library/`, `Logs/`, `Temp/`, or `.onnx` binaries.
-- Scenes and prefabs are generated by the `PoDecath/*` editor menu items; re-run them instead of editing YAML.
+- Scenes and prefabs are generated by the `PoDecath/*` editor menu items; re-run them instead of
+  editing YAML.
 - The Blender White House file is the owner's asset: export from it, never modify or save it.

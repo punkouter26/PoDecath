@@ -146,6 +146,15 @@
 
 .btn--ghost { background-color: rgba(255, 255, 255, 0.06); }
 
+/* Small secondary action that sits on a line beside text rather than owning a row of its own. */
+.btn--chip {
+    min-height: 72px;
+    padding-left: var(--gap-3);
+    padding-right: var(--gap-3);
+    margin-left: var(--gap-2);
+    font-size: var(--t-small);
+}
+
 .btn--step {
     /* A stepper sits on a row that is already --surface-2, so it needs its own lighter ground or it
        disappears into the row and reads as two floating glyphs. */
@@ -375,6 +384,10 @@
     padding: var(--gap-2);
     margin-bottom: var(--gap-2);
 }
+
+/* A row at zero is still listed — the roster is the same every time, which is what makes it readable —
+   but it is plainly out of the race. */
+.runner-row--out { opacity: 0.42; }
 
 .runner-name { flex-grow: 1; font-size: var(--t-body); }
 .runner-count {

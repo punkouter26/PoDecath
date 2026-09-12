@@ -249,6 +249,7 @@ namespace PoDecath.Sim
                 var binder = res.root.AddComponent<SkinBinder>();
                 if (def.boneMap != null && def.boneMap.Count > 0) binder.map = def.boneMap;   // per-glb skeleton names
                 binder.skinRootEuler = def.skinRootEuler;
+                binder.skinScale = def.skinScale;
                 binder.Bind(res.rig, skin);   // must happen before ResetPose moves the rig out of the rest pose
                 Tint(skin, def, skinTintStrength);
             }
