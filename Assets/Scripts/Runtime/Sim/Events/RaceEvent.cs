@@ -238,16 +238,37 @@ namespace PoDecath.Sim
             if (a.IsRL && a.rig != null && a.rig.root != null) a.rig.root.immovable = false;
             Vector3 p = SpawnPosition(a);
             Quaternion rot = SpawnRotation(a);
-            if (a.IsRL)
+            // Ask "is this one hand-coded?" before "does it have a rig?", because since the heuristic
+            // bot became a physics body the answer to the second is yes for both kinds. IsRL is
+            // `rig != null`, and that was an accurate test of "driven by a policy" for exactly as long
+            // as the coded bot had no rig to speak of. The day it got one, this branch started catching
+            // it first and the heuristic branch became unreachable -- so HeuristicRunner.ResetTo was
+            // never called, and the gait reached the line with none of its setup: no start position to
+            // measure distance from, no halt, and desiredDirection left at its Vector3.right default
+            // instead of the course direction.
+            //
+            // Honest about what this does and does not fix: it makes the heuristic reset path run at
+            // all, which it demonstrably did not. It does NOT fix the RED bot falling on the Rooftop
+            // dash -- that survives this change, and survived changing the countdown hold, dropping
+            // topSpeed from 9.2 to 4, and correcting the spawn height. Whatever puts it down is
+            // upstream of everything in this method. See DOCS/ROADMAP.md.
+            //
+            // Left as IsRL elsewhere on purpose. Most of the other ~45 uses -- BodyPosition, the camera
+            // and audio and VFX anchors, DetectFall -- really do mean "has a rig", and for those the
+            // heuristic bot answering yes is now the correct answer.
+            if (a.heuristic != null)
+            {
+                // Stand it on the line rather than in it: SpawnPosition is a point on the deck -- FloorY(a)
+                // is literally LanePosition(a.lane).y -- so the base needs the same spawnHeight lift the
+                // RL branch has always given it, or the body starts buried and PhysX ejects it.
+                ResetHeuristic(a, p + Vector3.up * a.spawnHeight);
+            }
+            else if (a.IsRL)
             {
                 if (a.runner != null) a.runner.enabled = false;
                 if (a.runner != null) a.runner.ResetEpisode(p + Vector3.up * a.spawnHeight, rot);
                 else a.rig.ResetPose(p + Vector3.up * a.spawnHeight, rot);
                 SetCourseTarget(a);
-            }
-            else if (a.heuristic != null)
-            {
-                ResetHeuristic(a, p);
             }
         }
 
