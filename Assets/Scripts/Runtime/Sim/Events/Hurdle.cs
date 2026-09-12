@@ -49,7 +49,25 @@ namespace PoDecath.Sim
         /// <summary>The kinematic bot last in contact before it went over, if it was one.</summary>
         public HeuristicRunner ByBot { get; private set; }
 
+        /// <summary>
+        /// Magnitude of the last contact impulse an athlete put into this hurdle, in N s, and where it
+        /// landed. Kept because the hurdle is the only thing that ever sees the number: by the time
+        /// <see cref="KnockedOver"/> fires a frame or two later, PhysX has moved on and the difference
+        /// between a clip that happened to topple it and a runner demolishing it is gone.
+        /// </summary>
+        public float LastImpulse { get; private set; }
+
+        /// <summary>Where that contact was, for anything drawing or shaking at the point of impact.</summary>
+        public Vector3 LastContact { get; private set; }
+
         public event Action<Hurdle> KnockedOver;
+
+        /// <summary>
+        /// Raised on every athlete contact above <see cref="minClipImpulse"/>, whether or not the hurdle
+        /// goes down — which is most of them, because clipping a hurdle and leaving it standing is the
+        /// common case in a real race. Carries the impulse so the effects can be scaled by it.
+        /// </summary>
+        public event Action<Hurdle, float> Struck;
 
         Rigidbody _body;
         Vector3 _mark;
@@ -94,6 +112,7 @@ namespace PoDecath.Sim
             Knocked = false;
             ByRig = null;
             ByBot = null;
+            LastImpulse = 0f;
             transform.SetPositionAndRotation(_mark, _markRot);
             if (_body == null) return;
             _body.linearVelocity = Vector3.zero;
@@ -131,16 +150,25 @@ namespace PoDecath.Sim
         }
 
         /// <summary>
-        /// A contact that did not put the hurdle down. Scaled by the impulse, so a shin brushing the bar is
-        /// almost silent and a hard clip that the hurdle survives is nearly as loud as one that it does not.
-        /// Whether it stays up is decided a frame or two later in FixedUpdate; this is the sound of the
-        /// moment of contact either way, which is why it does not wait to find out.
+        /// A contact, recorded and then heard. Scaled by the impulse, so a shin brushing the bar is almost
+        /// silent and a hard clip that the hurdle survives is nearly as loud as one that it does not.
+        /// Whether it stays up is decided a frame or two later in FixedUpdate; this is the moment of
+        /// contact either way, which is why it does not wait to find out.
+        ///
+        /// The impulse is stored before the sound is played and regardless of whether there is a clip to
+        /// play, because the effects layer and the camera shake both need it and neither should depend on
+        /// whether an audio bank was baked.
         /// </summary>
         void Clipped(Collision c)
         {
-            if (_src == null || clip == null) return;
             float impulse = c.impulse.magnitude;
             if (impulse < minClipImpulse) return;
+
+            LastImpulse = impulse;
+            LastContact = c.contactCount > 0 ? c.GetContact(0).point : transform.position;
+            Struck?.Invoke(this, impulse);
+
+            if (_src == null || clip == null) return;
             float weight = Mathf.Clamp01(impulse / Mathf.Max(0.01f, referenceClipImpulse));
             _src.pitch = UnityEngine.Random.Range(0.95f, 1.12f);
             _src.PlayOneShot(clip, volume * (0.3f + 0.7f * weight) * PoDecath.Audio.AudioMix.Level(PoDecath.Audio.AudioMix.Bus.Sfx));

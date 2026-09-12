@@ -37,10 +37,33 @@
 
             <ui:VisualElement class="spacer" />
 
+            <!--
+                What the commentary is saying. Always drawn, on every platform: most of them have no system
+                voice at all, and a caption is the only part of the commentary that survives the sound
+                being off or a screenshot being taken.
+            -->
+            <ui:VisualElement name="caption" class="caption caption--out">
+                <ui:Label name="caption-text" class="caption-text" text="" />
+            </ui:VisualElement>
+
             <!-- Lower third: who the gallery has cut to. Wipes in from the left on every cut. -->
             <ui:VisualElement name="lower-third" class="lower-third lower-third--out">
                 <ui:Label name="lower-name" class="lower-name" text="" />
                 <ui:Label name="lower-detail" class="lower-detail" text="" />
+
+                <!--
+                    Strain: the featured athlete's joint torque as a fraction of what its drives are
+                    allowed to produce. The fill is the reading; the tick behind it is where fatigue has
+                    got to. Hidden on an athlete with no effort meter — the coded bot in a scene built
+                    without them, mainly.
+                -->
+                <ui:VisualElement name="strain" class="strain">
+                    <ui:Label class="label-micro" text="STRAIN" />
+                    <ui:VisualElement name="strain-track" class="strain-track">
+                        <ui:VisualElement name="strain-fill" class="strain-fill" />
+                    </ui:VisualElement>
+                    <ui:Label name="strain-value" class="strain-value" text="" />
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
 

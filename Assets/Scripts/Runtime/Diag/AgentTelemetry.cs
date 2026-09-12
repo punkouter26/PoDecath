@@ -75,6 +75,10 @@ namespace PoDecath.Diag
             // Execution — see the PolicyRunner properties of the same names.
             public float inferMs, clampFrac, obsClipFrac, jitter, actionMag, controlHz;
 
+            // Effort — see EffortMeter. Mean and peak joint torque against the drives' own force limits,
+            // the mechanical power that implies, and the cosmetic fatigue built off it.
+            public float effort, peakSaturation, watts, fatigue;
+
             // History, oldest-first when read through Sample().
             public float[] speedHistory, uprightHistory;
             public int historyCount, historyHead;
@@ -251,6 +255,14 @@ namespace PoDecath.Diag
                 a.recoveries = ath.recoveries;
                 a.upright = ath.rig != null ? Mathf.Clamp01(ath.rig.UprightDot) : 1f;
                 a.uprightMean = ath.MeanUpright;
+
+                if (ath.effort != null)
+                {
+                    a.effort = ath.effort.Effort;
+                    a.peakSaturation = ath.effort.PeakSaturation;
+                    a.watts = ath.effort.Watts;
+                    a.fatigue = ath.effort.Fatigue;
+                }
             }
 
             PolicyRunner r = a.runner;
@@ -284,6 +296,11 @@ namespace PoDecath.Diag
         const float ClampBad = 0.10f;      // a tenth of the joints asking for a pose the rig cannot hold
         const float JitterWarn = 0.35f;    // action units per 20 ms step; a clean gait sits well under this
         const float HzSlack = 0.9f;        // control rate this far under the config's is the device losing
+        // A joint pinned at its limit for a whole second of control steps, on a body that is working hard
+        // overall. Either alone is normal — one joint spikes on every foot plant, and a body can average a
+        // fair load without any joint saturating — so both are required before this is worth saying.
+        const float SaturationWarn = 0.96f;
+        const float EffortWarn = 0.45f;
 
         /// <summary>
         /// Turns one agent's numbers into the shortest sentence that says what to do about them.
@@ -332,6 +349,20 @@ namespace PoDecath.Diag
                 a.verdict = $"Running at {a.controlHz:F0} Hz of control, not {a.configHz:F0}. The device cannot hold "
                           + "200 Hz physics with this field, so the policy is being stepped at a rate it was not trained "
                           + "at. Race fewer athletes, or raise controlDecimation and retrain to match.";
+                return;
+            }
+
+            // Ordered above the falls for the usual reason: a body running against its torque ceiling falls
+            // over, and reporting the falls first sends somebody off to retrain a policy whose gait is
+            // being shaped by the drives rather than by the network.
+            if (a.peakSaturation > SaturationWarn && a.effort > EffortWarn)
+            {
+                a.grade = Grade.Warn;
+                a.verdict = $"Running against the torque ceiling: the hardest-worked joint is at "
+                          + $"{Pct(a.peakSaturation)} of its drive limit and the body averages {Pct(a.effort)}, "
+                          + $"about {a.watts:F0} W. The gait is being shaped by the force limit rather than by "
+                          + "the policy. Check the per-joint forceLimit against training/models/athlete.xml — "
+                          + "a rig with tighter limits than the one it was trained on looks exactly like this.";
                 return;
             }
 
@@ -442,6 +473,9 @@ namespace PoDecath.Diag
 
             public float inferenceMs, observationClipping, targetClamping, actionRate, actionMagnitude;
 
+            /// <summary>Effort: mean and peak joint torque against the drive limits, watts, and fatigue.</summary>
+            public float effort, peakSaturation, watts, fatigue;
+
             public string grade, verdict;
 
             /// <summary>Downsampled speed and uprightness, oldest first, over <c>traceSeconds</c>.</summary>
@@ -536,6 +570,11 @@ namespace PoDecath.Diag
                 targetClamping = a.clampFrac,
                 actionRate = a.jitter,
                 actionMagnitude = a.actionMag,
+
+                effort = a.effort,
+                peakSaturation = a.peakSaturation,
+                watts = a.watts,
+                fatigue = a.fatigue,
 
                 grade = a.grade.ToString(),
                 verdict = a.verdict,

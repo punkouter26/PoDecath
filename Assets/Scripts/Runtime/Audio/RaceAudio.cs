@@ -49,6 +49,9 @@ namespace PoDecath.Audio
         public RaceEvent race;
         [Tooltip("Optional. Without it there is no whoosh under a cut, and nothing else changes.")]
         public BroadcastDirector director;
+        [Tooltip("Optional. With it the crowd hears a race getting closer rather than only noticing after "
+               + "something has happened. Without it the moods are decided exactly as they were before.")]
+        public DramaMeter drama;
         [Tooltip("The 3D crowd. Without it the bed falls back to a single 2D source on this object.")]
         public CrowdRing crowd;
         [Tooltip("Set for the long jump; the sand thud is played from the pit.")]
@@ -197,6 +200,10 @@ namespace PoDecath.Audio
             // A close race is only worth clapping about once it is far enough in to mean something; two
             // runners level at ten metres is every race there has ever been.
             if (second >= 0f && Mathf.Abs(lead - second) < 2.5f && progress > 0.35f) return Mood.Close;
+            // The crowd can also see somebody about to go down, which is the one thing the gap alone cannot
+            // tell it. The threshold sits above the director's own, so the mix follows the picture rather
+            // than getting there first and giving the incident away.
+            if (drama != null && drama.WorstRisk > 0.8f && progress > 0.1f) return Mood.Close;
             return Mood.Building;
         }
 
@@ -209,7 +216,7 @@ namespace PoDecath.Audio
                 foreach (RaceEvent.Athlete a in race.Athletes) lead = Mathf.Max(lead, a.distance);
                 progress = Mathf.Clamp01(lead / race.raceDistance);
             }
-            return mood switch
+            float level = mood switch
             {
                 Mood.Waiting => 0.12f,
                 Mood.Hush => 0.22f,                                   // quieter than idle: they are waiting for it
@@ -218,6 +225,14 @@ namespace PoDecath.Audio
                 Mood.Roar => 0.95f,
                 _ => 0.6f,
             };
+
+            // Tension lifts the floor inside a mood rather than replacing it. A crowd watching a race that
+            // is quietly getting closer is louder than one watching the same mood of race that is not, and
+            // that difference used to be inaudible: every Building race sounded the same at the same
+            // distance. Capped so the mood still decides the ceiling.
+            if (drama != null && mood != Mood.Roar && mood != Mood.Hush)
+                level = Mathf.Min(0.92f, level + 0.18f * drama.Tension);
+            return level;
         }
 
         void PushCrowd()

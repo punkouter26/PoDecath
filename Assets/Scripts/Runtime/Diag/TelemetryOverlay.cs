@@ -484,7 +484,7 @@ namespace PoDecath.Diag
 
             readonly Label _name, _model, _verdict, _legend;
             readonly VisualElement _trend;
-            readonly Label[] _values = new Label[9];
+            readonly Label[] _values = new Label[12];
 
             AgentTelemetry.Agent _agent;
 
@@ -495,6 +495,12 @@ namespace PoDecath.Diag
                 "SPEED m/s", "PEAK m/s", "DIST m",
                 "FALLS", "UPRIGHT", "CONTROL Hz",
                 "OBS CLIP", "CLAMPED", "JITTER",
+                // Effort, from EffortMeter: the mean and worst joint torque as a fraction of the drive
+                // limits the rig was actually configured with, and the mechanical power that implies.
+                // Three cells rather than one because the mean and the peak say different things — a body
+                // averaging a fair load with nothing saturating is fine, and one joint pinned while the
+                // rest idle is a joint limit that does not match what this checkpoint was trained against.
+                "STRAIN", "PEAK JOINT", "WATTS",
             };
 
             internal AgentCard()
@@ -576,6 +582,20 @@ namespace PoDecath.Diag
                                                       : a.clampFrac > 0.03f ? AgentTelemetry.Grade.Warn
                                                                             : AgentTelemetry.Grade.Good);
                     Set(8, $"{a.jitter:F2}", a.jitter > 0.35f ? AgentTelemetry.Grade.Warn : AgentTelemetry.Grade.Good);
+                }
+
+                if (a.watts <= 0f && a.effort <= 0f)
+                {
+                    // No EffortMeter on this athlete — a scene built before the meters existed, or one
+                    // built with them switched off. Blank rather than three convincing zeroes.
+                    Set(9, "-"); Set(10, "-"); Set(11, "-");
+                }
+                else
+                {
+                    Set(9, $"{a.effort * 100f:F0}%");
+                    Set(10, $"{a.peakSaturation * 100f:F0}%",
+                            a.peakSaturation > 0.96f ? AgentTelemetry.Grade.Warn : AgentTelemetry.Grade.Good);
+                    Set(11, $"{a.watts:F0}");
                 }
 
                 SetText(_legend, $"last {historySeconds:F0} s   ·   green = speed, full height is this "

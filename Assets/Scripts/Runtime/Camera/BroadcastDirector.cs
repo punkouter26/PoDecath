@@ -34,6 +34,9 @@ namespace PoDecath.Cam
         public TrackPath path;
         [Tooltip("Set for the long jump; the director then cuts the runway instead of the loop.")]
         public LongJumpPit pit;
+        [Tooltip("Optional. With it the cut rate rides the race's tension and the gallery will cut to a "
+               + "runner about to go down. Without it the director behaves exactly as it always did.")]
+        public DramaMeter drama;
 
         [Header("Shots")]
         public CinemachineCamera startLineCam;
@@ -47,8 +50,19 @@ namespace PoDecath.Cam
         [Header("Cutting")]
         [Tooltip("Shortest time a shot is held before the director is allowed to cut again.")]
         public float minShotSeconds = 2.6f;
+        [Tooltip("Shortest hold when the race is at full tension. A gallery cuts faster as a race gets "
+               + "closer; this is what it speeds up to.")]
+        public float urgentShotSeconds = 1.3f;
         [Tooltip("How long the wide shot stays on a fall before the running order resumes.")]
         public float incidentSeconds = 3f;
+
+        [Header("Anticipation")]
+        [Tooltip("Fall risk above which the gallery abandons its planned shot for whoever is in trouble — "
+               + "before they are down, not after. Needs a DramaMeter; 0 turns it off.")]
+        [Range(0f, 1f)] public float anticipateRisk = 0.72f;
+        [Tooltip("How long the camera stays with a runner it cut to in anticipation, whether or not "
+               + "anything came of it. Sometimes nothing does, and that is what a live gallery looks like.")]
+        public float anticipateSeconds = 2.2f;
 
         [Header("Placement (metres)")]
         [Tooltip("How far outside the deck edge the trackside cameras sit. The deck is ringed by a 1 m "
@@ -79,6 +93,8 @@ namespace PoDecath.Cam
         Transform _leaderSubject, _fieldSubject;
         float _shotAge;
         float _incidentLeft;
+        float _anticipateLeft;
+        RaceEvent.Athlete _watching;
         int _lastAttempt = -1;
         int _knownFallen, _knownFinished;
         float _startS, _finishS;
@@ -122,12 +138,13 @@ namespace PoDecath.Cam
                 _lastAttempt = race.Attempt;
                 _knownFallen = _knownFinished = 0;
                 _incidentLeft = 0f;
+                _anticipateLeft = 0f;
+                _watching = null;
                 _shotAge = minShotSeconds;   // a new race may open on its own shot straight away
             }
 
             RaceEvent.Athlete leader = Leader(out RaceEvent.Athlete faller, out int fallen, out int finished);
             Vector3 centroid = FieldCentre();
-            if (leader != null) _leaderSubject.position = Subject(leader);
             _fieldSubject.position = centroid;
 
             // A new fall or a new finisher is worth abandoning the planned shot for.
@@ -144,19 +161,75 @@ namespace PoDecath.Cam
                 _incidentLeft -= Time.deltaTime;
                 if (faller != null) _fieldSubject.position = Subject(faller);
             }
-            Featured = _incidentLeft > 0f && faller != null ? faller : leader;
 
-            float leaderS = leader != null ? ArcOf(leader) : _startS;
-            PlaceCameras(leaderS);
+            // Who the moving cameras follow. Normally the leader; while an anticipated incident is running,
+            // whoever is about to be in it.
+            RaceEvent.Athlete focus = Anticipate(leader, ref cutNow) ?? leader;
+            if (focus != null) _leaderSubject.position = Subject(focus);
+            Featured = _incidentLeft > 0f && faller != null ? faller : focus;
 
-            Shot want = Choose(leader, finished, leaderS);
+            float focusS = focus != null ? ArcOf(focus) : _startS;
+            PlaceCameras(focusS);
+
+            Shot want = Choose(focus, finished, focusS);
             _shotAge += Time.deltaTime;
-            if (want != Current && (cutNow || _shotAge >= minShotSeconds))
+            if (want != Current && (cutNow || _shotAge >= HoldSeconds))
             {
                 Current = want;
                 _shotAge = 0f;
             }
             Apply();
+        }
+
+        /// <summary>
+        /// How long the current shot has to be held before the director may cut again.
+        ///
+        /// A gallery cuts slowly through a settled middle and quickly through a finish, and it does not do
+        /// that on a timer — it does it because there is more happening. With a <see cref="DramaMeter"/>
+        /// wired, the hold slides between the two bounds with the race's tension; without one it is the
+        /// fixed hold it always was.
+        /// </summary>
+        float HoldSeconds =>
+            drama != null ? Mathf.Lerp(minShotSeconds, urgentShotSeconds, drama.Tension) : minShotSeconds;
+
+        /// <summary>
+        /// Cutting to a runner that is about to go down, a beat before it does.
+        ///
+        /// This is the one thing on this class that a gallery working purely from "what has happened"
+        /// cannot do, and it is worth the complexity because the shot it produces — a tight shot already on
+        /// the athlete as it loses the bend — is the shot the whole event is about. The risk comes from
+        /// <see cref="DramaMeter"/>, which builds it out of uprightness and lateral acceleration; the
+        /// second of those is what gives the warning, because a runner cornering above about 0.35 g on this
+        /// track is in trouble well before it is visibly tilted.
+        ///
+        /// Nothing is cut back early if the runner recovers: the camera stays with it for
+        /// <see cref="anticipateSeconds"/> either way. A gallery that snapped away the instant an athlete
+        /// steadied would look like it was reading the future rather than watching the race.
+        ///
+        /// Returns the athlete to follow, or null to follow the leader as usual.
+        /// </summary>
+        RaceEvent.Athlete Anticipate(RaceEvent.Athlete leader, ref bool cutNow)
+        {
+            if (_anticipateLeft > 0f)
+            {
+                _anticipateLeft -= Time.deltaTime;
+                // Once it is actually down the incident path owns the shot, and holding on to it here would
+                // fight the wide shot that the fall is supposed to cut to.
+                if (_watching != null && !_watching.fell && !_watching.finished) return _watching;
+                _anticipateLeft = 0f;
+                _watching = null;
+            }
+
+            if (drama == null || anticipateRisk <= 0f) return null;
+            RaceEvent.Athlete risky = drama.MostAtRisk;
+            if (risky == null || drama.WorstRisk < anticipateRisk) return null;
+            if (risky == leader) return null;           // already on camera
+            if (risky.fell || risky.finished) return null;
+
+            _watching = risky;
+            _anticipateLeft = anticipateSeconds;
+            cutNow = true;
+            return risky;
         }
 
         Shot Choose(RaceEvent.Athlete leader, int finished, float leaderS)
@@ -242,7 +315,7 @@ namespace PoDecath.Cam
 
             PlaceJumpCameras(x);
             Shot want = ChooseJump(jump, x);
-            if (want != Current && (cutNow || _shotAge >= minShotSeconds))
+            if (want != Current && (cutNow || _shotAge >= HoldSeconds))
             {
                 Current = want;
                 _shotAge = 0f;

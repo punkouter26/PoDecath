@@ -56,11 +56,20 @@ namespace PoDecath.EditorTools
             }
             if (hud != null) hud.cameraRig = null;
 
+            // What the race is worth watching for, measured before anything reacts to it. The director,
+            // the mix and the commentary all read this one component rather than each working out for
+            // itself whether a gap is closing — which is how three features end up disagreeing about
+            // whether the race is exciting.
+            var dramaGo = new GameObject("DramaMeter");
+            var drama = dramaGo.AddComponent<DramaMeter>();
+            drama.race = dash;
+
             var dirGo = new GameObject("BroadcastDirector");
             var dir = dirGo.AddComponent<BroadcastDirector>();
             dir.race = dash;
             dir.path = path;
             dir.pit = pit;   // long jump: the director cuts the runway instead of the loop
+            dir.drama = drama;
             dir.startLineCam = ShotCam("CM Shot StartLine", 40f);
             dir.offTheGunCam = ShotCam("CM Shot OffTheGun", 34f);
             dir.railCam = ShotCam("CM Shot Rail", 38f);
@@ -153,6 +162,10 @@ namespace PoDecath.EditorTools
             var comp = go.AddComponent<CinemachineRotationComposer>();
             comp.Composition.ScreenPosition = new Vector2(0f, -0.02f);
             comp.Damping = new Vector2(0.35f, 0.35f);   // a little lag, like a real operator
+            // Every shot in the gallery can feel an impact. Cinemachine scales the shake by each camera's
+            // own distance from the impulse, so the stadium wide barely twitches at a fall that rocks the
+            // rail camera — which is what a real gallery looks like and costs nothing extra to get.
+            CameraShake.AddListener(cm);
             return cm;
         }
 

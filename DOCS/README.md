@@ -61,6 +61,10 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
 | Audio: synthesised crowd bed/swell/groan/applause/chant, wind, pistol, countdown, bell, clatter, hurdle clip, sand, whoosh, sting, breathing, 10 footfalls across 3 surfaces | `AudioBakery.cs` -> `Assets/Audio/` | done |
 | Spatial mix: crowd ring round the deck, 3D one-shot cue pool, code buses with ducking, reverb + distance low pass on the listener, crowd mood machine | `CrowdRing.cs`, `SpatialCue.cs`, `AudioMix.cs`, `ListenerAcoustics.cs`, `RaceAudio.cs` | done |
 | Diagnostics overlay (F3): FPS + 1% low + frame graph, draw calls / batches / SetPass / triangles, GC per frame, memory, athlete and audio-voice counts, crowd mood | `TelemetryOverlay.cs`, `Assets/UI/Telemetry.uxml` | done |
+| Effort and strain: each joint's drive torque against the force limit it was configured with, the mechanical power that implies, and a cosmetic fatigue built off it. Drawn on the body as a per-joint glow, on the overlay as a strain bar in watts, and heard in the breathing. **Reads only — nothing downstream may touch a drive** | `EffortMeter.cs`, `StressSkeleton.cs`, `FootstepAudio.cs`, `BroadcastView.Strain` | done; not yet checked on a phone |
+| Drama: one measured tension number (gap, closing rate, lateral acceleration, uprightness trend, recent incidents) that the gallery and the crowd both read. The cut rate rides it, and the director will cut to a runner a beat **before** it goes down | `DramaMeter.cs`, `BroadcastDirector.Anticipate`, `RaceAudio` | done; the anticipation threshold is a guess and wants watching |
+| Commentary: a priority slot (not a queue) fed by the gun, falls, recoveries, lead changes, splits, the bell, hurdles, marks and finishes, plus colour off the strain and drama readings. Captions always; a spoken voice on Android and Windows only | `Commentary.cs`, `SpeechSynth.cs`, `Assets/UI/Broadcast.uxml` | done; **no voice on Mac, Linux or iOS** — captions carry it there |
+| Impacts scaled by the physics: contact impulse drives hurdle sparks and camera shake, foot slip leaves skid marks and throws dust along the slide | `Hurdle.LastImpulse`, `FootContactSensor.SlipSpeed`, `CameraShake.cs`, `SkidMarks.cs`, `RaceVfx.cs` | done; `referenceImpulse` is a first guess, re-tune against measured values |
 | Character roster: every rigged model in `Assets/Models/Characters` becomes an athlete, bone map and facing worked out from the skeleton's shape, skin sized to the rig at bind time | `SkeletonMapper.cs`, `AthleteRosterBuilder.cs`, menu `PoDecath/Rebuild Athlete Roster` | done: 8 models (Matt Avaturn, Grandma, Grandpa, Matt, Nick, Nick Doggy, Trump, Zombie Accurig), all 12 bodies bound on each, every one within 3 degrees of square |
 | Picking the field: one counter per roster entry on the setup menu, ONE EACH / NONE, 1-16 runners | `SetupView.cs`, `Assets/UI/Setup.uxml` | done |
 | Other events (high jump, throws, ...) | `DOCS/ROADMAP.md` | placeholders |
@@ -130,6 +134,12 @@ DOCS/                           this summary and the roadmap
   Needed because a run trained against a limit does not improve monotonically: the adaptive speed
   curriculum hunts around the fastest sustainable pace, so consecutive checkpoints alternate between
   clean and fall-heavy and the last iteration is not reliably the best one.
+- **After pulling the broadcast layer added 2026-09-12, re-run the scene builders once.** The new
+  components (`EffortMeter`, `StressSkeleton`, `SkidMarks`, `DramaMeter`, `CameraShake`, `Commentary`,
+  `SpeechSynth`, the impulse listeners on the shot cameras) are wired by the editor builders, so a
+  scene saved before them has none of it. Run `PoDecath/Build Race Scenes` and
+  `PoDecath/Build Long Jump Scene`; they re-bake the effects bank on the way past, which is where the
+  two new materials (`Fx_Stress`, `Fx_Skid`) come from.
 - Unity: menu `PoDecath/Build Rooftop Scene`, then play `Assets/Scenes/Rooftop.unity`.
 - Audio: menu `PoDecath/Bake Audio Clips` synthesises the whole sound set into `Assets/Audio/` and points
   `AudioBank.asset` at it. The scene builders run it themselves, so this is only needed to re-bake by hand.

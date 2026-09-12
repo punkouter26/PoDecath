@@ -56,7 +56,7 @@ Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the te
     script.
 19. Drive Unity through whichever of these gives the best result:
     - `com.anklebreaker.unity-mcp` (already in `Packages/manifest.json`; HTTP bridge on
-      127.0.0.1:7890, see `AGENTS.md`)
+      127.0.0.1, port 7890 upward — find it, see `AGENTS.md`)
     - https://github.com/CoplayDev/unity-mcp
     - https://github.com/IvanMurzak/Unity-MCP (the `UnityMCP` server on 127.0.0.1:8080)
 

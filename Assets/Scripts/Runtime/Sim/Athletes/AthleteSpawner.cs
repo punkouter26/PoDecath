@@ -51,6 +51,14 @@ namespace PoDecath.Sim
         public bool blobShadows = true;
         [Tooltip("A puff off every heavy footfall, driven by the same contact detection as the sound.")]
         public bool footDust = true;
+        [Tooltip("Measure each athlete's joint torques against their drive limits: what feeds the strain "
+               + "bar, the stress skeleton and the breathing. Reads only — it never changes a drive.")]
+        public bool effortMeters = true;
+        [Tooltip("Draw the strain on the body as a glow per joint. Off on the mobile tier by default; "
+               + "StressSkeleton.Visible is the runtime switch.")]
+        public bool stressSkeletons = true;
+        [Tooltip("Black streaks where a foot slides on the deck instead of gripping.")]
+        public bool skidMarks = true;
 
         [System.Serializable]
         class PolicyJson { public float action_scale = 0.5f; public int control_decimation = 4; public int physics_hz = 200; }
@@ -81,6 +89,7 @@ namespace PoDecath.Sim
                     a.name = $"{def.displayName} {a.number}";
                     if (a.go != null) a.go.name = a.name;
                 }
+                AddEffort(a);
                 AddFootsteps(a);
                 AddPresentation(a, number - 1);
                 AddRecovery(a);
@@ -119,6 +128,30 @@ namespace PoDecath.Sim
                 list.Add(def);
             }
             return list;
+        }
+
+        /// <summary>
+        /// Gives one athlete a reading of how hard it is working.
+        ///
+        /// Both kinds of athlete get one, and that is the point: the coded bot and the policy athletes run
+        /// the same body with the same drive limits, so their torque traces are directly comparable and the
+        /// strain bar means the same thing on both. (The <c>IsRL</c> test below reads as if it excludes the
+        /// coded bot and does not: <c>IsRL</c> is <c>rig != null</c>, and the bot has had a real rig since
+        /// it stopped being a kinematic capsule. Here that is the correct answer — what this needs is a
+        /// body with joints, not a network.) It goes on the articulation root so the joints it reads are
+        /// the ones underneath it.
+        ///
+        /// It measures and nothing else. Nothing downstream of this is allowed to feed back into a drive —
+        /// see the note on <see cref="EffortMeter"/> for why a fatigue system that quietly lowers torque
+        /// limits would break every trained policy in the project.
+        /// </summary>
+        void AddEffort(RaceEvent.Athlete a)
+        {
+            if (!effortMeters || !a.IsRL || a.rig == null || a.rig.root == null) return;
+            var meter = a.rig.root.gameObject.AddComponent<EffortMeter>();
+            meter.rig = a.rig;
+            meter.decimation = controlDecimation;
+            a.effort = meter;
         }
 
         /// <summary>
@@ -175,6 +208,20 @@ namespace PoDecath.Sim
                 blob.rig = a.rig;
                 blob.heuristic = a.heuristic;
                 blob.material = vfxBank.blobShadow;
+            }
+            // The strain overlay needs a meter to read, so it only ever exists on an athlete that got one.
+            if (stressSkeletons && a.effort != null && vfxBank.stress != null)
+            {
+                var stress = host.AddComponent<StressSkeleton>();
+                stress.rig = a.rig;
+                stress.effort = a.effort;
+                stress.material = vfxBank.stress;
+            }
+            if (skidMarks && a.IsRL && vfxBank.skid != null)
+            {
+                var skid = host.AddComponent<SkidMarks>();
+                skid.rig = a.rig;
+                skid.material = vfxBank.skid;
             }
         }
 

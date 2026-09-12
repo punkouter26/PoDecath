@@ -264,6 +264,62 @@
 .lower-name { font-size: var(--t-title); -unity-font-style: bold; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.85); }
 .lower-detail { font-size: var(--t-small); color: var(--ink-dim); }
 
+/* Strain: joint torque against drive limit, on the athlete the gallery is on. */
+.strain {
+    flex-direction: row;
+    align-items: center;
+    margin-top: var(--gap-1);
+}
+
+.strain-track {
+    flex-grow: 1;
+    height: 14px;
+    margin-left: var(--gap-2);
+    margin-right: var(--gap-2);
+    border-radius: 7px;
+    background-color: rgba(255, 255, 255, 0.10);
+    overflow: hidden;
+}
+
+/* Width and colour are both set from the reading in BroadcastView; the transition is what keeps a bar
+   sampled ten times a second from looking like it is stepping. */
+.strain-fill {
+    height: 100%;
+    width: 0;
+    border-radius: 7px;
+    background-color: var(--accent);
+    transition-property: width, background-color;
+    transition-duration: 0.12s;
+    transition-timing-function: ease-out;
+}
+
+.strain-value { width: 150px; font-size: var(--t-micro); -unity-text-align: middle-right; color: var(--ink-dim); }
+
+/* ------------------------------------------------------------------ commentary caption */
+
+.caption {
+    align-self: center;
+    max-width: 92%;
+    background-color: var(--overlay);
+    border-radius: var(--radius-sm);
+    padding: var(--gap-1) var(--gap-3);
+    margin-bottom: var(--gap-2);
+    /* Fades rather than wipes: a caption is speech arriving, not a graphic being pushed on. */
+    transition-property: opacity, translate;
+    transition-duration: 0.18s;
+    transition-timing-function: ease-out;
+}
+
+.caption--out { opacity: 0; translate: 0 12px; }
+.caption--in { opacity: 1; translate: 0 0; }
+
+.caption-text {
+    font-size: var(--t-small);
+    -unity-text-align: middle-center;
+    white-space: normal;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.85);
+}
+
 /* The countdown, dead centre, scaling down on each beep. */
 .countdown {
     position: absolute;

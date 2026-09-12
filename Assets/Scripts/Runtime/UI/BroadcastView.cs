@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
+using PoDecath.Audio;
 using PoDecath.Cam;
 using PoDecath.Sim;
 
@@ -30,6 +31,13 @@ namespace PoDecath.UI
         public RaceEvent race;
         [Tooltip("Optional. Without it the lower third never appears; everything else still works.")]
         public BroadcastDirector director;
+        [Tooltip("Optional. Without it the caption band stays off the picture and nothing else changes.")]
+        public Commentary commentary;
+
+        [Header("Strain")]
+        [Tooltip("Reading at which the strain bar is fully red. 1 would mean every joint pinned at its "
+               + "torque limit at once, which never happens, so the bar would never leave the green.")]
+        [Range(0.2f, 1f)] public float strainFullScale = 0.55f;
 
         [Header("Size")]
         [Tooltip("Rows in the running order strip. A deeper field gets a '+n more' line under it.")]
@@ -39,6 +47,9 @@ namespace PoDecath.UI
 
         Label _stage, _lead, _clock, _overflow, _lowerName, _lowerDetail, _countdown;
         VisualElement _lowerThird, _splitsPanel, _orderHost, _splitHost;
+        VisualElement _caption, _strain, _strainFill;
+        Label _captionText, _strainValue;
+        string _shownCaption = "";
 
         /// <summary>One row of the running order, kept so it can be re-used and animated rather than rebuilt.</summary>
         class Row
@@ -75,6 +86,11 @@ namespace PoDecath.UI
             _splitsPanel = Find<VisualElement>("splits");
             _orderHost = Find<VisualElement>("order-rows");
             _splitHost = Find<VisualElement>("split-rows");
+            _caption = Find<VisualElement>("caption");
+            _captionText = Find<Label>("caption-text");
+            _strain = Find<VisualElement>("strain");
+            _strainFill = Find<VisualElement>("strain-fill");
+            _strainValue = Find<Label>("strain-value");
 
             BuildRows();
             BuildSplits();
@@ -145,6 +161,7 @@ namespace PoDecath.UI
 
             Countdown();
             LowerThirdVisibility();
+            CaptionBand();
             DecayFlashes();
 
             if (Time.unscaledTime < _nextRefresh) return;
@@ -164,6 +181,60 @@ namespace PoDecath.UI
             RecordSplits(leader);
             OrderStrip(order, leader);
             LowerThirdText(order);
+            Strain();
+        }
+
+        /// <summary>
+        /// The strain bar under the lower third: how hard the athlete on camera is pulling, as a fraction
+        /// of what its drives are configured to allow.
+        ///
+        /// Scaled against <see cref="strainFullScale"/> rather than against 1, because a mean saturation
+        /// of 1 would mean every joint in the body pinned at its torque limit simultaneously — which does
+        /// not happen, and a bar that can only ever fill a third of the way is a bar nobody reads. The
+        /// number printed beside it is the raw reading, so the scaling is presentation and the figure is
+        /// still the measurement.
+        /// </summary>
+        void Strain()
+        {
+            if (_strain == null || _strainFill == null) return;
+            RaceEvent.Athlete a = director != null ? director.Featured : race.Reference;
+            EffortMeter meter = a != null ? a.effort : null;
+
+            Show(_strain, meter != null);
+            if (meter == null) return;
+
+            float shown = Mathf.Clamp01(meter.Effort / Mathf.Max(0.01f, strainFullScale));
+            _strainFill.style.width = Length.Percent(shown * 100f);
+            _strainFill.style.backgroundColor = Color.Lerp(
+                new Color(0.18f, 0.75f, 0.55f), new Color(1f, 0.32f, 0.2f), shown);
+
+            // Watts, not the normalised figure: it is the one number here with a unit, and a viewer can do
+            // something with "620 watts" that they cannot do with "0.41".
+            SetText(_strainValue, meter.Fatigue > 0.35f
+                ? $"{meter.Watts:F0} W  ·  tiring"
+                : $"{meter.Watts:F0} W");
+        }
+
+        /// <summary>
+        /// The commentary caption. Driven off <see cref="Commentary.Caption"/> rather than off its event,
+        /// so a line said while this screen was hidden behind the results card does not leave the band
+        /// stuck on when it comes back.
+        /// </summary>
+        void CaptionBand()
+        {
+            if (_caption == null) return;
+            string line = commentary != null ? commentary.Caption : "";
+            bool show = !string.IsNullOrEmpty(line);
+
+            if (show && line != _shownCaption)
+            {
+                _shownCaption = line;
+                SetText(_captionText, line);
+            }
+            else if (!show) _shownCaption = "";
+
+            _caption.EnableInClassList("caption--in", show);
+            _caption.EnableInClassList("caption--out", !show);
         }
 
         void TopBar(List<RaceEvent.Athlete> order, RaceEvent.Athlete leader)

@@ -27,7 +27,7 @@ namespace PoDecath.EditorTools
             VfxBank bank = BakeBank();
             AssetDatabase.SaveAssets();
             Selection.activeObject = bank;
-            Debug.Log("[PoDecath] Effects baked: soft, smoke, streak and mark sprites, eight materials, VfxBank.");
+            Debug.Log("[PoDecath] Effects baked: soft, smoke, streak and mark sprites, ten materials, VfxBank.");
         }
 
         /// <summary>
@@ -37,11 +37,18 @@ namespace PoDecath.EditorTools
         /// </summary>
         public static VfxBank LoadBank() => AssetDatabase.LoadAssetAtPath<VfxBank>(BankPath);
 
-        /// <summary>Bakes only if the bank is missing; the scene builders call this on every build.</summary>
+        /// <summary>
+        /// Bakes if the bank is missing <em>or incomplete</em>; the scene builders call this on every build.
+        ///
+        /// "Missing" alone was not enough. Adding a material to <see cref="VfxBank"/> leaves every existing
+        /// project with a bank that loads, looks fine, and has a null in the new field — so the effect that
+        /// needed it never appears and no error is logged. Re-baking is deterministic and cheap, so the
+        /// completeness check costs nothing and closes that off for good.
+        /// </summary>
         public static VfxBank EnsureBaked()
         {
             VfxBank bank = LoadBank();
-            return bank != null ? bank : BakeBank();
+            return bank != null && bank.IsComplete ? bank : BakeBank();
         }
 
         public static VfxBank BakeBank()
@@ -71,6 +78,12 @@ namespace PoDecath.EditorTools
             bank.trail = Particle("Fx_Trail", soft, additive: false, softParticles: false);
             bank.blobShadow = Multiply("Fx_BlobShadow", soft);
             bank.sandMark = Multiply("Fx_SandMark", mark);
+            // Additive, on the particle shader, because that is the one URP shader in the project that
+            // multiplies vertex colour through — and the stress skeleton draws a whole athlete's joints in
+            // one mesh, so per-joint colour has nowhere else to live. Soft particles off: these markers sit
+            // on the body itself and a depth fade would eat them where they overlap it.
+            bank.stress = Particle("Fx_Stress", soft, additive: true, softParticles: false);
+            bank.skid = Multiply("Fx_Skid", streak);
 
             EditorUtility.SetDirty(bank);
             AssetDatabase.SaveAssets();

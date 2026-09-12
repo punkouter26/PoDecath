@@ -38,6 +38,9 @@ namespace PoDecath.Sim
             public TrackFollower follower;
             [Tooltip("Set when a get-up policy was loaded. Without one a fall is a DNF, as it always was.")]
             public RecoveryController recovery;
+            [Tooltip("Joint torque against drive limit: effort, strain and (cosmetic) fatigue. Read-only — "
+               + "nothing that consumes it is allowed to change how the body behaves.")]
+            public EffortMeter effort;
             public float spawnHeight = 0.95f;
             public int lane;
             /// <summary>Unique 1-based suffix shown in the results, so eight copies of one policy stay tellable apart.</summary>
@@ -234,6 +237,9 @@ namespace PoDecath.Sim
             a.minUpright = 1f; a.minHeightFrac = 1f; a.uprightSum = 0f; a.uprightSamples = 0;
             a.stopping = false; a.recovering = false; a.recoveries = 0;
             if (a.recovery != null) a.recovery.ResetForAttempt();
+            // Fatigue is per attempt, not per session: a restarted race starts with everyone fresh, or the
+            // strain bar would be pinned before the gun on the third go round.
+            if (a.effort != null) a.effort.ResetForAttempt();
             if (a.follower != null) a.follower.enabled = true;
             if (a.IsRL && a.rig != null && a.rig.root != null) a.rig.root.immovable = false;
             Vector3 p = SpawnPosition(a);

@@ -372,6 +372,12 @@ namespace PoDecath.EditorTools
                 raceVfx.pit = pit;
             }
 
+            // The camera's own reaction to an impact. Its own object because it moves its transform to the
+            // impact point before firing, and nothing else in the scene should be dragged along with it.
+            // Built in every scene: the listeners are already on the cameras either way, and a scene with
+            // listeners and no source is a scene where impacts silently do nothing.
+            new GameObject("CameraShake").AddComponent<CameraShake>();
+
             // The mix. Footsteps belong to the athletes; this is the crowd, the gun, the bell and the cuts.
             //
             // Three objects rather than one, because they are three different kinds of sound source. The
@@ -395,6 +401,27 @@ namespace PoDecath.EditorTools
                 raceAudio.director = director;
                 raceAudio.crowd = ring;
                 raceAudio.pit = pit;
+                raceAudio.drama = director != null ? director.drama : null;
+
+                // The commentary. It lives on the audio object because it ducks the crowd under every line
+                // and RaceAudio is what ticks the mix; without that the duck would never release.
+                //
+                // Only in the scenes that carry a broadcast. The dev scenes are one athlete being watched
+                // in silence on purpose, and a voice calling a race with one runner in it has nothing to
+                // say. See SpeechSynth for which platforms actually produce a voice: the caption is drawn
+                // on all of them, the voice only on Android and Windows.
+                if (fieldMode)
+                {
+                    var speech = audioGo.AddComponent<SpeechSynth>();
+                    var commentary = audioGo.AddComponent<Commentary>();
+                    commentary.race = dash;
+                    commentary.drama = director != null ? director.drama : null;
+                    commentary.voice = speech;
+
+                    // The overlay was built before the mix existed, so the caption band is wired from here.
+                    var overlay = Object.FindFirstObjectByType<PoDecath.UI.BroadcastView>();
+                    if (overlay != null) overlay.commentary = commentary;
+                }
 
                 // The room, on the listener: the reverb of a stone courtyard and the dullness of distance.
                 var acoustics = camGo.AddComponent<ListenerAcoustics>();
@@ -426,6 +453,7 @@ namespace PoDecath.EditorTools
             var comp = go.AddComponent<CinemachineRotationComposer>();
             comp.Composition.ScreenPosition = screenPos;
             comp.Damping = new Vector2(0.3f, 0.3f);
+            CameraShake.AddListener(cm);   // the dev scenes' chase pair flinches at impacts too
             return cm;
         }
 

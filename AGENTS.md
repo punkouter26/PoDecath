@@ -141,21 +141,53 @@ cannot say whether a change helped, and cannot be re-run against the next checkp
 is reliably present. The Unity CLI (`unity command menu --path "..."`) is what the rest of this file
 assumes, and it is a separate install that may well not be on the machine — it was not on 2026-09-12.
 The route that needs nothing installed is the MCP bridge from `com.anklebreaker.unity-mcp`, which
-auto-starts inside the editor on loopback port 7890 and takes no credential:
+auto-starts inside the editor on loopback and takes no credential.
+
+**Find the port; do not assume it.** 7890 is only the first choice. The plugin walks upward when
+something already holds it, and more than one `Unity.exe` is normal (the editor plus its helpers), so on
+2026-09-12 the editor answered on **7892** while 7890 was closed. Ask Windows rather than guessing:
+
+```powershell
+$pids = (Get-Process Unity).Id
+Get-NetTCPConnection -State Listen | ? { $pids -contains $_.OwningProcess } | Select LocalPort
+```
+
+Then probe each candidate with `api/editor/state`, which names the project and the Unity version:
 
 ```bash
 curl -s -X POST -H "Content-Type: application/json" \
   -d '{"menuPath":"PoDecath/Sweep All Scenes"}' \
-  http://127.0.0.1:7890/api/editor/execute-menu-item
+  http://127.0.0.1:7892/api/editor/execute-menu-item
 ```
 
-Useful companions: `editor/state` (is it playing, is it compiling), `console/log` and `console/clear`
-(clear before a run so what you read is this run), `scene/open` with `{"path": "..."}`, and
-`_meta/routes` for the full list. All are POST. Two cautions learned the hard way: the call returns as
-soon as the menu item is *invoked*, not when it finishes, so poll for the tool's output file rather
-than trusting the response; and while a probe is stepping play mode it holds the editor main thread,
-so the bridge stops answering until it is done — an unresponsive bridge usually means "busy", not
-"dead". Check `Unity.exe` is still alive before concluding anything.
+Useful companions: `api/editor/state` (is it playing, is it compiling), `api/console/log` and
+`api/console/clear` (clear before a run so what you read is this run), `api/editor/execute-code`, and
+`api/_meta/routes` for the full list — note the `api/` prefix. A bare `_meta/routes` answers
+`{"error":"Not found"}` without explaining why, which reads exactly like a bridge that is not there.
+All are POST.
+
+Three cautions learned the hard way. The call returns as soon as the menu item is *invoked*, not when it
+finishes, so poll for the tool's output file rather than trusting the response. While a probe is
+stepping play mode it holds the editor main thread, so the bridge stops answering until it is done — an
+unresponsive bridge usually means "busy", not "dead"; check `Unity.exe` is still alive before concluding
+anything.
+
+And **a domain reload while the editor window is unfocused takes the bridge down until somebody clicks
+on Unity.** Asking for a script compile over the bridge
+(`CompilationPipeline.RequestScriptCompilation`) is therefore a one-way trip: the compile itself
+succeeds, but the listener does not come back, because an unfocused editor does not tick and the bridge
+restarts on an editor update. This is the same reason the probes step play mode by hand. If it happens,
+do not kill the editor — verify the compile from outside and say plainly that the rest needs a click:
+
+```powershell
+Get-ChildItem Library\ScriptAssemblies\Assembly-CSharp*.dll | Select Name,LastWriteTime
+Select-String -Path Logs\Editor.log -Pattern "error CS" | Select -Last 20
+```
+
+Note that `Logs/Editor.log` in the project, not the one under `%LOCALAPPDATA%\Unity\Editor`, is the live
+one: the editor writes a few lines to the user-profile log at start-up and then says "Logs moved to
+project-relative Editor.log file" and never touches it again. Tailing the wrong one shows a licensing
+handshake from hours ago and nothing else.
 
 | Tool | Question it answers | Output |
 |---|---|---|
@@ -202,6 +234,39 @@ switch an RL athlete on when the countdown ends -- so an unguarded probe measure
 reports it as a result. And disabling a MonoBehaviour does not stop its coroutines, so the race setup
 will stand an athlete back up after you have laid it down. The probe now refuses to report unless the
 policy actually stepped and the intended model actually drove the body.
+
+## The broadcast layer reads the physics; it must never write it
+
+Four features added on 2026-09-12 all hang off numbers the simulation already produces. They share one
+rule, and it is the only thing in this section that matters: **nothing in the presentation layer may
+change how a body behaves.** Every policy in this project was trained against constant drive limits
+(23.7 N m per joint on the shipped config). A fatigue system that lowered `forceLimit` as a race went on
+would put a trained athlete outside the envelope it learned in and drop it on the deck for a reason no
+training curve could ever explain, and the symptom -- "the policy got worse over a long race" -- looks
+exactly like a training problem. Read only.
+
+| Reading | Where it comes from | What consumes it |
+|---|---|---|
+| Joint saturation, effort, watts, fatigue | `EffortMeter`: `ArticulationBody.driveForce[0]` against that joint's own `xDrive.forceLimit`, sampled at the control rate | `StressSkeleton` (per-joint glow), `BroadcastView.Strain`, `FootstepAudio` breathing, `AgentTelemetry` |
+| Contact impulse | `Collision.impulse.magnitude`, latched by `FootContactSensor` and `Hurdle.Clipped` | `RaceVfx` spark and shake scaling, `Hurdle` clip volume |
+| Foot slip | `FootContactSensor`: `ArticulationBody.GetPointVelocity(contact)` with the normal component projected out | `SkidMarks`, `FootstepDust` slip puffs |
+| Tension and fall risk | `DramaMeter`: gap and closing rate, lateral acceleration, uprightness trend, recent incidents | `BroadcastDirector` cut rate and anticipation, `RaceAudio` mood and level, `Commentary` colour |
+
+`driveForce`, not `jointForce`. Both are torques in N m in reduced coordinates, but `jointForce` is the
+total generalised force at the joint -- constraints and contacts included -- while `driveForce` is what
+the PD drive produced, and `driveForce` is the quantity `forceLimit` actually caps. Measuring the total
+against the drive's limit reports saturation on a joint that is merely being leant on by the deck.
+
+Two thresholds in `DramaMeter` are not taste. Lateral acceleration is scaled against **3.44 m/s2**
+because this project measured a 0.6-1.0 fall rate there on the 8.8 m bend (clean laps sit at 1.89 m/s2);
+and the "close" gap is **2.5 m** because `RaceAudio` already used that, and a crowd and a camera that
+disagree about whether a race is close look like a bug. If the track geometry changes, both move.
+
+Commentary has a voice on Android (platform `TextToSpeech` over `com.unity.modules.androidjni`) and on
+Windows (the system synthesiser, shelled out per line). **Mac, Linux and iOS get no voice at all** --
+the captions carry it there, and fixing that needs a bundled synthesiser such as Piper or sherpa-onnx.
+The caption is drawn on every platform regardless, because it is the only part of the feature that
+survives the sound being off or a screenshot being taken.
 
 ## Dropping in a new checkpoint
 
@@ -317,7 +382,8 @@ named so nobody has to rediscover it.
     the builder recreates from scratch every run, or their edits get overwritten.
 18. **Which MCP to use** — whichever gives the best result for the job:
     - `com.anklebreaker.unity-mcp` (https://github.com/AnkleBreaker-Studio/unity-mcp-plugin) is already
-      in `Packages/manifest.json` and auto-starts an HTTP bridge on 127.0.0.1:7890 with no credential —
+      in `Packages/manifest.json` and auto-starts an HTTP bridge on 127.0.0.1 with no credential (port
+      7890 upward; find it rather than assuming it) —
       see *Measuring a policy in Unity* above for the menu-item call and its two gotchas.
     - https://github.com/CoplayDev/unity-mcp
     - https://github.com/IvanMurzak/Unity-MCP — configured as MCP server `UnityMCP` at

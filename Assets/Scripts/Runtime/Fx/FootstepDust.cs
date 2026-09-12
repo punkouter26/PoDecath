@@ -1,6 +1,7 @@
 using UnityEngine;
 using PoDecath.Audio;
 using PoDecath.Env;
+using PoDecath.Sim;
 
 namespace PoDecath.Fx
 {
@@ -30,7 +31,17 @@ namespace PoDecath.Fx
         [Tooltip("Shortest gap between two puffs from this athlete, whatever its feet are doing.")]
         public float minInterval = 0.1f;
 
+        [Header("Slip")]
+        [Tooltip("A foot sliding this fast along the deck throws dust along the slide as well as under the "
+               + "step. It is the visual half of what SkidMarks writes on the asphalt.")]
+        public float minSlipSpeed = 2f;
+        [Tooltip("Slip speed that throws a full puff.")]
+        public float referenceSlipSpeed = 6f;
+        [Tooltip("Shortest gap between two slip puffs from this athlete.")]
+        public float slipInterval = 0.14f;
+
         float _last = -1f;
+        float _lastSlip = -1f;
         Camera _view;
 
         void Awake()
@@ -45,6 +56,41 @@ namespace PoDecath.Fx
         void OnDestroy()
         {
             if (steps != null) steps.Stepped -= OnStep;
+        }
+
+        /// <summary>
+        /// Dust off a foot that is sliding rather than gripping.
+        ///
+        /// Not driven off <see cref="FootstepAudio.Stepped"/> like the rest of this component, because a
+        /// skid is not a step: it happens between plants, it lasts as long as the foot keeps sliding, and
+        /// the event that reports steps deliberately fires once on the rising edge of a contact. The
+        /// contact sensors already measure the slide for the physics, so this reads them directly.
+        /// </summary>
+        void FixedUpdate()
+        {
+            if (steps == null || steps.rig == null || steps.rig.feet == null) return;
+            if (Time.fixedTime - _lastSlip < slipInterval) return;
+
+            foreach (FootContactSensor f in steps.rig.feet)
+            {
+                if (f == null || !f.InContact || f.SlipSpeed < minSlipSpeed) continue;
+                if (!InRange(f.Point)) return;
+
+                _lastSlip = Time.fixedTime;
+                float weight = Mathf.Clamp01(f.SlipSpeed / Mathf.Max(0.01f, referenceSlipSpeed));
+                // Along the slide and low: dust thrown by a scrubbing foot goes the way the foot is going,
+                // not the way the runner is facing. On a bend those are not the same thing, which is
+                // exactly when it is worth seeing.
+                VfxLibrary.Play(VfxLibrary.Effect.FootDust, f.Point, f.SlipDirection + Vector3.up * 0.35f, weight);
+                return;
+            }
+        }
+
+        bool InRange(Vector3 at)
+        {
+            if (_view == null) _view = Camera.main;
+            if (_view == null) return true;
+            return (at - _view.transform.position).sqrMagnitude <= maxCameraDistance * maxCameraDistance;
         }
 
         void OnStep(Vector3 at, float weight)

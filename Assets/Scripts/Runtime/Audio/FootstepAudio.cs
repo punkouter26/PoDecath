@@ -44,6 +44,9 @@ namespace PoDecath.Audio
         [Header("Breathing")]
         [Tooltip("Working hard is audible from a few metres. Off for a field of sixteen on a phone.")]
         public bool breathe = true;
+        [Tooltip("Optional. With one, breathing follows the athlete's actual joint effort and how long it "
+               + "has been working, not just how fast it is going. Found on this object if not set.")]
+        public EffortMeter effort;
         [Tooltip("Speed at which the athlete is breathing at full level.")]
         public float breathReferenceSpeed = 7f;
         [Range(0f, 1f)] public float breathVolume = 0.35f;
@@ -83,6 +86,8 @@ namespace PoDecath.Audio
             _down = new bool[feet];
             _lastStep = new float[feet];
 
+            if (effort == null) effort = GetComponent<EffortMeter>();
+
             if (!breathe || bank == null || bank.breath == null) return;
             _breath = gameObject.AddComponent<AudioSource>();
             _breath.clip = bank.breath;
@@ -103,11 +108,26 @@ namespace PoDecath.Audio
             if (_breath == null) return;
             float speed = rig != null ? rig.BaseLinearVelocityWorld.magnitude
                         : heuristic != null ? heuristic.Speed : 0f;
-            float effort = Mathf.Clamp01(speed / Mathf.Max(1f, breathReferenceSpeed));
+            float work = Mathf.Clamp01(speed / Mathf.Max(1f, breathReferenceSpeed));
+
+            // Speed alone gets this wrong in both directions: an athlete fighting to hold a line through a
+            // bend is working far harder than its speed suggests, and one that has just been picked up off
+            // the deck is barely moving while every joint in it is at the limit. Where an EffortMeter
+            // exists, the torque reading is the better half of the answer and the speed is the sanity
+            // check, so the two are taken together rather than one replacing the other.
+            if (effort != null)
+            {
+                float strain = Mathf.Clamp01(effort.Effort / 0.5f);
+                work = Mathf.Max(work, strain);
+                // Fatigue only lifts the floor. It cannot make a standing athlete pant, but it does stop a
+                // tired one sounding fresh the moment it eases off.
+                work = Mathf.Max(work, effort.Fatigue * 0.55f * Mathf.Clamp01(speed / 1.5f));
+            }
+
             // Faster and louder with effort. The pitch is what carries it: the same clip at 1.3x is not a
             // louder breath, it is a shorter one, which is what working hard actually sounds like.
-            _breath.pitch = Mathf.Lerp(0.8f, 1.35f, effort);
-            _breath.volume = effort * effort * breathVolume * AudioMix.Level(AudioMix.Bus.Sfx);
+            _breath.pitch = Mathf.Lerp(0.8f, 1.35f, work);
+            _breath.volume = work * work * breathVolume * AudioMix.Level(AudioMix.Bus.Sfx);
         }
 
         /// <summary>
