@@ -209,7 +209,14 @@ class DomainRandomizer:
         scale[9:12] = 0.0                      # command: Unity feeds this exactly
         scale[12:12 + A] = 0.01 * s            # joint position
         scale[12 + A:12 + 2 * A] = 1.5 * s     # joint velocity
-        scale[12 + 2 * A:] = 0.0               # last action: the policy's own output, known exactly
+        scale[12 + 2 * A:12 + 3 * A] = 0.0     # last action: the policy's own output, known exactly
+        # Tail: foot contact (2) then base height (1), when the env supplies them. Contact is a flag
+        # Unity derives from a sole raycast -- noise on it would mean "the foot is 0.3 on the ground",
+        # which is not a state either runtime can be in. Height is a raycast and is genuinely noisy.
+        tail = obs.shape[1] - (12 + 3 * A)
+        if tail >= 3:
+            scale[12 + 3 * A:12 + 3 * A + 2] = 0.0     # foot contact flags
+            scale[12 + 3 * A + 2] = 0.02 * s           # base height
         return obs + n * scale
 
     def maybe_push(self, qvel: torch.Tensor) -> None:

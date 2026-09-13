@@ -43,6 +43,15 @@ namespace PoDecath.Sim
         public bool includeJointPositions = true;
         public bool includeJointVelocities = true;
         public bool includeLastActions = true;
+        [Tooltip("One flag per foot, 1 when the sole is on the ground. The trainer's gait reward is " +
+                 "built on stance and swing, so the policy has to be able to see which is which.")]
+        public bool includeFootContact = false;
+        [Tooltip("Pelvis height above the surface under it, metres.")]
+        public bool includeBaseHeight = false;
+        [Tooltip("Number of feet in the foot-contact block. Must match the trainer (2 for the athlete).")]
+        public int footCount = 2;
+        [Tooltip("How far down to look for the surface under the pelvis when filling base height.")]
+        public float baseHeightMaxDistance = 4f;
 
         [Header("Height scan (0 = disabled)")]
         [Tooltip("Grid extent along the external X axis in metres.")]
@@ -111,6 +120,8 @@ namespace PoDecath.Sim
                 if (includeJointPositions) n += JointCount;
                 if (includeJointVelocities) n += JointCount;
                 if (includeLastActions) n += JointCount;
+                if (includeFootContact) n += Mathf.Max(0, footCount);
+                if (includeBaseHeight) n += 1;
                 n += HeightScanCount;
                 return n;
             }

@@ -14,6 +14,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+# TF32 on the tensor cores. The actor and critic are plain MLPs and every matmul in training and
+# inference runs through them; on this host's Blackwell GPU TF32 is free throughput at a precision
+# far beyond what a policy gradient needs. Nothing here was enabling it.
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+torch.set_float32_matmul_precision("high")
+
 
 class RunningMeanStd:
     def __init__(self, shape: int, device: str, eps: float = 1e-4):

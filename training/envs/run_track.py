@@ -28,32 +28,77 @@ class RunTrackEnv(RunToTargetEnv):
         self.lap = 2.0 * self.s_straight + 2.0 * self.s_arc
         self._s = None
         super().__init__(xml_path, num_envs, target_speed=target_speed, **kw)
+        # The carrot sits a fixed `lookahead` metres ahead, so the base task's "you arrived" test
+        # (distance under 0.6 m) can never be true here and its 5.0 bonus -- nominally the largest
+        # single term in the reward -- had never paid out once in this task's history. Dead weight,
+        # and confusing to anyone reading the reward to work out what the policy is optimising.
+        self.reach_bonus = 0.0
+
+    # ---- observation ----------------------------------------------------------------------------
+    def compute_obs(self) -> torch.Tensor:
+        """Same layout as the base task, with the third command channel put to work.
+
+        The base command is (direction x, direction y, distance / 10). Distance to a carrot pinned
+        `lookahead` metres ahead is `lookahead` for the whole run, so that channel was a hard constant
+        -- 0.6 on the shipped config -- carrying no information into the policy at all. It now carries
+        signed lateral offset from the centre line, normalised by the half-deck, which is the one
+        quantity the athlete is being penalised and terminated on and previously could not observe.
+        Unity's TrackFollower already computes it for the HUD.
+        """
+        q, pos, lin_w, lin_b, ang_b, grav_b = self._base_state()
+        yaw = quat_yaw(q)
+        to_t = self.targets - pos[:, :2]
+        dist = torch.norm(to_t, dim=-1, keepdim=True)
+        c, s = torch.cos(yaw), torch.sin(yaw)
+        dx = c * to_t[:, 0] + s * to_t[:, 1]
+        dy = -s * to_t[:, 0] + c * to_t[:, 1]
+        dirn = torch.stack([dx, dy], -1) / dist.clamp_min(1e-3)
+        if self._s is None:
+            lat = torch.zeros(self.N, 1, device=self.device)
+        else:
+            pos_c, tan = self.centerline(self._s)
+            normal = torch.stack([-tan[:, 1], tan[:, 0]], -1)
+            lat = ((pos[:, :2] - pos_c) * normal).sum(-1, keepdim=True) / self.deck_half
+        cmd = torch.cat([dirn, lat.clamp(-2.0, 2.0)], -1)
+        return self._assemble_obs(lin_b, ang_b, grav_b, cmd)
 
     # ---- centre line ---------------------------------------------------------------------------
     def centerline(self, s: torch.Tensor):
-        """s: (N,) -> position (N,2), tangent (N,2)."""
+        """s: (N,) -> position (N,2), tangent (N,2).
+
+        Branchless on purpose. This used to select each of the four track segments with a boolean mask
+        -- `s[m1]` and friends -- which is `masked_select`: the output size is not known until the mask
+        has been counted on the device, so every one of those lines stalled the pipeline waiting for the
+        GPU. `centerline` runs three times per control step and once more over a 25x-expanded tensor in
+        `project`, so the step path this file's own docstring calls sync-free was stopping about a dozen
+        times per step. Every branch is now evaluated and `torch.where` picks the answer: strictly more
+        arithmetic, and far less waiting.
+        """
         s = torch.remainder(s, self.lap)
         L, R, A = self.s_straight, self.R, self.s_arc
         hl = self.half_len
-        pos = torch.zeros(s.shape[0], 2, device=s.device)
-        tan = torch.zeros_like(pos)
         m0 = s < L
         m1 = (s >= L) & (s < L + A)
         m2 = (s >= L + A) & (s < 2 * L + A)
-        m3 = s >= 2 * L + A
-        # straight, +x at y = +R
-        pos[m0, 0] = -hl + s[m0]; pos[m0, 1] = R; tan[m0, 0] = 1.0
+
         # east arc, clockwise from top: theta from pi/2 down to -pi/2
-        th = math.pi / 2 - (s[m1] - L) / R
-        pos[m1, 0] = hl + R * torch.cos(th); pos[m1, 1] = R * torch.sin(th)
-        tan[m1, 0] = torch.sin(th); tan[m1, 1] = -torch.cos(th)
-        # straight back, -x at y = -R
-        pos[m2, 0] = hl - (s[m2] - L - A); pos[m2, 1] = -R; tan[m2, 0] = -1.0
+        th1 = math.pi / 2 - (s - L) / R
         # west arc: theta from -pi/2 down to -3pi/2
-        th = -math.pi / 2 - (s[m3] - 2 * L - A) / R
-        pos[m3, 0] = -hl + R * torch.cos(th); pos[m3, 1] = R * torch.sin(th)
-        tan[m3, 0] = torch.sin(th); tan[m3, 1] = -torch.cos(th)
-        return pos, tan
+        th3 = -math.pi / 2 - (s - 2 * L - A) / R
+
+        pos_x = torch.where(m0, -hl + s,
+                 torch.where(m1, hl + R * torch.cos(th1),
+                 torch.where(m2, hl - (s - L - A), -hl + R * torch.cos(th3))))
+        pos_y = torch.where(m0, torch.full_like(s, R),
+                 torch.where(m1, R * torch.sin(th1),
+                 torch.where(m2, torch.full_like(s, -R), R * torch.sin(th3))))
+        tan_x = torch.where(m0, torch.ones_like(s),
+                 torch.where(m1, torch.sin(th1),
+                 torch.where(m2, -torch.ones_like(s), torch.sin(th3))))
+        tan_y = torch.where(m0, torch.zeros_like(s),
+                 torch.where(m1, -torch.cos(th1),
+                 torch.where(m2, torch.zeros_like(s), -torch.cos(th3))))
+        return torch.stack([pos_x, pos_y], -1), torch.stack([tan_x, tan_y], -1)
 
     def project(self, xy: torch.Tensor, s_prev: torch.Tensor) -> torch.Tensor:
         """Nearest arc length near the previous estimate (window -2..+4 m, 25 samples)."""
@@ -124,14 +169,16 @@ class RunTrackEnv(RunToTargetEnv):
         self._acc["ret_sum"] += (self.episode_return * ndf).sum()
         self._acc["len_sum"] += (self.episode_len * ndf).sum()
 
-        if newly_done.any():
-            self._apply_reset(newly_done)
-            mjw.forward(self.mw, self.dw)
-            self._obs = self.compute_obs()
-            obs = self._obs
+        # Unconditional. `newly_done.any()` read a device boolean back to Python every single step just
+        # to skip work that is already a no-op when the mask is empty -- the masked reset writes nothing
+        # and `forward` costs far less than the stall did. The duplicate `compute_obs()` below went with
+        # it: this used to build the observation three times per step and only keep the last.
+        self._apply_reset(newly_done)
         done = done | off_deck
         self._update_carrot()
+        self._physics_forward()
         self._obs = self.compute_obs()
+        obs = self._obs
         self._acc.setdefault("lap_prog", torch.zeros((), device=self.device))
         self._acc["lap_prog"] += self._lap_progress.mean()
         return self._obs, reward, done, timeout

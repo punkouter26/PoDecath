@@ -94,6 +94,33 @@ namespace PoDecath.Sim
                 o += n;
             }
 
+            // Foot contact and base height. The trainer writes these straight after last_action and
+            // before any height scan; the order here has to match or the policy reads the wrong numbers
+            // in the right shape, which no error message will ever tell you about.
+            if (_cfg.includeFootContact)
+            {
+                int fc = Mathf.Max(0, _cfg.footCount);
+                FootContactSensor[] feet = rig.feet;
+                for (int i = 0; i < fc; i++)
+                {
+                    FootContactSensor s = (feet != null && i < feet.Length) ? feet[i] : null;
+                    obs[o + i] = (s != null && s.InContact) ? 1f : 0f;
+                }
+                o += fc;
+            }
+            if (_cfg.includeBaseHeight)
+            {
+                // Height above whatever is underneath, not world Y: the trainer's floor is at z = 0, and
+                // the rooftop deck is not.
+                Vector3 bp = rig.BasePosition;
+                float height = bp.y;
+                if (Physics.Raycast(bp + Vector3.up * 0.1f, Vector3.down, out RaycastHit ground,
+                                    _cfg.baseHeightMaxDistance, _layerMask, QueryTriggerInteraction.Ignore))
+                    height = bp.y - ground.point.y;
+                obs[o] = height;
+                o += 1;
+            }
+
             int h = _scanOffsetsExt.Length;
             if (h > 0)
             {

@@ -34,6 +34,8 @@ namespace PoDecath.Sim
             public AthleteRig rig;
             public JointSpec[] joints;
             public string[] bodyNames;
+            /// <summary>Every collider in the rig, for callers that need to ignore one rig against another.</summary>
+            public Collider[] colliders = Array.Empty<Collider>();
             public float physicsTimestep = 0.005f;
             /// <summary>Root height (external z) in the keyframe, i.e. the standing pelvis height.</summary>
             public float keyframeRootHeight = 0f;
@@ -126,7 +128,50 @@ namespace PoDecath.Sim
             result.joints = specs;
             result.bodyNames = bodyNames.ToArray();
             rig.feet = rootGo.GetComponentsInChildren<FootContactSensor>(true);
+            result.colliders = rootGo.GetComponentsInChildren<Collider>(true);
+            ApplyContactExcludes(mujoco, rootGo);
             return result;
+        }
+
+        /// <summary>
+        /// Mirror the MJCF's &lt;contact&gt;&lt;exclude&gt; list onto PhysX.
+        ///
+        /// The MJCF used to switch self-collision off wholesale (every geom `conaffinity="0"`), and
+        /// Unity matched it with a single <c>Physics.IgnoreLayerCollision</c>. Both are now specific
+        /// instead of total: the body collides with itself, except for the pairs that are adjacent
+        /// across a joint and overlap by construction. PhysX skips parent-child links on its own, but
+        /// the importer inserts an intermediate link per hinge, which breaks that adjacency -- so the
+        /// pelvis/thigh pair that forced the hips to their abduction limit has to be named explicitly
+        /// here, exactly as the MJCF names it.
+        /// </summary>
+        static void ApplyContactExcludes(XmlElement mujoco, GameObject root)
+        {
+            XmlElement contact = mujoco["contact"];
+            if (contact == null) return;
+
+            var byName = new Dictionary<string, List<Collider>>();
+            foreach (MjcfBodyTag tag in root.GetComponentsInChildren<MjcfBodyTag>(true))
+            {
+                // Direct geom children only: descending further would pull in the child bodies' colliders
+                // and exclude far more than the MJCF asked for.
+                var cols = new List<Collider>();
+                foreach (Transform child in tag.transform)
+                {
+                    Collider c = child.GetComponent<Collider>();
+                    if (c != null) cols.Add(c);
+                }
+                if (cols.Count > 0) byName[tag.bodyName] = cols;
+            }
+
+            foreach (XmlNode n in contact.ChildNodes)
+            {
+                if (!(n is XmlElement e) || e.Name != "exclude") continue;
+                if (!byName.TryGetValue(e.GetAttribute("body1"), out List<Collider> a)) continue;
+                if (!byName.TryGetValue(e.GetAttribute("body2"), out List<Collider> b)) continue;
+                foreach (Collider ca in a)
+                    foreach (Collider cb in b)
+                        Physics.IgnoreCollision(ca, cb, true);
+            }
         }
 
         static ArticulationBody BuildBody(XmlElement b, Transform parent, ArticulationBody parentAb, Options opt, float density,

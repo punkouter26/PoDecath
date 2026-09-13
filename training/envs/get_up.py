@@ -194,11 +194,7 @@ class GetUpEnv(RunToTargetEnv):
         """
         q, pos, lin_w, lin_b, ang_b, grav_b = self._base_state()
         cmd = torch.zeros(self.N, 3, device=self.device)
-        obs = torch.cat([lin_b, ang_b, grav_b, cmd,
-                         self.qpos[:, 7:] - self.default_joint,
-                         self.qvel[:, 6:],
-                         self.last_action], dim=-1)
-        return torch.nan_to_num(obs).clamp(-100.0, 100.0)
+        return self._assemble_obs(lin_b, ang_b, grav_b, cmd)
 
     # ---- step ----------------------------------------------------------------------------------
 

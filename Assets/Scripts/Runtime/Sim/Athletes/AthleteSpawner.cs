@@ -63,7 +63,17 @@ namespace PoDecath.Sim
         public bool sheen = true;
 
         [System.Serializable]
-        class PolicyJson { public float action_scale = 0.5f; public int control_decimation = 4; public int physics_hz = 200; }
+        class PolicyJson
+        {
+            public float action_scale = 0.5f;
+            public int control_decimation = 4;
+            public int physics_hz = 200;
+            // Both of these used to be hard-coded here to match the trainer, and both went stale the
+            // moment the trainer changed. They come out of the same generated file as everything else now.
+            public float action_clip = 5f;
+            public float spawn_clearance_m = 0.02f;
+            public string[] observation;
+        }
 
         void Awake()
         {
@@ -71,9 +81,15 @@ namespace PoDecath.Sim
             Application.targetFrameRate = SessionSettings.TargetFrameRate > 0 ? SessionSettings.TargetFrameRate : 60;
             int layer = LayerMask.NameToLayer(creatureLayerName);
             if (layer < 0) layer = 0;
-            // MJCF rigs have self-collision disabled (contype/conaffinity). PhysX only skips parent-child links, and the
-            // intermediate hinge links break adjacency, so pelvis/thigh capsules would collide and force the hips apart.
-            if (layer != 0) Physics.IgnoreLayerCollision(layer, layer, true);
+            // Self-collision is on now, in both runtimes. The MJCF carries a <contact><exclude> list for
+            // the pairs that overlap by construction across a joint -- pelvis/thigh being the one that
+            // used to force the hips to their abduction limit -- and MjcfImporter mirrors exactly that
+            // list onto PhysX per rig. A layer-wide ignore here would undo all of it.
+            //
+            // What the layer ignore also did, and what IgnoreBetweenAthletes now does deliberately, is
+            // keep two athletes from colliding with each other. Training only ever sees one body on an
+            // empty plane, so a policy has no idea what to do when shoulder-charged; until there is a
+            // task that trains for it, athletes still pass through one another.
             var pj = new PolicyJson();
             if (defaultPolicyJson != null) { try { pj = JsonUtility.FromJson<PolicyJson>(defaultPolicyJson.text) ?? pj; } catch { } }
 
@@ -265,6 +281,23 @@ namespace PoDecath.Sim
         /// the MJCF actuators, the spawn height -- is settled here, before either kind of controller is
         /// attached.
         /// </summary>
+        readonly List<Collider[]> _spawnedColliders = new List<Collider[]>();
+
+        /// <summary>
+        /// Keep this rig from colliding with every rig already spawned, without touching the layer
+        /// matrix -- the layer is what lets each rig collide with *itself*. Runs once per athlete at
+        /// spawn; a race of half a dozen athletes is a few thousand one-time calls.
+        /// </summary>
+        void IgnoreBetweenAthletes(Collider[] mine)
+        {
+            if (mine == null || mine.Length == 0) return;
+            foreach (Collider[] theirs in _spawnedColliders)
+                foreach (Collider a in mine)
+                    foreach (Collider b in theirs)
+                        if (a != null && b != null) Physics.IgnoreCollision(a, b, true);
+            _spawnedColliders.Add(mine);
+        }
+
         MjcfImporter.Result SpawnBody(AthleteDefinition def, int layer, PolicyJson pj, out PolicyConfig cfg)
         {
             cfg = null;
@@ -282,6 +315,7 @@ namespace PoDecath.Sim
             MjcfImporter.Result res = MjcfImporter.Build(xml.text, opt);
             res.root.name = def.displayName;
             res.root.transform.SetParent(transform, false);
+            IgnoreBetweenAthletes(res.colliders);
 
             cfg = ScriptableObject.CreateInstance<PolicyConfig>();
             cfg.name = def.displayName + "_config";
@@ -289,9 +323,19 @@ namespace PoDecath.Sim
             cfg.physicsHz = Mathf.RoundToInt(1f / Mathf.Max(1e-4f, res.physicsTimestep));
             cfg.controlDecimation = pj.control_decimation > 0 ? pj.control_decimation : controlDecimation;
             cfg.actionScale = def.actionScale > 0f ? def.actionScale : pj.action_scale;
-            cfg.actionClip = 5f;
+            cfg.actionClip = pj.action_clip > 0f ? pj.action_clip : 5f;
             cfg.observationClip = 100f;
-            cfg.spawnHeight = res.keyframeRootHeight > 0f ? res.keyframeRootHeight + 0.02f : 0.95f;
+            // The trainer's own reset clearance. It used to be 0.02 here and 0.02 there by coincidence;
+            // the trainer now rests the soles 2 mm off the deck instead of dropping the athlete 3 cm,
+            // and a spawn that still drops it 2 cm would hand every policy an impact it never trained on.
+            cfg.spawnHeight = res.keyframeRootHeight > 0f
+                ? res.keyframeRootHeight + Mathf.Max(0f, pj.spawn_clearance_m) : 0.95f;
+            // Observation groups the trained policy actually emits, straight from the training config.
+            if (pj.observation != null && pj.observation.Length > 0)
+            {
+                cfg.includeFootContact = System.Array.IndexOf(pj.observation, "foot_contact") >= 0;
+                cfg.includeBaseHeight = System.Array.IndexOf(pj.observation, "base_height") >= 0;
+            }
             cfg.minBaseHeight = cfg.spawnHeight * 0.6f;
             cfg.minUprightDot = 0.4f;
             cfg.stiffness = 100f; cfg.damping = 5f; cfg.forceLimit = 100f;   // fallbacks; per-joint values come from the MJCF actuators
