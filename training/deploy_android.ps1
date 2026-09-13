@@ -279,7 +279,35 @@ function Resolve-Device($adb) {
     return $serials[0]
 }
 
+# Is the game the activity actually on screen right now?
+#
+# This gate exists because the deploy target is somebody's real phone. A text message or a call pulls
+# another app in front of the game without warning, and a screencap fired on a timer then photographs
+# whatever is there - in one run, an SMS containing a bank login code, which landed in Build/ and would
+# have gone wherever those screenshots go. The game being *running* is not the same as the game being
+# *in front*, so ask about the resumed activity, not the process.
+function Test-GameInFront($adb, $serial, $packageId) {
+    $r = & $adb -s $serial shell dumpsys activity activities 2>&1 | Select-String "ResumedActivity"
+    return (($r -join ' ') -match [regex]::Escape($packageId))
+}
+
+# Same gate on the way in. A tap is worse than a screenshot when the wrong app is in front: it is a
+# press on somebody's real screen, in their messages or their banking app, at coordinates chosen for
+# a game that is not there.
+function Invoke-GameTap($adb, $serial, $x, $y) {
+    if (-not (Test-GameInFront $adb $serial $PackageId)) {
+        Warn "tap at $x,$y skipped - something other than the game is in front"
+        return $false
+    }
+    & $adb -s $serial shell input tap $x $y | Out-Null
+    return $true
+}
+
 function Shot($adb, $serial, $name, $quiet = $false) {
+    if (-not (Test-GameInFront $adb $serial $PackageId)) {
+        Warn "screenshot '$name' skipped - something other than the game is in front"
+        return
+    }
     $remote = "/sdcard/podecath-shot.png"
     # Via a file on the device rather than `exec-out ... > file`: PowerShell's redirection is text, and
     # a PNG through it comes out corrupt in a way that is not obvious until you try to open it.
@@ -287,6 +315,13 @@ function Shot($adb, $serial, $name, $quiet = $false) {
     $local = Join-Path $ShotDir "$name.png"
     & $adb -s $serial pull $remote $local 2>&1 | Out-Null
     & $adb -s $serial shell rm -f $remote | Out-Null
+    # Checked again afterwards: if focus moved while the capture was in flight, the picture is of
+    # something private and is deleted rather than kept.
+    if (-not (Test-GameInFront $adb $serial $PackageId)) {
+        Remove-Item $local -Force -ErrorAction SilentlyContinue
+        Warn "screenshot '$name' discarded - focus changed mid-capture"
+        return
+    }
     if (Test-Path $local) { if (-not $quiet) { Ok "screenshot: $local" } } else { Warn "screenshot '$name' failed" }
 }
 
@@ -348,20 +383,54 @@ $scale = [Math]::Pow(2, (([Math]::Log($sw / 1080.0, 2)) + ([Math]::Log($sh / 192
 # cannot know - so a single computed point can miss low on a device with a tall inset. Each candidate is
 # tried and the screen is compared against the menu: if the picture has not changed, the tap missed and
 # the next candidate is tried. A race that never starts is a failure, not a quiet no-op.
+#
+# START is the RIGHT-HAND button of the NONE / ONE EACH / START row, not a full-width button, so the
+# horizontal centre of the screen is ONE EACH. Tapping the centre sets every athlete's count to 1 -
+# which they already are - so the screen does not visibly change and the tap looks like a clean miss
+# while actually having pressed the wrong thing. The row is three buttons across the safe width with
+# START taking the last third, so aim at 79% of the width.
+#
+# The "did the screen change" test compares the two pictures with the FPS chip masked out. The chip
+# reads "60 FPS 16.7 ms 61%" and reprints every second, so a raw file hash of two shots of the *same*
+# screen never matches - which is how a tap that hit ONE EACH was reported as "START took" and a race
+# that never ran was verified as clean. Comparing the bottom two thirds of the frame, below the frame
+# row, is enough: the menu and the race differ everywhere down there.
 Say "Starting the race"
-$menuHash = (Get-FileHash (Join-Path $ShotDir "01-menu.png")).Hash
 $started = $false
-foreach ($dy in 200, 260, 150, 320) {
-    $tapY = [int]($sh - $dy * $scale)
-    & $adb -s $serial shell input tap ([int]($sw / 2)) $tapY | Out-Null
-    Start-Sleep -Seconds 6
-    Shot $adb $serial "02-running" $true
-    if ((Get-FileHash (Join-Path $ShotDir "02-running.png")).Hash -ne $menuHash) {
-        Ok "START took at y = $tapY"
-        $started = $true
-        break
+
+function Get-FrameSignature($path) {
+    # Mean brightness of a coarse grid over the lower two thirds of the frame, away from the FPS chip.
+    Add-Type -AssemblyName System.Drawing
+    $img = [System.Drawing.Bitmap]::FromFile($path)
+    try {
+        $sum = 0.0; $n = 0
+        for ($y = [int]($img.Height / 3); $y -lt $img.Height; $y += 32) {
+            for ($x = 0; $x -lt $img.Width; $x += 32) {
+                $p = $img.GetPixel($x, $y); $sum += ($p.R + $p.G + $p.B); $n++
+            }
+        }
+        return [math]::Round($sum / [Math]::Max(1, $n), 2)
+    } finally { $img.Dispose() }
+}
+
+$menuSig = Get-FrameSignature (Join-Path $ShotDir "01-menu.png")
+foreach ($dx in 0.79, 0.5) {
+    foreach ($dy in 200, 260, 150, 320) {
+        $tapY = [int]($sh - $dy * $scale)
+        $tapX = [int]($sw * $dx)
+        if (-not (Invoke-GameTap $adb $serial $tapX $tapY)) { continue }
+        Start-Sleep -Seconds 6
+        Shot $adb $serial "02-running" $true
+        $sig = Get-FrameSignature (Join-Path $ShotDir "02-running.png")
+        # A real screen change moves the mean by far more than a repainted counter ever does.
+        if ([Math]::Abs($sig - $menuSig) -gt 2.0) {
+            Ok "START took at $tapX,$tapY"
+            $started = $true
+            break
+        }
+        Warn "tap at $tapX,$tapY did not change the screen"
     }
-    Warn "tap at y = $tapY did not change the screen; trying higher"
+    if ($started) { break }
 }
 if (-not $started) {
     Warn "START never took, so no race ran and there will be nothing to export."
@@ -379,15 +448,29 @@ Shot $adb $serial "02-running"
 #
 # The tap point is computed rather than hardcoded. The button is 180x80 reference pixels at the left of a
 # 112-pixel row on the bottom edge, in a panel that is 1080 wide with match 0.5, so its centre in device
-# pixels depends on the screen. Aiming above the button's centre keeps the tap inside it whether or not
-# the device reports a bottom safe-area inset, which shifts the whole row up by the height of the gesture
-# bar and is the difference between opening the sheet and pressing the home gesture.
+# pixels depends on the screen.
+#
+# 92 reference pixels up from the bottom was too high and missed the button entirely: measured on a
+# 960x2142 Pixel 9 Pro the DEBUG button occupies y 2053..2120, and 92 up puts the tap at 2050 - three
+# pixels above its top edge, close enough to look like it should have worked and far enough to do
+# nothing. The centre of the 112-pixel row is 56 up, which lands at 2086, comfortably inside. A device
+# that does report a bottom safe-area inset shifts the row up, so the higher point is kept as a second
+# candidate rather than deleted.
 Say "Opening the DEBUG sheet"
 $tapX = [int](106 * $scale)
-$tapY = [int]($sh - (92 * $scale))
-& $adb -s $serial shell input tap $tapX $tapY | Out-Null
-Start-Sleep -Seconds 3
-Shot $adb $serial "03-debug"
+foreach ($dy in 56, 92, 130) {
+    $tapY = [int]($sh - ($dy * $scale))
+    if (-not (Invoke-GameTap $adb $serial $tapX $tapY)) { break }
+    Start-Sleep -Seconds 3
+    Shot $adb $serial "03-debug" $true
+    $p = Join-Path $ShotDir "03-debug.png"
+    if ((Test-Path $p) -and ([Math]::Abs((Get-FrameSignature $p) - $menuSig) -gt 2.0)) {
+        Ok "DEBUG sheet open (tap at $tapX,$tapY)"
+        Ok "screenshot: $p"
+        break
+    }
+    Warn "DEBUG tap at $tapX,$tapY did not open the sheet"
+}
 # Left open. The sheet sorts above the frame and covers the corner the DEBUG button is in, so the same tap
 # would land on the sheet rather than close it - and it does not need closing, because backgrounding the
 # app is what writes the export and that happens whichever screen is on.
