@@ -1,0 +1,8 @@
+Sky HDRIs from Poly Haven (https://polyhaven.com), CC0 1.0 Universal.
+
+Sky_Afternoon.hdr   kloofendal_48d_partly_cloudy_puresky (2k)
+Sky_GoldenHour.hdr  kloppenheim_06_puresky (2k)
+Sky_Night.hdr       dikhololo_night (2k)
+
+Wired by PoDecath/Bake Look into Assets/Materials/Sky_*.mat (Skybox/Panoramic); SceneLook picks one per
+time-of-day preset and falls back to the procedural sky when a file is missing.

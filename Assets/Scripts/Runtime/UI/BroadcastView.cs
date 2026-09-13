@@ -48,6 +48,7 @@ namespace PoDecath.UI
         Label _stage, _lead, _clock, _overflow, _lowerName, _lowerDetail, _countdown;
         VisualElement _lowerThird, _splitsPanel, _orderHost, _splitHost;
         VisualElement _caption, _strain, _strainFill;
+        VisualElement _map;
         Label _captionText, _strainValue;
         string _shownCaption = "";
 
@@ -91,6 +92,8 @@ namespace PoDecath.UI
             _strain = Find<VisualElement>("strain");
             _strainFill = Find<VisualElement>("strain-fill");
             _strainValue = Find<Label>("strain-value");
+            _map = Find<VisualElement>("track-map");
+            if (_map != null) _map.generateVisualContent += DrawMap;
 
             BuildRows();
             BuildSplits();
@@ -98,11 +101,6 @@ namespace PoDecath.UI
             // A single-lap event has no splits to show, so the board is not there rather than empty.
             LapEvent lap = Lap;
             Show(_splitsPanel, lap != null && lap.laps > 1);
-            if (_splitsPanel != null && (lap == null || lap.laps <= 1))
-            {
-                VisualElement order = Find<VisualElement>("order");
-                if (order != null) order.style.width = Length.Percent(100f);
-            }
             Refresh();
         }
 
@@ -182,6 +180,7 @@ namespace PoDecath.UI
             OrderStrip(order, leader);
             LowerThirdText(order);
             Strain();
+            _map?.MarkDirtyRepaint();
         }
 
         /// <summary>
@@ -393,6 +392,124 @@ namespace PoDecath.UI
             if (a.finished) return index == 0 ? Fmt(a.time) : $"+{a.time - leader.time:F2}";
             if (leader == null || a == leader) return race.Current == RaceEvent.Phase.Running ? $"{a.speed:F1} m/s" : "";
             return $"+{Mathf.Max(0f, leader.distance - a.distance):F1} m";
+        }
+
+        // ---------------------------------------------------------------- track map
+
+        /// <summary>
+        /// The loop from above with a dot per athlete, painted with the mesh API on every refresh. It is
+        /// the one piece of the overlay that answers "where is everyone" in a glance, which a running
+        /// order cannot, and it costs a hundred line segments ten times a second.
+        /// </summary>
+        void DrawMap(MeshGenerationContext ctx)
+        {
+            if (race == null) return;
+            Rect r = ctx.visualElement.contentRect;
+            if (r.width < 8f || r.height < 8f) return;
+            Painter2D painter = ctx.painter2D;
+            LongJumpEvent jump = Jump;
+            if (jump != null) { DrawRunway(painter, r, jump); return; }
+            LapEvent lap = Lap;
+            if (lap == null || lap.path == null) return;
+            TrackPath path = lap.path;
+
+            const float pad = 14f;
+            float w = 2f * (path.halfLength + path.radius), h = 2f * path.radius;
+            float scale = Mathf.Min((r.width - 2f * pad) / w, (r.height - 2f * pad) / h);
+            Vector2 centre = new Vector2(r.x + r.width * 0.5f, r.y + r.height * 0.5f);
+            Vector2 Map(float s)
+            {
+                path.Local(s, out Vector2 p, out _);
+                return centre + new Vector2(p.x, -p.y) * scale;
+            }
+
+            painter.lineWidth = 3f;
+            painter.strokeColor = new Color(1f, 1f, 1f, 0.55f);
+            painter.BeginPath();
+            painter.MoveTo(Map(0f));
+            const int steps = 96;
+            for (int i = 1; i <= steps; i++) painter.LineTo(Map(path.LapLength * i / steps));
+            painter.ClosePath();
+            painter.Stroke();
+
+            // The line, as a tick across the deck.
+            path.Local(lap.startS, out Vector2 lp, out Vector2 lt);
+            Vector2 lc = centre + new Vector2(lp.x, -lp.y) * scale;
+            Vector2 ln = new Vector2(-lt.y, -lt.x) * (path.deckWidth * 0.5f * scale + 4f);
+            painter.lineWidth = 2f;
+            painter.strokeColor = new Color(1f, 1f, 1f, 0.9f);
+            painter.BeginPath();
+            painter.MoveTo(lc - ln);
+            painter.LineTo(lc + ln);
+            painter.Stroke();
+
+            List<RaceEvent.Athlete> order = race.LiveOrder();
+            for (int i = order.Count - 1; i >= 0; i--)
+            {
+                RaceEvent.Athlete a = order[i];
+                Vector2 c = Map(ArcOf(a, path));
+                bool lead = i == 0;
+                float radius = lead ? 8f : 6f;
+                Color col = a.color;
+                if (a.fell) { col.a = 0.45f; radius = 5f; }
+                painter.fillColor = col;
+                painter.BeginPath();
+                painter.Arc(c, radius, 0f, 360f);
+                painter.Fill();
+                if (!lead) continue;
+                painter.strokeColor = Color.white;
+                painter.lineWidth = 2f;
+                painter.BeginPath();
+                painter.Arc(c, radius + 2f, 0f, 360f);
+                painter.Stroke();
+            }
+        }
+
+        static float ArcOf(RaceEvent.Athlete a, TrackPath path)
+        {
+            if (a.follower != null) return a.follower.S;
+            if (a.heuristic != null && a.heuristic.path == path) return a.heuristic.S;
+            Vector3 p = a.IsRL ? a.rig.BasePosition : (a.go != null ? a.go.transform.position : Vector3.zero);
+            return path.ProjectGlobal(p);
+        }
+
+        /// <summary>The long jump's map: the runway, the board and the pit as a bar, the jumper as a dot on it.</summary>
+        void DrawRunway(Painter2D painter, Rect r, LongJumpEvent jump)
+        {
+            LongJumpPit pit = jump.pit;
+            if (pit == null) return;
+            const float pad = 14f;
+            float x0 = pit.runwayStartX, x1 = pit.pitFarX;
+            float scale = (r.width - 2f * pad) / Mathf.Max(1f, x1 - x0);
+            float y = r.y + r.height * 0.5f;
+            float X(float x) => r.x + pad + (x - x0) * scale;
+
+            painter.lineWidth = 6f;
+            painter.strokeColor = new Color(1f, 1f, 1f, 0.45f);
+            painter.BeginPath();
+            painter.MoveTo(new Vector2(X(x0), y));
+            painter.LineTo(new Vector2(X(pit.takeoffX), y));
+            painter.Stroke();
+            painter.strokeColor = new Color(0.9f, 0.8f, 0.55f, 0.7f);
+            painter.BeginPath();
+            painter.MoveTo(new Vector2(X(pit.pitNearX), y));
+            painter.LineTo(new Vector2(X(x1), y));
+            painter.Stroke();
+            painter.lineWidth = 2f;
+            painter.strokeColor = Color.white;
+            painter.BeginPath();
+            painter.MoveTo(new Vector2(X(pit.takeoffX), y - 10f));
+            painter.LineTo(new Vector2(X(pit.takeoffX), y + 10f));
+            painter.Stroke();
+
+            RaceEvent.Athlete who = jump.Competitor;
+            if (who == null) return;
+            Vector3 p = who.IsRL ? who.rig.BasePosition : (who.go != null ? who.go.transform.position : Vector3.zero);
+            float x = Mathf.Clamp(pit.Along(p), x0, x1);
+            painter.fillColor = who.color;
+            painter.BeginPath();
+            painter.Arc(new Vector2(X(x), y), 7f, 0f, 360f);
+            painter.Fill();
         }
 
         // ---------------------------------------------------------------- lower third

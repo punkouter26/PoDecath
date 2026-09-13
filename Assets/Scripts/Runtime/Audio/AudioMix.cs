@@ -40,6 +40,7 @@ namespace PoDecath.Audio
         static readonly float[] _duckTarget = { 1f, 1f, 1f, 1f };
         static float _master = 1f;
         static bool _loaded;
+        static float _dopplerMute;
 
         /// <summary>Raised when a level changes, so anything holding a cached volume can re-read it.</summary>
         public static event Action Changed;
@@ -93,12 +94,25 @@ namespace PoDecath.Audio
         }
 
         /// <summary>
+        /// Multiplier for every source's Doppler level. Zero for a moment after a camera cut: Unity works
+        /// the listener's velocity out from its position, so a cut across the stadium would otherwise be
+        /// heard as a pitch bend on every footfall in the field.
+        /// </summary>
+        public static float DopplerScale => _dopplerMute > 0f ? 0f : 1f;
+
+        public static void MuteDoppler(float seconds)
+        {
+            _dopplerMute = Mathf.Max(_dopplerMute, seconds);
+        }
+
+        /// <summary>
         /// Advances the duck envelopes. Called once a frame from whatever owns the mix in the scene —
         /// <see cref="RaceAudio"/> in a race, nothing at all in a menu, where nothing ducks.
         /// </summary>
         public static void Tick(float unscaledDelta, float releasePerSecond = 1.6f)
         {
             Load();
+            _dopplerMute = Mathf.Max(0f, _dopplerMute - unscaledDelta);
             for (int i = 0; i < _duck.Length; i++)
                 _duck[i] = Mathf.MoveTowards(_duck[i], _duckTarget[i], releasePerSecond * unscaledDelta);
         }

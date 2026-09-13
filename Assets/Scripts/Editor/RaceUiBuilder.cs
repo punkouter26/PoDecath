@@ -122,6 +122,8 @@ namespace PoDecath.EditorTools
             var agentsGo = new GameObject("AgentTelemetry");
             var agents = agentsGo.AddComponent<AgentTelemetry>();
             agents.race = dash;
+            // One JSON per race with the frame-time record, for comparing devices and builds.
+            if (dash != null) agentsGo.AddComponent<RaceLog>().race = dash;
 
             var telemetry = UiBakery.AddScreen<TelemetryOverlay>("Telemetry", UiBakery.TelemetryUxml, TelemetryOrder);
             if (telemetry != null)

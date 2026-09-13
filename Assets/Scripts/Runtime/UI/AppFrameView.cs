@@ -117,7 +117,7 @@ namespace PoDecath.UI
             _nextText = Time.unscaledTime + 0.25f;
 
             Rewire();
-            SetText(_fps, $"{_shownFps:F0} FPS");
+            SetText(_fps, Chip(_shownFps));
             if (_fps != null)
             {
                 bool good = _shownFps >= targetFps * 0.95f;
@@ -135,6 +135,20 @@ namespace PoDecath.UI
                 _debug.EnableInClassList("frame-btn--open", _telemetry != null && _telemetry.ScreenVisible);
                 _debug.text = g == AgentTelemetry.Grade.Bad ? "DEBUG !" : "DEBUG";
             }
+        }
+
+        /// <summary>
+        /// The device chip: frame rate, frame time and, on a device that reports one, the battery. Frame
+        /// time is the number a phone build is tuned against (a 60 Hz budget is 16.7 ms), and the battery
+        /// is the cheapest thermal proxy there is without a vendor plug-in: a race that costs 3% is a race
+        /// that is cooking the phone.
+        /// </summary>
+        static string Chip(float fps)
+        {
+            string s = fps > 0f ? $"{fps:F0} FPS  {1000f / fps:F1} ms" : "-- FPS";
+            float battery = SystemInfo.batteryLevel;
+            if (battery >= 0f) s += $"  {battery * 100f:F0}%";
+            return s;
         }
 
         void OnDebug()

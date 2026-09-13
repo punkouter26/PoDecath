@@ -32,6 +32,8 @@ namespace PoDecath.Fx
             GunSmoke,
             /// <summary>Over the line.</summary>
             Confetti,
+            /// <summary>Sweat off a tired runner on a hard footfall.</summary>
+            Sweat,
         }
 
         [Tooltip("Materials for every effect. Without a bank this component does nothing at all.")]
@@ -109,9 +111,10 @@ namespace PoDecath.Fx
         }
 
         // Per-effect construction values, kept as arrays so Fire can scale them without a switch.
-        readonly float[] _baseSpeed = new float[6];
-        readonly float[] _baseSize = new float[6];
-        readonly int[] _baseCount = new int[6];
+        const int Kinds = 7;   // one per Effect; the arrays below are indexed by it
+        readonly float[] _baseSpeed = new float[Kinds];
+        readonly float[] _baseSize = new float[Kinds];
+        readonly int[] _baseCount = new int[Kinds];
 
         /// <summary>
         /// One pooled system. Every effect is the same handful of decisions — how many, how fast, how big,
@@ -193,6 +196,17 @@ namespace PoDecath.Fx
                     _baseSpeed[k] = 1.1f; _baseSize[k] = 0.55f; _baseCount[k] = Mathf.Max(5, burst / 4);
                     break;
 
+                case Effect.Sweat:
+                    main.startLifetime = new ParticleSystem.MinMaxCurve(0.3f, 0.55f);
+                    main.startColor = new ParticleSystem.MinMaxGradient(new Color(0.86f, 0.93f, 1f, 0.85f));
+                    main.gravityModifier = 1.3f;
+                    main.maxParticles = 64;
+                    shape.shapeType = ParticleSystemShapeType.Cone;
+                    shape.angle = 40f;
+                    shape.radius = 0.1f;
+                    _baseSpeed[k] = 1.8f; _baseSize[k] = 0.035f; _baseCount[k] = Mathf.Max(3, burst / 10);
+                    break;
+
                 default:   // Confetti
                     main.startLifetime = new ParticleSystem.MinMaxCurve(1.8f, 3.4f);
                     main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.85f, 0.25f), new Color(0.3f, 0.75f, 1f));
@@ -219,7 +233,7 @@ namespace PoDecath.Fx
             {
                 ParticleSystem.LimitVelocityOverLifetimeModule drag = ps.limitVelocityOverLifetime;
                 drag.enabled = true;
-                drag.dampen = effect == Effect.SandBurst ? 0.06f : 0.22f;
+                drag.dampen = effect == Effect.SandBurst || effect == Effect.Sweat ? 0.05f : 0.22f;
             }
 
             if (effect == Effect.FootDust || effect == Effect.FallDust || effect == Effect.GunSmoke)
@@ -248,6 +262,7 @@ namespace PoDecath.Fx
             Effect.HurdleScuff => bank.spark,
             Effect.GunSmoke => bank.smoke,
             Effect.Confetti => bank.confetti,
+            Effect.Sweat => bank.sweat != null ? bank.sweat : bank.dust,
             _ => bank.dust,
         };
 

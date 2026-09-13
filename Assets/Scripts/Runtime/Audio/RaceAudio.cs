@@ -86,6 +86,12 @@ namespace PoDecath.Audio
         /// <summary>What the crowd is doing right now. Read by the telemetry overlay.</summary>
         public Mood CurrentMood => _mood;
 
+        /// <summary>The crowd's level right now, 0..1, after the mood and the tension. The stands read it.</summary>
+        public float CrowdLevel => _level;
+
+        /// <summary>Raised on every crowd reaction with its weight, so the visible crowd jumps with the audible one.</summary>
+        public event System.Action<float> Reaction;
+
         void Awake()
         {
             _flat = Make(spatial: false, priority: 32);
@@ -379,6 +385,7 @@ namespace PoDecath.Audio
             if (director == null) return;
             if (director.Current == _lastShot) return;
             _lastShot = director.Current;
+            AudioMix.MuteDoppler(0.35f);   // a cut teleports the listener; that is not motion and must not bend pitch
             Flat(bank != null ? bank.whoosh : null, 0.28f, AudioMix.Bus.Broadcast, Random.Range(0.9f, 1.12f));
         }
 
@@ -421,6 +428,7 @@ namespace PoDecath.Audio
         void Crowd(AudioClip clip, float volume, float pitch = 1f)
         {
             if (clip == null) return;
+            Reaction?.Invoke(volume);
             // The ring detunes its own emitters, so a reaction spread across it needs no pitch of its own;
             // the fallback single source does, or two cheers in a row are audibly the same file twice.
             if (crowd != null) { crowd.Burst(clip, volume * crowdVolume); return; }

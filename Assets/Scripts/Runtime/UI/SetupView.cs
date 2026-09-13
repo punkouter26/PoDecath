@@ -8,9 +8,14 @@ using PoDecath.Sim;
 namespace PoDecath.UI
 {
     /// <summary>
-    /// The event setup menu: a row of event buttons, then one counter per athlete definition including the
+    /// The event setup menu: a row of event chips, then one tile per athlete definition including the
     /// RED heuristic bot, capped at <see cref="RaceRoster.MaxRunners"/> in total and at least one athlete
     /// overall.
+    ///
+    /// The field is a grid of tiles rather than a list, and the grid is sized to the screen rather than
+    /// the screen to the grid: <see cref="FitTiles"/> reads the height left between the events and START
+    /// and divides it by the rows the roster needs, so nine athletes, or twelve, fit one portrait screen
+    /// without a scroll bar. A menu that has to be scrolled to find START is a menu with a hidden button.
     ///
     /// The grid order interleaves the types round-robin rather than listing each block in turn. The
     /// starting grid is staggered two abreast (the deck is far too narrow to line a full field up in one
@@ -18,8 +23,8 @@ namespace PoDecath.UI
     /// the gun even though every runner covers the same lap. Interleaving spreads both policies evenly down
     /// the grid; the times in the results are the comparison that counts either way.
     ///
-    /// Every button and counter is built from the definitions the project actually has, so a policy that
-    /// has never been trained and an event whose scene was never built simply do not appear.
+    /// Every chip and tile is built from the definitions the project actually has, so a policy that has
+    /// never been trained and an event whose scene was never built simply do not appear.
     /// </summary>
     public class SetupView : UiRoot
     {
@@ -32,7 +37,7 @@ namespace PoDecath.UI
             [Tooltip("One line under the title explaining what the field is about to do.")]
             public string hint;
             [Tooltip("Laps of the rooftop loop. The lap is 100.1 m, so 1 is the 100 m, 4 the 400 m and "
-                   + "15 the 1500 m — all the same scene. 0 leaves the scene's own setting alone.")]
+                   + "15 the 1500 m, all the same scene. 0 leaves the scene's own setting alone.")]
             public int laps = 0;
             [Tooltip("Put hurdles on the straights.")]
             public bool hurdles = false;
@@ -52,6 +57,8 @@ namespace PoDecath.UI
         [Tooltip("Events on offer, built by PoDecath/Build Race Scenes. The selected one owns the scene "
                + "START loads and the hint under the title.")]
         public List<EventChoice> events = new List<EventChoice>();
+        [Tooltip("Tiles across the field grid. Three fits nine athletes on one portrait screen.")]
+        public int columns = 3;
 
         VisualElement _eventHost, _runnerHost;
         Label _hint, _total;
@@ -81,6 +88,7 @@ namespace PoDecath.UI
 
             BuildEvents();
             BuildRunners();
+            if (_runnerHost != null) _runnerHost.RegisterCallback<GeometryChangedEvent>(_ => FitTiles());
             if (_start != null) _start.clicked += StartRace;
             // Clearing the field one tap at a time was fine with three athletes on the roster. With the
             // character models on it there are ten, and somebody who wants to watch Trump race the zombie
@@ -115,7 +123,7 @@ namespace PoDecath.UI
             // One of each to start with, which is the field that shows the owner every athlete the project
             // has. It used to be an even split of all sixteen places, and that stopped being a sensible
             // default the moment the roster grew past a handful: the split silently decided that six of
-            // somebody were in and made the remainder row -- whichever happened to be listed first -- into
+            // somebody were in and made the remainder row, whichever happened to be listed first, into
             // the biggest team in the race. One each is the same answer however long the roster gets, and
             // the steppers are right there for anyone who wants eight Grandmas.
             int used = 0;
@@ -126,42 +134,65 @@ namespace PoDecath.UI
                 row.count = used < Max ? 1 : 0;
                 used += row.count;
 
-                var element = new VisualElement();
-                element.AddToClassList("runner-row");
-
-                // The swatch is the athlete's own colour — the same one their trail wears on the deck and
-                // their row wears in the results. It is the only thing that tells the field apart, since
-                // the house rule keeps every athlete on the textures their model was imported with.
-                var swatch = new VisualElement();
-                swatch.AddToClassList("runner-swatch");
-                swatch.style.backgroundColor = row.definition.Tint;
+                var tile = new VisualElement();
+                tile.AddToClassList("runner-tile");
+                // The stripe along the top is the athlete's own colour: the one their trail wears on the
+                // deck and their row wears in the results. It is the only thing that tells the field
+                // apart, since the house rule keeps every athlete on the textures their model came with.
+                tile.style.borderTopColor = row.definition.Tint;
 
                 var name = new Label(row.definition.displayName);
-                name.AddToClassList("runner-name");
-
-                RunnerRow captured = row;
-                var minus = new Button(() => Adjust(captured, -1)) { text = "–" };
-                minus.AddToClassList("btn");
-                minus.AddToClassList("btn--step");
+                name.AddToClassList("runner-tile-name");
 
                 var count = new Label(row.count.ToString());
-                count.AddToClassList("runner-count");
+                count.AddToClassList("runner-tile-count");
 
+                var steps = new VisualElement();
+                steps.AddToClassList("runner-tile-steps");
+                RunnerRow captured = row;
+                var minus = new Button(() => Adjust(captured, -1)) { text = "-" };
+                minus.AddToClassList("btn");
+                minus.AddToClassList("btn--tile-step");
                 var plus = new Button(() => Adjust(captured, +1)) { text = "+" };
                 plus.AddToClassList("btn");
-                plus.AddToClassList("btn--step");
+                plus.AddToClassList("btn--tile-step");
+                steps.Add(minus);
+                steps.Add(plus);
 
-                element.Add(swatch);
-                element.Add(name);
-                element.Add(minus);
-                element.Add(count);
-                element.Add(plus);
-                _runnerHost.Add(element);
+                tile.Add(name);
+                tile.Add(count);
+                tile.Add(steps);
+                _runnerHost.Add(tile);
 
                 row.countLabel = count;
                 row.minus = minus;
                 row.plus = plus;
-                row.row = element;
+                row.row = tile;
+            }
+        }
+
+        /// <summary>
+        /// Sizes every tile to the height the grid actually has. Runs on every geometry change of the
+        /// grid, which is once at start-up and again on a rotation or a resize; the arithmetic is one
+        /// division and the result is the same for every tile.
+        /// </summary>
+        void FitTiles()
+        {
+            if (_runnerHost == null) return;
+            int tiles = 0;
+            foreach (RunnerRow r in rows) if (r.row != null) tiles++;
+            int cols = Mathf.Max(1, columns);
+            int gridRows = Mathf.CeilToInt(tiles / (float)cols);
+            float height = _runnerHost.resolvedStyle.height;
+            if (gridRows == 0 || float.IsNaN(height) || height <= 1f) return;
+            const float margin = 16f;   // 8 px above and below each tile
+            float tile = Mathf.Max(150f, height / gridRows - margin);
+            float width = 100f / cols - 2f;   // 1% margin either side
+            foreach (RunnerRow r in rows)
+            {
+                if (r.row == null) continue;
+                r.row.style.height = tile;
+                r.row.style.width = Length.Percent(width);
             }
         }
 
@@ -194,7 +225,7 @@ namespace PoDecath.UI
         }
 
         /// <summary>
-        /// Puts the same number in every row. NONE is allowed to empty the field completely, which the
+        /// Puts the same number in every tile. NONE is allowed to empty the field completely, which the
         /// steppers are not: it is the start of "clear this and pick two", and START stays greyed out
         /// until somebody has been picked, so an empty grid can never reach a race scene.
         /// </summary>
@@ -218,7 +249,7 @@ namespace PoDecath.UI
                 if (r.countLabel != null) SetText(r.countLabel, r.count.ToString());
                 if (r.minus != null) r.minus.SetEnabled(r.count > 0 && total > 1);
                 if (r.plus != null) r.plus.SetEnabled(total < Max);
-                r.row?.EnableInClassList("runner-row--out", r.count == 0);
+                r.row?.EnableInClassList("runner-tile--out", r.count == 0);
             }
             SetText(_total, $"Total  {total} / {Max}");
             if (_start != null) _start.SetEnabled(total >= 1);

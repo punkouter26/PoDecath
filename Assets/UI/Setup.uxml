@@ -4,6 +4,10 @@
 
     Both grids are built in SetupView from the scenes and athlete definitions the project actually has, so
     an event that has not been built and a policy that has not been trained simply do not appear.
+
+    Everything fits one portrait screen. The events are one row of chips and the field is a grid of tiles
+    (three across) sized in code to the height that is left, so nothing here scrolls: a menu that has to be
+    scrolled to find START is a menu with a hidden button.
 -->
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Theme.uss" />
@@ -14,23 +18,22 @@
 
                 <ui:Label class="label-micro" text="PODECATH" />
                 <ui:Label name="title" class="label-display" text="EVENT SETUP" />
-                <ui:Label name="hint" class="label-small muted" text="" style="margin-bottom: 32px;" />
+                <ui:Label name="hint" class="label-small muted" text="" style="margin-bottom: 16px; white-space: normal;" />
 
                 <ui:Label class="label-micro" text="EVENT" style="margin-bottom: 8px;" />
                 <ui:VisualElement name="events" class="event-grid" />
 
-                <ui:Label class="label-micro" text="FIELD" style="margin-bottom: 8px;" />
-                <ui:ScrollView name="runners-scroll" style="flex-grow: 1;">
-                    <ui:VisualElement name="runners" />
-                </ui:ScrollView>
-
-                <ui:VisualElement class="row" style="margin-top: 16px;">
-                    <ui:Label name="total" class="label-small muted" text="Total 0 / 16" style="flex-grow: 1;" />
-                    <ui:Button name="none" class="btn btn--ghost btn--chip" text="NONE" />
-                    <ui:Button name="all" class="btn btn--ghost btn--chip" text="ONE EACH" />
+                <ui:VisualElement class="row" style="margin-bottom: 8px;">
+                    <ui:Label class="label-micro" text="FIELD" style="flex-grow: 1;" />
+                    <ui:Label name="total" class="label-small muted" text="Total 0 / 16" />
                 </ui:VisualElement>
+                <ui:VisualElement name="runners" class="runner-grid" />
 
-                <ui:Button name="start" class="btn btn--primary" text="START" style="margin-top: 16px; min-height: 112px; font-size: 40px;" />
+                <ui:VisualElement class="row" style="margin-top: 8px;">
+                    <ui:Button name="none" class="btn btn--ghost" text="NONE" style="flex-grow: 1; margin-right: 8px;" />
+                    <ui:Button name="all" class="btn btn--ghost" text="ONE EACH" style="flex-grow: 1; margin-right: 8px;" />
+                    <ui:Button name="start" class="btn btn--primary" text="START" style="flex-grow: 2; min-height: 104px; font-size: 40px;" />
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

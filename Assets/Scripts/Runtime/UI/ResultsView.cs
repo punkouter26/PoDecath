@@ -58,12 +58,15 @@ namespace PoDecath.UI
         {
             if (_rows == null) return;
             _rows.Clear();
+            // Past eight rows the card would need to scroll on a phone; compact rows keep sixteen on one screen.
+            bool compact = results.Count > 8;
 
             for (int i = 0; i < results.Count; i++)
             {
                 RaceEvent.RaceResult r = results[i];
                 var row = new VisualElement();
                 row.AddToClassList("result-row");
+                if (compact) row.AddToClassList("result-row--compact");
                 if (r.finished && r.rank <= 3) row.AddToClassList("result-row--podium");
 
                 // A runner who did not finish is dimmed rather than removed: the board has to show that

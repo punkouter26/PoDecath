@@ -27,6 +27,11 @@ namespace PoDecath.EditorTools
         public const string PcProfilePath = SettingsDir + "/Broadcast_Volume_PC.asset";
         public const string MobileProfilePath = SettingsDir + "/Broadcast_Volume_Mobile.asset";
         public const string SkyMaterialPath = MaterialsDir + "/Broadcast_Sky.mat";
+        public const string SkyAfternoonPath = MaterialsDir + "/Sky_Afternoon.mat";
+        public const string SkyGoldenHourPath = MaterialsDir + "/Sky_GoldenHour.mat";
+        public const string SkyNightPath = MaterialsDir + "/Sky_Night.mat";
+        public const string WindowLitPath = MaterialsDir + "/Window_Lit.mat";
+        const string SkyDir = "Assets/Textures/Sky";
         const string PcRendererPath = SettingsDir + "/PC_Renderer.asset";
         const string MobileRpPath = SettingsDir + "/Mobile_RPAsset.asset";
         const string PcRpPath = SettingsDir + "/PC_RPAsset.asset";
@@ -36,6 +41,8 @@ namespace PoDecath.EditorTools
         {
             VolumeProfile pc = BakeProfiles();
             BakeSky();
+            BakeHdriSkies();
+            BakeWindowMaterial();
             TuneRenderPipelineAssets();
             AssetDatabase.SaveAssets();
             Selection.activeObject = pc;
@@ -172,6 +179,78 @@ namespace PoDecath.EditorTools
             return mat;
         }
 
+        // ---------------------------------------------------------------- photographed skies
+
+        /// <summary>
+        /// One panoramic skybox per time of day from the Poly Haven HDRIs in Assets/Textures/Sky (CC0;
+        /// see CREDITS.txt there). A photographed sky gives the ambient probe real colour in the shadows
+        /// and the marble something to reflect; the procedural sky stays as the fallback for a preset
+        /// whose file is missing.
+        /// </summary>
+        public static void BakeHdriSkies()
+        {
+            PolicyLibraryTools.EnsureFolder(MaterialsDir);
+            HdriSky(SkyAfternoonPath, $"{SkyDir}/Sky_Afternoon.hdr", 1f);
+            HdriSky(SkyGoldenHourPath, $"{SkyDir}/Sky_GoldenHour.hdr", 1f);
+            HdriSky(SkyNightPath, $"{SkyDir}/Sky_Night.hdr", 0.9f);
+        }
+
+        static void HdriSky(string materialPath, string hdrPath, float exposure)
+        {
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(hdrPath);
+            if (tex == null) { Debug.LogWarning($"[PoDecath] {hdrPath} missing; that preset keeps the procedural sky."); return; }
+            var importer = AssetImporter.GetAtPath(hdrPath) as TextureImporter;
+            if (importer != null && (importer.sRGBTexture || importer.wrapModeU != TextureWrapMode.Repeat || importer.maxTextureSize != 2048))
+            {
+                importer.textureShape = TextureImporterShape.Texture2D;
+                importer.sRGBTexture = false;
+                importer.mipmapEnabled = true;
+                importer.wrapModeU = TextureWrapMode.Repeat;   // the seam is at the back of the panorama
+                importer.wrapModeV = TextureWrapMode.Clamp;
+                importer.maxTextureSize = 2048;
+                importer.SaveAndReimport();
+                tex = AssetDatabase.LoadAssetAtPath<Texture2D>(hdrPath);
+            }
+            Shader s = Shader.Find("Skybox/Panoramic");
+            if (s == null) { Debug.LogWarning("[PoDecath] Skybox/Panoramic not found; HDRI skies skipped."); return; }
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+            if (mat == null)
+            {
+                mat = new Material(s);
+                AssetDatabase.CreateAsset(mat, materialPath);
+            }
+            if (mat.shader != s) mat.shader = s;
+            mat.SetTexture("_MainTex", tex);
+            mat.SetFloat("_Mapping", 1f);      // latitude-longitude
+            mat.SetFloat("_ImageType", 0f);    // 360 degrees
+            mat.SetFloat("_Exposure", exposure);
+            mat.SetFloat("_Rotation", 0f);
+            mat.SetColor("_Tint", new Color(0.5f, 0.5f, 0.5f, 0.5f));
+            mat.DisableKeyword("_MAPPING_6_FRAMES_LAYOUT");
+            EditorUtility.SetDirty(mat);
+        }
+
+        /// <summary>The warm emissive the building's windows swap to for the floodlit preset.</summary>
+        public static Material BakeWindowMaterial()
+        {
+            PolicyLibraryTools.EnsureFolder(MaterialsDir);
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(WindowLitPath);
+            Shader s = Shader.Find("Universal Render Pipeline/Lit");
+            if (mat == null)
+            {
+                if (s == null) return null;
+                mat = new Material(s);
+                AssetDatabase.CreateAsset(mat, WindowLitPath);
+            }
+            mat.SetColor("_BaseColor", new Color(0.95f, 0.85f, 0.6f));
+            mat.SetFloat("_Smoothness", 0.6f);
+            mat.SetColor("_EmissionColor", new Color(1f, 0.72f, 0.38f) * 3.2f);
+            mat.EnableKeyword("_EMISSION");
+            mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+            EditorUtility.SetDirty(mat);
+            return mat;
+        }
+
         // ---------------------------------------------------------------- pipeline tiers
 
         /// <summary>
@@ -206,6 +285,13 @@ namespace PoDecath.EditorTools
             SetBool(so, "m_AdditionalLightShadowsSupported", !mobile);
             SetBool(so, "m_RequireDepthTexture", true);        // depth of field and SSAO both read it
             SetBool(so, "m_RequireOpaqueTexture", !mobile);    // and the wet-deck surface work
+            // Cascades split near: 5%, 15% and 36% of a 110 m distance put the first three inside 40 m,
+            // which is where the athletes are, so their shadows are crisp and the far building's are not
+            // paid for at the same density. The single mobile cascade is shortened for the same reason.
+            SetVector3(so, "m_Cascade4Split", new Vector3(0.05f, 0.15f, 0.36f));
+            SetFloat(so, "m_CascadeBorder", 0.15f);
+            if (mobile) SetFloat(so, "m_ShadowDistance", 45f);
+            SetBool(so, "m_SupportsLightCookies", true);   // the floodlights carry a soft cookie
 
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(asset);
@@ -221,6 +307,12 @@ namespace PoDecath.EditorTools
         {
             SerializedProperty p = so.FindProperty(name);
             if (p != null) p.floatValue = value;
+        }
+
+        static void SetVector3(SerializedObject so, string name, Vector3 value)
+        {
+            SerializedProperty p = so.FindProperty(name);
+            if (p != null) p.vector3Value = value;
         }
 
         static void SetBool(SerializedObject so, string name, bool value)

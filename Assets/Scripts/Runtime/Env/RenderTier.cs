@@ -84,6 +84,9 @@ namespace PoDecath.Env
         {
             int level = (int)Current;
             if (QualitySettings.GetQualityLevel() != level) QualitySettings.SetQualityLevel(level, true);
+            // The building carries LOD groups (BuildingLodBuilder). A phone never draws LOD0 at all: the
+            // decimated LOD1 is its building, which is what brings the 833k-triangle model under budget.
+            QualitySettings.maximumLODLevel = IsMobile ? 1 : 0;
         }
 
         // ------------------------------------------------------------------ budgets
@@ -118,5 +121,11 @@ namespace PoDecath.Env
 
         /// <summary>Heat haze, wet-deck reflections and the other second-order surface tricks.</summary>
         public static bool SurfaceExtras => !IsMobile;
+
+        /// <summary>Rows of spectators round the deck. One mesh either way; this is how many quads are in it.</summary>
+        public static int CrowdRows => IsMobile ? 2 : 3;
+
+        /// <summary>Heat shimmer needs the opaque texture the mobile pipeline asset does not request.</summary>
+        public static bool HeatHaze => !IsMobile;
     }
 }

@@ -31,8 +31,17 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
   RooftopRace 2,040,756 / 183; RooftopLongJump 953,898 / 147). The older figure here, ~837k triangles and
   ~700 batches, predates the 2026-09-04 glb re-export and was wrong by roughly 2.7x; do not plan against it.
   Static batching is on and the target is 60 FPS, but against a mobile budget of under 200k on screen that
-  is a **10x gap**, so the 122 MB building mesh needs decimation/LODs from Blender before a phone build is
-  worth profiling. Re-run the sweep after any change to the building and compare, rather than estimating.
+  is a **10x gap**. **2026-09-12, later the same day:** the building now has LODs
+  (`training/tools/whitehouse_lods.py`: 833k -> 273k -> 68k triangles in the glb) and the mobile tier never
+  draws LOD0 (`QualitySettings.maximumLODLevel = 1`, set by `RenderTier.Apply`, which `SceneLook` now calls
+  in every scene), and the building casts no shadows on that tier (`SceneLook.ApplyBuildingShadows`). Measured
+  by the same sweep with the tier forced to Mobile: RooftopRace 2,496,682 -> **712,488**, RooftopLongJump
+  1,687,886 -> **282,040**, RooftopLap 2,051,830 -> 386,244, Rooftop 2,282,650 -> 520,038 (sweep triangles
+  count every pass, shadows included; the LOD ceiling alone gave 1,105,028 on the race scene, the shadow
+  change the rest). Still 3.5x over the 200k target on the race scene: the next levers are LOD2 as the
+  phone's building (the window segments are separate meshes, so check the facades close up before dropping
+  them) and the athlete skins themselves. Re-run the sweep after any change to the building and compare,
+  rather than estimating.
 
 ## Phase 1 scope (current)
 
@@ -67,6 +76,15 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
 | Impacts scaled by the physics: contact impulse drives hurdle sparks and camera shake, foot slip leaves skid marks and throws dust along the slide | `Hurdle.LastImpulse`, `FootContactSensor.SlipSpeed`, `CameraShake.cs`, `SkidMarks.cs`, `RaceVfx.cs` | done; `referenceImpulse` is a first guess, re-tune against measured values |
 | Character roster: every rigged model in `Assets/Models/Characters` becomes an athlete, bone map and facing worked out from the skeleton's shape, skin sized to the rig at bind time | `SkeletonMapper.cs`, `AthleteRosterBuilder.cs`, menu `PoDecath/Rebuild Athlete Roster` | done: 8 models (Matt Avaturn, Grandma, Grandpa, Matt, Nick, Nick Doggy, Trump, Zombie Accurig), all 12 bodies bound on each, every one within 3 degrees of square |
 | Picking the field: one counter per roster entry on the setup menu, ONE EACH / NONE, 1-16 runners | `SetupView.cs`, `Assets/UI/Setup.uxml` | done |
+| Building LODs: the White House decimated in Blender from the exported glb (never the .blend) to 33% and 8% of its 833k triangles, one LODGroup per part; the mobile tier never draws LOD0 at all and the building stops casting shadows there | `training/tools/whitehouse_lods.py` -> `Assets/Models/WhiteHouse_LOD1/2.glb`, `BuildingLodBuilder.cs`, `RenderTier.Apply` | done; see the mobile numbers below |
+| Photographed skies (three Poly Haven HDRIs, one per time-of-day preset), a skyline ring, the obelisk and a treeline past the grounds, lit windows at night | `Assets/Textures/Sky/`, `LookBakery.BakeHdriSkies`, `SurroundingsBuilder.cs`, `SceneLook.ApplyWindows` | done |
+| Baked lighting: mixed sun with a shadowmask, lightmaps on the building and the track, a probe ring over the deck; the bake is a menu item because it takes minutes | `LightingBakery.cs`, menu `PoDecath/Bake Lighting`, `Assets/Settings/Rooftop_Lighting.lighting` | done; re-run after any scene rebuild, which discards lightmaps |
+| A visible crowd: rows of billboard spectators on the roofs outside the rail, bouncing with the level the mix already computes and jumping on every cheer | `CrowdStands.cs`, `Assets/Shaders/CrowdBillboard.shader`, `RaceAudio.CrowdLevel` | done |
+| Featured athlete: an additive rim on whoever the gallery is on, a sweat sheen that rises with fatigue, sweat spray off hard footfalls when tired. Nothing on the models' own materials | `AthleteSheen.cs`, `Assets/Shaders/AthleteRim.shader`, `VfxLibrary.Effect.Sweat` | done |
+| Floodlights on four masts for the night preset, cascades split near so athlete shadows are crisp inside 40 m, heat shimmer over the straights on a PC afternoon | `Floodlights.cs`, `HeatHaze.cs`, `LookBakery.Tune` | done |
+| Finish tape that breaks where the winner crossed and flutters on a verlet rope; bunting on the rail that flaps with the preset's wind | `FinishTape.cs`, `Bunting.cs`, `Assets/Shaders/Pennant.shader` | done |
+| One-screen menus: the field is a grid of tiles sized to the height left, results go compact past eight rows, the broadcast overlay carries a track map with a dot per athlete beside the splits | `SetupView.FitTiles`, `ResultsView`, `BroadcastView.DrawMap`, `Setup/Results/Broadcast.uxml` | done |
+| Occlusion on the listener (a solid line to the featured athlete closes the low pass), Doppler on footfalls muted across cuts, a frame-time and battery chip in the frame, one JSON per race with the frame-time record | `ListenerAcoustics`, `AudioMix.MuteDoppler`, `AppFrameView.Chip`, `RaceLog.cs` -> `training/logs/races/` and the device's `persistentDataPath/races/` | done |
 | Other events (high jump, throws, ...) | `DOCS/ROADMAP.md` | placeholders |
 
 ## Folder map
@@ -151,6 +169,14 @@ DOCS/                           this summary and the roadmap
   `PoDecath/Probe Get-Up Transfer` scores a recovery policy from a supine start into
   `training/logs/getup_transfer.json`. Both run through the Unity CLI
   (`unity command menu --path "..."`), so they work headless against the open editor.
+- Building LODs: `blender-launcher --background --python training/tools/whitehouse_lods.py -- Assets/Models/WhiteHouse.glb Assets/Models`
+  (8 s; writes `WhiteHouse_LOD1.glb` and `WhiteHouse_LOD2.glb` with material names and no textures; the scene
+  builders attach them). Re-run after every glb re-export from Blender.
+- Lighting: `PoDecath/Bake Lighting (lightmaps + probes)` bakes the four rooftop scenes (minutes; log in
+  `training/logs/lighting_bake.log`). Every scene rebuild throws the lightmaps away, so bake last.
+- Race logs: every finished race writes `training/logs/races/race_<time>.json` in the editor and
+  `Android/data/com.podecath.game/files/races/` on a phone: device, tier, mean and 1% low FPS, worst frame,
+  draw calls, triangles, battery before and after, and the results. Put two side by side to compare builds.
 - Diagnostics: F3 in any scene opens the telemetry overlay (frame graph, draw calls, GC, memory, athletes,
   audio voices, crowd mood). It is the thing to open before believing any performance claim.
 - Long jump: menu `PoDecath/Build Long Jump Scene` (also rebuilds `MAIN.unity`), then play

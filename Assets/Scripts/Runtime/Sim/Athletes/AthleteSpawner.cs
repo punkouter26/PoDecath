@@ -59,6 +59,8 @@ namespace PoDecath.Sim
         public bool stressSkeletons = true;
         [Tooltip("Black streaks where a foot slides on the deck instead of gripping.")]
         public bool skidMarks = true;
+        [Tooltip("Rim light on the featured athlete and a sweat sheen off its fatigue. Nothing on the model's own materials.")]
+        public bool sheen = true;
 
         [System.Serializable]
         class PolicyJson { public float action_scale = 0.5f; public int control_decimation = 4; public int physics_hz = 200; }
@@ -222,6 +224,14 @@ namespace PoDecath.Sim
                 var skid = host.AddComponent<SkidMarks>();
                 skid.rig = a.rig;
                 skid.material = vfxBank.skid;
+            }
+            if (sheen && a.IsRL && vfxBank.rim != null)
+            {
+                var s = host.AddComponent<AthleteSheen>();
+                s.rig = a.rig;
+                s.effort = a.effort;
+                s.rimMaterial = vfxBank.rim;
+                s.rimColor = new Color(a.color.r, a.color.g, a.color.b, 1f);
             }
         }
 

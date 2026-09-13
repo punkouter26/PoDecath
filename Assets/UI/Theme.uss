@@ -235,8 +235,17 @@
     background-color: var(--overlay-strip);
     border-radius: var(--radius-sm);
     padding: var(--gap-1);
-    width: 36%;
-    margin-left: var(--gap-1);
+    width: 100%;
+    margin-top: var(--gap-1);
+}
+
+/* The right-hand column beside the running order: the track map, then the splits under it. */
+.bcast-right { width: 36%; margin-left: var(--gap-1); }
+
+.bcast-map {
+    height: 176px;
+    background-color: var(--overlay-strip);
+    border-radius: var(--radius-sm);
 }
 
 .split-row { font-size: var(--t-micro); color: var(--ink-dim); height: 42px; }
@@ -371,7 +380,7 @@
 
 .modal {
     width: 92%;
-    max-height: 84%;
+    max-height: 90%;
     background-color: var(--surface);
     border-radius: var(--radius);
     border-width: 1px;
@@ -408,18 +417,21 @@
    is exactly how it shipped in v0.1.4. */
 .setup { padding: var(--gap-4); padding-bottom: var(--frame-clear); flex-grow: 1; }
 
-.event-grid { flex-direction: row; flex-wrap: wrap; margin-bottom: var(--gap-3); }
+/* One row of chips, however many events there are: five fit at 28px with the long names wrapping. */
+.event-grid { flex-direction: row; flex-wrap: nowrap; margin-bottom: var(--gap-2); }
 
 .event-btn {
     flex-grow: 1;
-    flex-basis: 40%;
-    margin: var(--gap-1);
-    min-height: 104px;
+    flex-basis: 0;
+    margin: 4px;
+    min-height: 96px;
+    padding: 4px;
+    white-space: normal;
     background-color: var(--surface-2);
     border-radius: var(--radius-sm);
     border-width: 2px;
     border-color: rgba(0, 0, 0, 0);
-    font-size: var(--t-small);
+    font-size: 28px;
     -unity-font-style: bold;
     color: var(--ink);
     transition-property: background-color, border-color, scale;
@@ -542,7 +554,7 @@
 .frame-fps {
     font-size: var(--t-small);
     -unity-font-style: bold;
-    width: 220px;
+    width: 440px;
 }
 
 .frame-fps--good { color: var(--accent); }
@@ -689,3 +701,73 @@
     white-space: normal;
     color: var(--ink);
 }
+
+/* ------------------------------------------------------------------ field grid (setup)
+ *
+ * One tile per roster entry, three across, sized in SetupView.FitTiles to the height left under the
+ * events and above START, so the whole menu is one portrait screen and nothing scrolls.
+ */
+
+.runner-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    flex-grow: 1;
+    align-content: flex-start;
+}
+
+.runner-tile {
+    width: 31.3%;
+    margin: 8px 1%;
+    min-height: 150px;
+    background-color: var(--surface-2);
+    border-radius: var(--radius-sm);
+    border-top-width: 8px;
+    border-top-color: var(--ink-faint);
+    padding: 8px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.runner-tile--out { opacity: 0.42; }
+
+.runner-tile-name {
+    font-size: var(--t-small);
+    -unity-text-align: middle-center;
+    white-space: normal;
+    height: 76px;
+}
+
+.runner-tile-count {
+    font-size: var(--t-display);
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+.runner-tile-steps {
+    flex-direction: row;
+    width: 100%;
+}
+
+.btn--tile-step {
+    flex-grow: 1;
+    flex-basis: 0;
+    min-height: 76px;
+    margin: 4px;
+    padding: 0;
+    font-size: 40px;
+    -unity-font-style: bold;
+    background-color: rgba(255, 255, 255, 0.10);
+    color: var(--ink);
+}
+
+.btn--tile-step:hover { background-color: rgba(46, 191, 140, 0.30); }
+.btn--tile-step:disabled { opacity: 0.25; }
+
+/* ------------------------------------------------------------------ results without a scroll bar */
+
+.results-rows { flex-grow: 1; justify-content: center; }
+
+.result-row--compact { height: 58px; margin-bottom: 4px; }
+.result-row--compact .result-rank { font-size: var(--t-small); width: 64px; }
+.result-row--compact .result-name { font-size: var(--t-small); }
+.result-row--compact .result-time { font-size: var(--t-small); width: 220px; }

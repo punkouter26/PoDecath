@@ -95,6 +95,8 @@ namespace PoDecath.EditorTools
             VfxBakery.EnsureBaked();
             LookBakery.BakeProfiles();
             LookBakery.BakeSky();
+            LookBakery.BakeHdriSkies();
+            LookBakery.BakeWindowMaterial();
             // The whole sound set is generated, so it is baked here rather than assumed to be on disk.
             // The reference is picked up again after the new scene is opened, not kept from here.
             AudioBakery.BakeBank();
@@ -143,6 +145,10 @@ namespace PoDecath.EditorTools
             look.mobileProfile = LookBakery.LoadProfile(mobile: true);
             look.skyMaterial = AssetDatabase.LoadAssetAtPath<Material>(LookBakery.SkyMaterialPath);
             look.timeOfDay = SceneLook.TimeOfDay.Afternoon;
+            look.skyAfternoon = AssetDatabase.LoadAssetAtPath<Material>(LookBakery.SkyAfternoonPath);
+            look.skyGoldenHour = AssetDatabase.LoadAssetAtPath<Material>(LookBakery.SkyGoldenHourPath);
+            look.skyNight = AssetDatabase.LoadAssetAtPath<Material>(LookBakery.SkyNightPath);
+            look.windowLitMaterial = AssetDatabase.LoadAssetAtPath<Material>(LookBakery.WindowLitPath);
             volume.sharedProfile = look.pcProfile;
             // Applied here as well as at runtime: sky, ambient, fog and the sun's colour and intensity are
             // per-scene RenderSettings, so they have to be written before the scene is saved or the scene
@@ -156,6 +162,7 @@ namespace PoDecath.EditorTools
             Bounds building = new Bounds();
             Bounds residence = new Bounds();
             bool first = true, firstRes = true;
+            float groundY = 0f; bool haveGround = false;
             foreach (var r in wh.GetComponentsInChildren<MeshRenderer>(true))
             {
                 string n = r.gameObject.name;
@@ -168,6 +175,7 @@ namespace PoDecath.EditorTools
                     if (mf != null && mf.sharedMesh != null && r.GetComponent<MeshCollider>() == null)
                         r.gameObject.AddComponent<MeshCollider>().sharedMesh = mf.sharedMesh;
                 }
+                if (ground) { groundY = haveGround ? Mathf.Min(groundY, r.bounds.min.y) : r.bounds.min.y; haveGround = true; }
                 if (n.Contains("Tree") || ground || n.Contains("Flag")) continue;
                 if (first) { building = r.bounds; first = false; } else building.Encapsulate(r.bounds);
                 if (isResidence)
@@ -178,7 +186,12 @@ namespace PoDecath.EditorTools
             if (first) building = new Bounds(Vector3.zero, new Vector3(150f, 23f, 45f));
             if (firstRes) residence = building;
             Debug.Log($"[PoDecath] White House bounds centre {building.center} size {building.size}");
+            // Decimated copies of the building, one LODGroup per part. On the mobile tier LOD0 is never
+            // drawn at all (RenderTier sets maximumLODLevel), which is what brings the model under budget.
+            int lodGroups = BuildingLodBuilder.Attach(wh);
+            Debug.Log($"[PoDecath] White House LOD groups: {lodGroups}");
             foreach (var t in wh.GetComponentsInChildren<Transform>(true)) t.gameObject.isStatic = true;
+            look.building = wh;
 
             // The track goes on the residence roof only, so the wings stay clear.
             // Length comes straight off the bounds less the cornice overhang. Depth is a constant
@@ -208,6 +221,31 @@ namespace PoDecath.EditorTools
             path.radius = track.radius;
             path.deckWidth = track.width;
             path.deckTopY = track.deckTopY;
+
+            // The world beyond the roof: a skyline ring, the obelisk to the south, a treeline round the
+            // grounds. Static, one mesh each, and far enough out that the fog does most of the work.
+            SurroundingsBuilder.Build(building, haveGround ? groundY : building.min.y, vfx);
+
+            // Furniture on the loop: pennants on the rail, four floodlight masts (lit only for the night
+            // preset) and the shimmer over the straights (PC tier, afternoon only). The tape and the
+            // crowd come later, once the event and the mix exist for them to read.
+            var sceneryGo = new GameObject("TrackScenery");
+            if (vfx != null)
+            {
+                var bunting = sceneryGo.AddComponent<Bunting>();
+                bunting.path = path;
+                bunting.material = vfx.pennant;
+
+                var haze = sceneryGo.AddComponent<HeatHaze>();
+                haze.path = path;
+                haze.material = vfx.haze;
+                look.heatHaze = haze;
+            }
+            var floods = sceneryGo.AddComponent<Floodlights>();
+            floods.path = path;
+            floods.cookie = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Textures/Fx_soft.png");
+            floods.mastMaterial = column;
+            look.floodlights = floods;
 
             // Long jump: infield deck, runway and pit inside the loop, plus its runtime description.
             LongJumpPit pit = null;
@@ -372,6 +410,15 @@ namespace PoDecath.EditorTools
                 raceVfx.pit = pit;
             }
 
+            // The tape across the line. Not for the long jump: nothing crosses a line there.
+            if (vfx != null && vfx.tape != null && !jumpMode)
+            {
+                var tape = new GameObject("FinishTape").AddComponent<FinishTape>();
+                tape.race = dash;
+                tape.path = lapMode ? path : null;
+                tape.material = vfx.tape;
+            }
+
             // The camera's own reaction to an impact. Its own object because it moves its transform to the
             // impact point before firing, and nothing else in the scene should be dragged along with it.
             // Built in every scene: the listeners are already on the cameras either way, and a scene with
@@ -403,6 +450,15 @@ namespace PoDecath.EditorTools
                 raceAudio.pit = pit;
                 raceAudio.drama = director != null ? director.drama : null;
 
+                // The crowd you can see, on the roofs outside the rail. It reads the level the ring plays at.
+                if (vfx != null && vfx.crowd != null)
+                {
+                    var stands = new GameObject("CrowdStands").AddComponent<CrowdStands>();
+                    stands.path = path;
+                    stands.material = vfx.crowd;
+                    stands.audioMix = raceAudio;
+                }
+
                 // The commentary. It lives on the audio object because it ducks the crowd under every line
                 // and RaceAudio is what ticks the mix; without that the duck would never release.
                 //
@@ -426,11 +482,18 @@ namespace PoDecath.EditorTools
                 // The room, on the listener: the reverb of a stone courtyard and the dullness of distance.
                 var acoustics = camGo.AddComponent<ListenerAcoustics>();
                 acoustics.race = dash;
+                acoustics.director = director;
+                acoustics.occluders = creatureLayer >= 0 ? ~(1 << creatureLayer) : ~0;
 
                 // The diagnostics panel reports what the crowd is doing, and it was built before the mix.
                 var telemetry = Object.FindFirstObjectByType<PoDecath.Diag.TelemetryOverlay>();
                 if (telemetry != null) telemetry.audioMix = raceAudio;
             }
+
+            // Baked lighting: static flags, lightmap UVs on the track, a probe ring and the settings asset.
+            // The bake itself is PoDecath/Bake Lighting, minutes of GPU time, run on demand.
+            LightingBakery.Prepare(wh, light, path, track.root);
+            look.Apply(force: true);
 
             string scenePath = jumpMode ? LongJumpScenePath : raceMode ? RaceScenePath : (lapMode ? LapScenePath : ScenePath);
             EditorSceneManager.SaveScene(scene, scenePath);

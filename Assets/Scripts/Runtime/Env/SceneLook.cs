@@ -34,6 +34,18 @@ namespace PoDecath.Env
         public VolumeProfile mobileProfile;
         [Tooltip("Procedural skybox material, baked by PoDecath/Bake Look.")]
         public Material skyMaterial;
+        [Tooltip("Panoramic HDRI skies baked by PoDecath/Bake Look, one per preset. A missing one falls back to the procedural sky.")]
+        public Material skyAfternoon;
+        public Material skyGoldenHour;
+        public Material skyNight;
+        [Tooltip("Optional. Lit for the floodlit preset, off for the others.")]
+        public Floodlights floodlights;
+        [Tooltip("Optional. On for the afternoon, off for the others.")]
+        public HeatHaze heatHaze;
+        [Tooltip("The building whose windows light up at night.")]
+        public GameObject building;
+        [Tooltip("The warm emissive the windows swap to at night, baked by PoDecath/Bake Look.")]
+        public Material windowLitMaterial;
 
         [Header("Look")]
         public TimeOfDay timeOfDay = TimeOfDay.Afternoon;
@@ -45,7 +57,7 @@ namespace PoDecath.Env
                + "far buildings are as sharp as the deck rail and the roof stops reading as high up.")]
         public bool fog = true;
         public float fogStart = 120f;
-        public float fogEnd = 1100f;
+        public float fogEnd = 1400f;
 
         TimeOfDay _applied = (TimeOfDay)(-1);
         Tier _appliedTier = (Tier)(-1);
@@ -63,6 +75,9 @@ namespace PoDecath.Env
             public Color ambient;        // used when the sky is too dark to generate a useful probe
             public float ambientIntensity;
             public Color fogColor;
+            public float wind;           // 0..1, published as _PoDecathWind for the bunting and the tape
+            public Color crowdTint;      // _PoDecathCrowdTint: the stands are unlit, so this is their light
+            public float skyExposure;    // for the HDRI sky, when there is one
         }
 
         static Preset For(TimeOfDay t) => t switch
@@ -79,6 +94,9 @@ namespace PoDecath.Env
                 ambient = new Color(0.42f, 0.40f, 0.44f),
                 ambientIntensity = 1.05f,
                 fogColor = new Color(0.72f, 0.6f, 0.5f),
+                wind = 0.35f,
+                crowdTint = new Color(0.95f, 0.82f, 0.72f),
+                skyExposure = 1f,
             },
             TimeOfDay.Floodlit => new Preset
             {
@@ -92,6 +110,9 @@ namespace PoDecath.Env
                 ambient = new Color(0.16f, 0.18f, 0.24f),
                 ambientIntensity = 0.8f,
                 fogColor = new Color(0.09f, 0.11f, 0.16f),
+                wind = 0.5f,
+                crowdTint = new Color(0.38f, 0.42f, 0.58f),
+                skyExposure = 0.9f,
             },
             _ => new Preset
             {
@@ -105,11 +126,18 @@ namespace PoDecath.Env
                 ambient = new Color(0.5f, 0.54f, 0.6f),
                 ambientIntensity = 1.15f,
                 fogColor = new Color(0.66f, 0.73f, 0.83f),
+                wind = 0.6f,
+                crowdTint = Color.white,
+                skyExposure = 1f,
             },
         };
 
         void OnEnable()
         {
+            // The tier owns the quality level and the LOD ceiling, and a scene entered directly (the
+            // sweep, a dev scene, a build that skips the menu) has nobody else to push it. Play mode
+            // only: in the editor the quality level is the user's to change.
+            if (Application.isPlaying) RenderTier.Apply();
             RenderTier.Changed += OnTierChanged;
             Apply(force: true);
         }
@@ -142,6 +170,7 @@ namespace PoDecath.Env
             ApplySky(p);
             ApplyFog(p);
             ApplyVolume();
+            ApplyExtras(p);
         }
 
         void ApplySun(Preset p)
@@ -162,7 +191,20 @@ namespace PoDecath.Env
 
         void ApplySky(Preset p)
         {
-            if (skyMaterial != null)
+            // A photographed sky when one was baked for this preset (Poly Haven HDRIs, see
+            // Assets/Textures/Sky/CREDITS.txt); the procedural sky otherwise, driven by the same numbers.
+            Material sky = timeOfDay switch
+            {
+                TimeOfDay.GoldenHour => skyGoldenHour,
+                TimeOfDay.Floodlit => skyNight,
+                _ => skyAfternoon,
+            };
+            if (sky != null)
+            {
+                sky.SetFloat("_Exposure", p.skyExposure);
+                RenderSettings.skybox = sky;
+            }
+            else if (skyMaterial != null)
             {
                 skyMaterial.SetColor("_SkyTint", p.skyTint);
                 skyMaterial.SetColor("_GroundColor", p.groundColor);
@@ -204,6 +246,75 @@ namespace PoDecath.Env
             if (wanted != null && volume.sharedProfile != wanted) volume.sharedProfile = wanted;
             volume.isGlobal = true;
             volume.priority = 0f;
+        }
+        // ---------------------------------------------------------------- everything the preset touches beyond light
+
+        Renderer[] _windows;
+        Material[][] _windowMaterials;
+        bool _windowsLit;
+
+        /// <summary>
+        /// The wind, the crowd's light, the floodlights, the shimmer and the windows. Globals rather than
+        /// per-object settings, so a preset is one place and the things that read it need no wiring.
+        /// </summary>
+        void ApplyExtras(Preset p)
+        {
+            Shader.SetGlobalFloat("_PoDecathWind", p.wind);
+            Shader.SetGlobalColor("_PoDecathCrowdTint", new Color(p.crowdTint.r, p.crowdTint.g, p.crowdTint.b, 1f));
+            bool night = timeOfDay == TimeOfDay.Floodlit;
+            if (floodlights != null) floodlights.Set(night);
+            if (heatHaze != null) heatHaze.Set(timeOfDay == TimeOfDay.Afternoon);
+            ApplyWindows(night);
+            ApplyBuildingShadows();
+        }
+
+        bool _shadowsApplied;
+        bool _shadowsMobile;
+
+        /// <summary>
+        /// On the mobile tier the building stops casting shadows. Its single cascade covers 45 m of a
+        /// 150 m building whose shadow falls on the lawn, not on the deck, and the shadow pass was
+        /// costing a second draw of every part inside that range. The athletes keep theirs.
+        /// </summary>
+        void ApplyBuildingShadows()
+        {
+            if (building == null || !Application.isPlaying) return;
+            bool mobile = RenderTier.IsMobile;
+            if (_shadowsApplied && _shadowsMobile == mobile) return;
+            _shadowsApplied = true;
+            _shadowsMobile = mobile;
+            var mode = mobile ? UnityEngine.Rendering.ShadowCastingMode.Off : UnityEngine.Rendering.ShadowCastingMode.On;
+            foreach (MeshRenderer r in building.GetComponentsInChildren<MeshRenderer>(true)) r.shadowCastingMode = mode;
+        }
+
+        /// <summary>
+        /// The building's windows (every renderer named W_*) swap to the lit material at night and back
+        /// by day. A swap rather than an emissive property block, because the glTF shader's emission is
+        /// a texture and a factor and the windows have neither; the originals are kept and restored.
+        /// </summary>
+        void ApplyWindows(bool lit)
+        {
+            if (building == null || windowLitMaterial == null) return;
+            if (_windows == null)
+            {
+                var found = new System.Collections.Generic.List<Renderer>();
+                foreach (MeshRenderer r in building.GetComponentsInChildren<MeshRenderer>(true))
+                    if (r.gameObject.name.StartsWith("W_")) found.Add(r);
+                _windows = found.ToArray();
+                _windowMaterials = new Material[_windows.Length][];
+                for (int i = 0; i < _windows.Length; i++) _windowMaterials[i] = _windows[i].sharedMaterials;
+                _windowsLit = false;
+            }
+            if (lit == _windowsLit) return;
+            _windowsLit = lit;
+            for (int i = 0; i < _windows.Length; i++)
+            {
+                if (_windows[i] == null) continue;
+                if (!lit) { _windows[i].sharedMaterials = _windowMaterials[i]; continue; }
+                var mats = new Material[_windowMaterials[i].Length];
+                for (int m = 0; m < mats.Length; m++) mats[m] = windowLitMaterial;
+                _windows[i].sharedMaterials = mats;
+            }
         }
     }
 }

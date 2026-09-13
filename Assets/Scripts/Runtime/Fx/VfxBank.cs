@@ -43,6 +43,24 @@ namespace PoDecath.Fx
         [Tooltip("The black streak a foot leaves when it slides on the deck instead of gripping.")]
         public Material skid;
 
+        [Header("Scenery")]
+        [Tooltip("The billboard crowd round the deck (PoDecath/CrowdBillboard). Vertex colour is the shirt.")]
+        public Material crowd;
+        [Tooltip("Cut-out tree sprites for the treeline round the grounds.")]
+        public Material treeline;
+        [Tooltip("Pennants on the rope above the rail (PoDecath/Pennant).")]
+        public Material pennant;
+        [Tooltip("The finish tape: two-sided, vertex coloured, alpha blended so it can fade.")]
+        public Material tape;
+        [Tooltip("Heat shimmer curtains (PoDecath/HeatHaze). PC tier only.")]
+        public Material haze;
+
+        [Header("Featured athlete")]
+        [Tooltip("Additive fresnel rim on whoever the gallery is on (PoDecath/AthleteRim).")]
+        public Material rim;
+        [Tooltip("Sweat droplets off a tired athlete's footfalls.")]
+        public Material sweat;
+
         public bool IsUsable => dust != null;
 
         /// <summary>
@@ -56,6 +74,8 @@ namespace PoDecath.Fx
         /// </summary>
         public bool IsComplete =>
             dust != null && sand != null && smoke != null && spark != null && confetti != null
-            && trail != null && blobShadow != null && stress != null && sandMark != null && skid != null;
+            && trail != null && blobShadow != null && stress != null && sandMark != null && skid != null
+            && crowd != null && treeline != null && pennant != null && tape != null && haze != null
+            && rim != null && sweat != null;
     }
 }

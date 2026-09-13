@@ -4,3 +4,6 @@
 # (12 MB apiece). Scoped to this folder on purpose: the small generated surface maps under
 # Assets/Textures/ are a few hundred KB each and stay ordinary blobs.
 Assets/Models/Characters/**/*.png filter=lfs diff=lfs merge=lfs -text
+# Sky HDRIs (Poly Haven, 4-7 MB each) and the baked lightmaps are binary and large.
+*.hdr filter=lfs diff=lfs merge=lfs -text
+*.exr filter=lfs diff=lfs merge=lfs -text

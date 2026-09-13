@@ -1,4 +1,5 @@
 using UnityEngine;
+using PoDecath.Cam;
 using PoDecath.Sim;
 
 namespace PoDecath.Audio
@@ -32,6 +33,17 @@ namespace PoDecath.Audio
         [Tooltip("Seconds for the filter to follow a cut. A cut is instant; the filter should not be, or "
                + "every cut clicks.")]
         public float glide = 0.25f;
+
+        [Header("Occlusion")]
+        [Tooltip("Optional. With it the filter follows whoever the gallery is on rather than the leader.")]
+        public BroadcastDirector director;
+        [Tooltip("What can stand between the camera and the athlete: the building, the deck, the rails. "
+               + "The builder clears the Creature layer out of it so a runner cannot occlude itself.")]
+        public LayerMask occluders = ~0;
+        [Tooltip("Cutoff while something solid is in the way.")]
+        public float occludedHz = 1400f;
+        [Tooltip("How far the effects bus is pulled down while occluded.")]
+        [Range(0f, 1f)] public float occlusionDuck = 0.6f;
 
         [Header("Room")]
         [Tooltip("Reverb over the deck. Off for a scene that is not on the roof.")]
@@ -76,6 +88,11 @@ namespace PoDecath.Audio
                 // Logarithmic in frequency, not linear: hearing is, and a linear sweep spends most of its
                 // travel in the range nothing is happening in.
                 target = Mathf.Exp(Mathf.Lerp(Mathf.Log(openHz), Mathf.Log(closedHz), t));
+                // Occlusion: a line from the listener to the athlete's chest that hits something solid
+                // means the sound is coming round the building rather than across the deck.
+                bool occluded = Physics.Linecast(transform.position, subject + Vector3.up * 0.9f, occluders, QueryTriggerInteraction.Ignore);
+                if (occluded) { target = Mathf.Min(target, occludedHz); AudioMix.Duck(AudioMix.Bus.Sfx, occlusionDuck); }
+                else AudioMix.Release(AudioMix.Bus.Sfx);
             }
 
             float k = glide > 0f ? 1f - Mathf.Exp(-Time.unscaledDeltaTime / glide) : 1f;
@@ -88,8 +105,8 @@ namespace PoDecath.Audio
         {
             position = Vector3.zero;
             if (race == null) return false;
-            RaceEvent.Athlete a = null;
-            foreach (RaceEvent.Athlete candidate in race.Athletes)
+            RaceEvent.Athlete a = director != null ? director.Featured : null;
+            if (a == null) foreach (RaceEvent.Athlete candidate in race.Athletes)
             {
                 if (candidate.fell || candidate.finished) continue;
                 if (a == null || candidate.distance > a.distance) a = candidate;

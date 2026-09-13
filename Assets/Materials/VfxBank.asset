@@ -19,4 +19,13 @@ MonoBehaviour:
   confetti: {fileID: 2100000, guid: cd6258883b399c84d83b59f614ca0629, type: 2}
   trail: {fileID: 2100000, guid: b387d71cebcc04b4e972ba1aa9189e2c, type: 2}
   blobShadow: {fileID: 2100000, guid: 745ecc9802d557841bd4981b861af1ac, type: 2}
+  stress: {fileID: 2100000, guid: 32c0c3a665d04ae4b8e8ff6737baa465, type: 2}
   sandMark: {fileID: 2100000, guid: ca78dea247ed81d499d6ddc0c650bb2a, type: 2}
+  skid: {fileID: 2100000, guid: 96916a0c84a0e4a448fad5574b09022b, type: 2}
+  crowd: {fileID: 2100000, guid: ed10ef07785cc0f4cb6d243cf2e4e702, type: 2}
+  treeline: {fileID: 2100000, guid: d74ef0486c48eb744a08d05e5bb4c350, type: 2}
+  pennant: {fileID: 2100000, guid: 838aa9809cdc35941b719e10704a049e, type: 2}
+  tape: {fileID: 2100000, guid: eaa5585a2338d674a86f69c5a05e1752, type: 2}
+  haze: {fileID: 2100000, guid: 08a2c19f199a0ff42a91909da1dfeb15, type: 2}
+  rim: {fileID: 2100000, guid: bff6cd9a4ed52604095c596617648eaf, type: 2}
+  sweat: {fileID: 2100000, guid: 8932af78be8ee984c965e2811d928f52, type: 2}

@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The furniture a televised event carries over the picture.
+    The furniture a televised event carries over the picture, top to bottom:
+
+        top strip      the event, where it has got to, the clock
+        left column    the running order
+        right column   the track map (every athlete as a dot on the loop), then the splits board
+        bottom         the commentary caption, then the lower third for whoever is on camera
 
     Only the containers are declared here; the rows in the running order and the splits board are made in
-    BroadcastView from a count that depends on the field, so authoring sixteen of each by hand would be
-    sixteen places to forget to change something.
+    BroadcastView from a count that depends on the field, and the map is painted with the mesh API.
 -->
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Theme.uss" />
@@ -21,7 +25,7 @@
                 <ui:Label name="clock" class="bcast-clock" text="0.00" style="min-width: 260px;" />
             </ui:VisualElement>
 
-            <!-- Running order beside the splits board. Portrait is 1080 wide, so they sit side by side. -->
+            <!-- Running order on the left, map and splits stacked on the right. -->
             <ui:VisualElement class="row" style="align-items: flex-start;">
                 <ui:VisualElement name="order" class="order">
                     <ui:Label class="label-micro" text="ORDER" style="margin-left: 8px; margin-bottom: 4px;" />
@@ -29,9 +33,13 @@
                     <ui:Label name="overflow" class="label-micro hidden" text="" style="margin-left: 8px;" />
                 </ui:VisualElement>
 
-                <ui:VisualElement name="splits" class="splits">
-                    <ui:Label class="label-micro" text="SPLITS" style="margin-left: 8px; margin-bottom: 4px;" />
-                    <ui:VisualElement name="split-rows" />
+                <ui:VisualElement name="right" class="bcast-right">
+                    <ui:VisualElement name="track-map" class="bcast-map" />
+
+                    <ui:VisualElement name="splits" class="splits">
+                        <ui:Label class="label-micro" text="SPLITS" style="margin-left: 8px; margin-bottom: 4px;" />
+                        <ui:VisualElement name="split-rows" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
 
@@ -54,8 +62,7 @@
                 <!--
                     Strain: the featured athlete's joint torque as a fraction of what its drives are
                     allowed to produce. The fill is the reading; the tick behind it is where fatigue has
-                    got to. Hidden on an athlete with no effort meter — the coded bot in a scene built
-                    without them, mainly.
+                    got to. Hidden on an athlete with no effort meter.
                 -->
                 <ui:VisualElement name="strain" class="strain">
                     <ui:Label class="label-micro" text="STRAIN" />

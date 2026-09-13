@@ -194,6 +194,7 @@ namespace PoDecath.Diag
             AddRow("Athletes");
             AddRow("Audio voices");
             AddRow("Crowd");
+            if (SystemInfo.batteryLevel >= 0f) AddRow("Battery");
         }
 
         void AddRow(string key)
@@ -276,6 +277,8 @@ namespace PoDecath.Diag
             Athletes();
             Set("Audio voices", CountAudibleSources().ToString());
             Set("Crowd", audioMix != null ? audioMix.CurrentMood.ToString() : "-");
+            if (SystemInfo.batteryLevel >= 0f)
+                Set("Battery", $"{SystemInfo.batteryLevel * 100f:F0}%  {SystemInfo.batteryStatus}", SystemInfo.batteryLevel < 0.2f ? "warn" : null);
 
             SetText(_title, $"TELEMETRY   ·   {RenderTier.Current}   ·   {QualitySettings.names[QualitySettings.GetQualityLevel()]}");
             SetText(_footer, $"{Screen.width}x{Screen.height}   {Application.targetFrameRate} fps target   F3 to close");

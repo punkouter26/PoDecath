@@ -85,6 +85,18 @@ namespace PoDecath.EditorTools
             bank.stress = Particle("Fx_Stress", soft, additive: true, softParticles: false);
             bank.skid = Multiply("Fx_Skid", streak);
 
+            // Scenery and the featured athlete. The crowd atlas and the tree are RGBA sprites rather than
+            // alpha-only shapes: their colour is baked, and only the crowd's shirts take a vertex colour.
+            Texture2D crowd = Atlas("Fx_crowd", 256, 64, Crowd());
+            Texture2D tree = Atlas("Fx_tree", 128, 128, Tree());
+            bank.crowd = Custom("Fx_Crowd", "PoDecath/CrowdBillboard", crowd);
+            bank.treeline = Cutout("Fx_Treeline", tree);
+            bank.pennant = Custom("Fx_Pennant", "PoDecath/Pennant", null);
+            bank.tape = Particle("Fx_Tape", null, additive: false, softParticles: false);
+            bank.haze = Custom("Fx_HeatHaze", "PoDecath/HeatHaze", null);
+            bank.rim = Custom("Fx_Rim", "PoDecath/AthleteRim", null);
+            bank.sweat = Particle("Fx_Sweat", soft, additive: false, softParticles: false);
+
             EditorUtility.SetDirty(bank);
             AssetDatabase.SaveAssets();
             return LoadBank();
@@ -281,6 +293,146 @@ namespace PoDecath.EditorTools
             m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
             m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+        // ---------------------------------------------------------------- coloured sprites
+
+        /// <summary>
+        /// Four spectators in a row, 64 px each. Alpha is a mask as well as coverage: 1 on the shirt, which
+        /// the crowd shader tints with the vertex colour, 0.6 on skin, hair and trousers, which are drawn
+        /// as baked here so each variant is a different person rather than a different shirt.
+        /// </summary>
+        static Color[] Crowd()
+        {
+            const int w = 256, h = 64, cell = 64;
+            Color[] skin = { new Color(0.87f, 0.68f, 0.55f), new Color(0.62f, 0.42f, 0.3f), new Color(0.95f, 0.8f, 0.7f), new Color(0.45f, 0.3f, 0.22f) };
+            Color[] hair = { new Color(0.15f, 0.1f, 0.08f), new Color(0.05f, 0.04f, 0.04f), new Color(0.75f, 0.6f, 0.35f), new Color(0.35f, 0.2f, 0.12f) };
+            Color[] legs = { new Color(0.2f, 0.22f, 0.3f), new Color(0.35f, 0.3f, 0.28f), new Color(0.15f, 0.15f, 0.18f), new Color(0.3f, 0.35f, 0.5f) };
+            var px = new Color[w * h];
+            for (int v = 0; v < 4; v++)
+            for (int y = 0; y < cell; y++)
+            for (int x = 0; x < cell; x++)
+            {
+                Color c = Color.clear;
+                bool leg = (x >= 20 && x <= 29 || x >= 34 && x <= 43) && y <= 21;
+                bool torso = x >= 16 && x <= 47 && y >= 22 && y <= 45;
+                bool arm = (x >= 10 && x <= 15 || x >= 48 && x <= 53) && y >= 24 && y <= 43;
+                bool hand = (x >= 10 && x <= 15 || x >= 48 && x <= 53) && y >= 20 && y <= 23;
+                bool neck = x >= 29 && x <= 34 && y >= 46 && y <= 48;
+                float dx = x + 0.5f - 32f, dy = y + 0.5f - 55f;
+                bool head = dx * dx + dy * dy <= 7.5f * 7.5f;
+                bool cap = head && (dy > 2.5f || (dy > -1f && Mathf.Abs(dx) > 5f));
+                if (leg) c = y <= 2 ? new Color(0.08f, 0.07f, 0.07f, 0.6f) : new Color(legs[v].r, legs[v].g, legs[v].b, 0.6f);
+                if (torso || arm) c = new Color(1f, 1f, 1f, 1f);
+                if (hand || neck) c = new Color(skin[v].r, skin[v].g, skin[v].b, 0.6f);
+                if (head) c = new Color(skin[v].r, skin[v].g, skin[v].b, 0.6f);
+                if (cap) c = new Color(hair[v].r, hair[v].g, hair[v].b, 0.6f);
+                px[y * w + v * cell + x] = c;
+            }
+            return px;
+        }
+
+        /// <summary>A tree for the far treeline: a canopy of overlapping discs with a trunk, alpha cut.</summary>
+        static Color[] Tree()
+        {
+            const int s = 128;
+            var discs = new[] { new Vector3(64, 80, 34), new Vector3(44, 70, 26), new Vector3(84, 72, 28), new Vector3(56, 96, 24), new Vector3(76, 98, 22), new Vector3(64, 60, 30) };
+            var px = new Color[s * s];
+            for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+            {
+                Color c = Color.clear;
+                if (x >= 59 && x <= 68 && y <= 50) c = new Color(0.3f, 0.2f, 0.12f, 1f);
+                foreach (Vector3 d in discs)
+                {
+                    float dx = x + 0.5f - d.x, dy = y + 0.5f - d.y;
+                    if (dx * dx + dy * dy > d.z * d.z) continue;
+                    float n = 0.7f + 0.4f * Noise(x * 0.11f, y * 0.11f, 4004);
+                    float top = 0.85f + 0.3f * Mathf.Clamp01((y - 50f) / 70f);
+                    c = new Color(0.12f * n * top, 0.3f * n * top, 0.1f * n * top, 1f);
+                    break;
+                }
+                px[y * s + x] = c;
+            }
+            return px;
+        }
+
+        static Texture2D Atlas(string name, int width, int height, Color[] pixels)
+        {
+            string path = $"{TexDir}/{name}.png";
+            var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, false);
+            tex.SetPixels(pixels);
+            tex.Apply();
+            File.WriteAllBytes(Path.GetFullPath(path), tex.EncodeToPNG());
+            Object.DestroyImmediate(tex);
+
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+            var importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer != null)
+            {
+                importer.textureType = TextureImporterType.Default;
+                importer.alphaSource = TextureImporterAlphaSource.FromInput;
+                importer.alphaIsTransparency = true;
+                importer.sRGBTexture = true;
+                importer.wrapMode = TextureWrapMode.Clamp;
+                importer.mipmapEnabled = true;
+                importer.maxTextureSize = Mathf.Max(width, height);
+                importer.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        }
+
+        // ---------------------------------------------------------------- materials on the project's own shaders
+
+        /// <summary>
+        /// A material on one of the shaders in Assets/Shaders. Falls back to URP Unlit with a warning if
+        /// the shader failed to compile, so a scene build never dies on a shader typo.
+        /// </summary>
+        static Material Custom(string name, string shaderName, Texture2D tex)
+        {
+            string path = $"{MaterialsDir}/{name}.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            Shader shader = Shader.Find(shaderName);
+            if (shader == null)
+            {
+                Debug.LogWarning($"[PoDecath] shader {shaderName} not found for {name}; using URP Unlit.");
+                shader = Shader.Find("Universal Render Pipeline/Unlit");
+            }
+            if (m == null)
+            {
+                if (shader == null) return null;
+                m = new Material(shader);
+                AssetDatabase.CreateAsset(m, path);
+            }
+            if (shader != null && m.shader != shader) m.shader = shader;
+            if (tex != null && m.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", tex);
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+
+        /// <summary>URP Lit, alpha clipped, two-sided: what a sprite of a tree needs to stand in a field.</summary>
+        static Material Cutout(string name, Texture2D tex)
+        {
+            string path = $"{MaterialsDir}/{name}.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (m == null)
+            {
+                if (shader == null) return null;
+                m = new Material(shader);
+                AssetDatabase.CreateAsset(m, path);
+            }
+            if (shader != null && m.shader != shader) m.shader = shader;
+            m.SetFloat("_Surface", 0f);
+            m.SetFloat("_AlphaClip", 1f);
+            m.SetFloat("_Cutoff", 0.45f);
+            m.SetFloat("_Cull", 0f);
+            m.SetFloat("_Smoothness", 0.1f);
+            m.SetColor("_BaseColor", Color.white);
+            if (tex != null) m.SetTexture("_BaseMap", tex);
+            m.EnableKeyword("_ALPHATEST_ON");
+            m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
             EditorUtility.SetDirty(m);
             return m;
         }

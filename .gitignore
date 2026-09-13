@@ -85,3 +85,5 @@ Assets/_Recovery.meta
 
 # IL2CPP build scratch (created next to the project by the Android build).
 .utmp/
+# APK, device screenshots, logcat and pulled telemetry from training/deploy_android.ps1
+/Build/

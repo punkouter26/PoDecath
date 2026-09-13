@@ -28,6 +28,9 @@ namespace PoDecath.Audio
         [Range(0f, 1f)] public float volume = 0.55f;
         [Tooltip("Beyond this the step is inaudible; the broadcast cameras sit 8-40 m off the deck.")]
         public float maxDistance = 45f;
+        [Tooltip("Doppler on the footfalls: a runner passing the rail camera bends in pitch. Zeroed for a "
+               + "moment after every cut by AudioMix, because a cut is not motion.")]
+        [Range(0f, 2f)] public float doppler = 0.55f;
 
         [Header("Physics athlete")]
         [Tooltip("Contacts below this are the foot resting or brushing, not a step.")]
@@ -105,6 +108,7 @@ namespace PoDecath.Audio
 
         void Update()
         {
+            if (_src != null) _src.dopplerLevel = doppler * AudioMix.DopplerScale;
             if (_breath == null) return;
             float speed = rig != null ? rig.BaseLinearVelocityWorld.magnitude
                         : heuristic != null ? heuristic.Speed : 0f;
