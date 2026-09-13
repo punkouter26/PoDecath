@@ -106,6 +106,11 @@ class PPOConfig:
     desired_kl: float = 0.01
     max_grad_norm: float = 1.0
     obs_clip: float = 10.0
+    # Step size of the KL-adaptive learning rate, applied once per minibatch. At the rsl_rl
+    # default of 1.5 and 5 epochs x 8 minibatches, one iteration can move the rate by 1.5^40 --
+    # and measurably does: the baseline run swung between 1e-5 and 3.4e-3 from iteration to
+    # iteration. A smaller factor makes the same controller converge instead of thrash.
+    lr_adapt: float = 1.5
 
 
 class PPO:
@@ -193,9 +198,9 @@ class PPO:
                     kl = torch.sum(torch.log(sigma / sigma_old[idx] + 1e-5)
                                    + (sigma_old[idx].pow(2) + (mu_old[idx] - mu).pow(2)) / (2.0 * sigma.pow(2)) - 0.5, dim=-1).mean()
                     if kl > c.desired_kl * 2.0:
-                        self.cfg.lr = max(1e-5, self.cfg.lr / 1.5)
+                        self.cfg.lr = max(1e-5, self.cfg.lr / c.lr_adapt)
                     elif kl < c.desired_kl / 2.0 and kl > 0.0:
-                        self.cfg.lr = min(1e-2, self.cfg.lr * 1.5)
+                        self.cfg.lr = min(1e-2, self.cfg.lr * c.lr_adapt)
                     for g in self.opt.param_groups:
                         g["lr"] = self.cfg.lr
                 ratio = torch.exp(logp - logp_old[idx])

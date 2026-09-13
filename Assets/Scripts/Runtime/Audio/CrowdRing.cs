@@ -27,6 +27,12 @@ namespace PoDecath.Audio
         [Tooltip("The loop the emitters are placed around. Without it they ring this transform instead.")]
         public TrackPath path;
 
+        [Tooltip("Play the looping crowd bed - the continuous wash of noise under everything. Off by "
+               + "owner request (2026-09-13): it reads as white noise/hiss rather than as a crowd. The "
+               + "ring itself stays, so cheers, groans and applause still arrive from all round the deck; "
+               + "only the constant bed is silent.")]
+        public bool playBed = false;
+
         [Header("Placement")]
         [Tooltip("How far outside the deck edge the crowd stands.")]
         public float outward = 14f;
@@ -48,7 +54,9 @@ namespace PoDecath.Audio
 
         void Start()
         {
-            if (bank == null || bank.crowdBed == null) { enabled = false; return; }
+            // The ring is still worth building with the bed switched off: Burst() plays the crowd's
+            // reactions through these same sources, and those are the part that is actually a crowd.
+            if (bank == null || (playBed && bank.crowdBed == null)) { enabled = false; return; }
 
             int count = Mathf.Max(1, RenderTier.CrowdEmitters);
             _sources = new AudioSource[count];
@@ -61,8 +69,8 @@ namespace PoDecath.Audio
                 go.transform.position = Place(i, count, lap);
 
                 var src = go.AddComponent<AudioSource>();
-                src.clip = bank.crowdBed;
-                src.loop = true;
+                src.clip = playBed ? bank.crowdBed : null;
+                src.loop = playBed;
                 src.playOnAwake = false;
                 src.spatialBlend = 1f;
                 src.rolloffMode = AudioRolloffMode.Linear;
@@ -74,9 +82,16 @@ namespace PoDecath.Audio
                 // Offset into the loop and detuned a little, so N copies of one clip do not sum into one
                 // very loud copy of it with a comb filter across the middle.
                 src.pitch = 1f + (i - count * 0.5f) * 0.004f;
-                src.volume = 0f;
-                src.Play();
-                src.time = bank.crowdBed.length * i / count;
+                // With the bed off the source plays nothing of its own and exists only to carry
+                // one-shots. PlayOneShot scales by AudioSource.volume, and Burst() already applies both
+                // the crowd bus level and the 1/sqrt(N) ring sum, so this has to sit at 1 or the
+                // reactions would be attenuated twice.
+                src.volume = playBed ? 0f : 1f;
+                if (playBed)
+                {
+                    src.Play();
+                    src.time = bank.crowdBed.length * i / count;
+                }
                 _sources[i] = src;
             }
         }
@@ -115,7 +130,9 @@ namespace PoDecath.Audio
 
         void Update()
         {
-            if (_sources == null) return;
+            // Nothing to ride when the bed is off: the level exists to swell the loop, and writing it
+            // to volume would silence the one-shots along with it.
+            if (_sources == null || !playBed) return;
             float v = _level * AudioMix.Level(AudioMix.Bus.Crowd);
             for (int i = 0; i < _sources.Length; i++)
                 if (_sources[i] != null) _sources[i].volume = v;

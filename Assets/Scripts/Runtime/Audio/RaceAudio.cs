@@ -59,6 +59,9 @@ namespace PoDecath.Audio
 
         [Header("Levels")]
         [Range(0f, 1f)] public float crowdVolume = 0.55f;
+        [Tooltip("Play the looping crowd bed when there is no CrowdRing to play it through. Off by "
+               + "owner request (2026-09-13), matching CrowdRing.playBed; the reactions are unaffected.")]
+        public bool playCrowdBed = false;
         [Range(0f, 1f)] public float sfxVolume = 0.85f;
         [Range(0f, 1f)] public float windVolume = 0.3f;
         [Tooltip("How fast the crowd follows the race. Low is a crowd that takes a moment to notice.")]
@@ -99,7 +102,7 @@ namespace PoDecath.Audio
             {
                 // No ring: a single 2D bed, which is what this used to be. Worse, but never silent.
                 _fallbackCrowd = Make(spatial: false, priority: 0);
-                _fallbackCrowd.clip = bank != null ? bank.crowdBed : null;
+                _fallbackCrowd.clip = (playCrowdBed && bank != null) ? bank.crowdBed : null;
                 _fallbackCrowd.loop = true;
                 if (_fallbackCrowd.clip != null) _fallbackCrowd.Play();
             }

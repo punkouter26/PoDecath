@@ -50,7 +50,8 @@ class RunToTargetEnv:
                  target_speed: float = 3.5, target_dist: Tuple[float, float] = (6.0, 16.0),
                  nconmax: int = 48, njmax: int = 192, verbose: bool = False,
                  domain_rand: bool = True, dr_kwargs: Optional[dict] = None,
-                 cuda_graph: bool = True, action_clip: float = 3.0):
+                 cuda_graph: bool = True, action_clip: float = 3.0,
+                 air_time_cap: float = 0.4, fall_penalty: float = 2.0):
         wp.init()
         wp.config.verbose_warnings = verbose
         self.device = device
@@ -71,6 +72,7 @@ class RunToTargetEnv:
         self.m = mujoco.MjModel.from_xml_path(xml_path)
         self.dt = float(self.m.opt.timestep) * control_decimation
         self.max_steps = int(episode_len_s / self.dt)
+        self.episode_len_s = float(episode_len_s)
         d0 = mujoco.MjData(self.m)
         mujoco.mj_resetDataKeyframe(self.m, d0, 0)
         mujoco.mj_forward(self.m, d0)
@@ -100,6 +102,21 @@ class RunToTargetEnv:
         foot_geom = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_GEOM, "foot_l_geom")
         self.sole_half = float(self.m.geom_size[foot_geom, 2])
         self.sole_contact_h = float(self.cfg.get("sole_contact_height", 0.03))
+        # Ceiling on the flight time a single footfall can be paid for. Without one, `r_air`
+        # pays in proportion to however long the body was off the ground, and the cheapest way
+        # to be off the ground for a long time is to fall over. Measured on the 500-iteration
+        # baseline: air_time climbed 0.09 -> 0.56 s while fall_rate sat at 1.00 and the episode
+        # never got longer than 1.1 s -- the return was rising entirely on this term. A human
+        # sprint stride has 0.10-0.20 s of flight, so 0.4 is already generous. 0 disables the
+        # cap and restores the old behaviour.
+        self.air_time_cap = air_time_cap
+        # One-off cost of ending an episode on the floor. Per-term accounting on the baseline
+        # measured this at -0.025 per step once spread over an 85-step episode -- against a slip
+        # penalty of -0.324. Falling was the cheapest thing in the reward by an order of
+        # magnitude, and the only real cost of it (the alive/upright/progress income the athlete
+        # gives up for the rest of the episode) has to reach the policy through the value
+        # function across a 24-step GAE window.
+        self.fall_penalty = fall_penalty
         self.swing_clear_h = 0.10          # metres of clearance asked of a swing foot
         self.stance_width = 0.20           # metres between the feet in normal running
         # Paid when the athlete arrives at its target. Tasks whose target is a moving carrot the athlete
@@ -140,9 +157,22 @@ class RunToTargetEnv:
         self.air_time = torch.zeros(N, 2, device=device)
         self.prev_air = torch.zeros(N, 2, device=device)
         self.prev_foot_xy = torch.zeros(N, 2, 2, device=device)
+        # Jerk is the third derivative of joint angle, so it needs two steps of history. Both are
+        # reset with the episode: carrying velocity across a reset would book one enormous fake jerk
+        # spike per episode and swamp the average.
+        self.prev_qvel_j = torch.zeros(N, self.A, device=device)
+        self.prev_qacc_j = torch.zeros(N, self.A, device=device)
         self._acc = {k: torch.zeros((), device=device) for k in
                      ("ret_sum", "len_sum", "fell_sum", "done_n", "v_sum", "reach_sum", "upright_sum",
-                      "steps", "air_sum", "slip_sum", "duty_sum")}
+                      "steps", "air_sum", "slip_sum", "duty_sum",
+                      # KPI instrumentation. None of these change the reward; they exist so a run can
+                      # be graded against a threshold instead of eyeballed off the return curve.
+                      "verr_sum", "vhit_sum", "torque_sum", "power_sum", "jerk_sum",
+                      "pitch_sum", "roll_sum", "sat_sum")}
+        # Per-term reward accounting. A rising return says nothing on its own about whether the
+        # policy is getting better or just getting better at one term; this says which.
+        self.term_names = ['track', 'prog', 'alive', 'upright', 'heading', 'height', 'lin_z', 'ang', 'act', 'rate', 'limit', 'reach', 'air', 'slip', 'clear', 'width', 'alt', 'arm', 'energy', 'qvel', 'fall']
+        self._acc.update({f"rt_{t}": torch.zeros((), device=device) for t in self.term_names})
 
         # Built before the first reset: `_apply_reset` resamples through it, so it has to exist by then.
         self.dr = DomainRandomizer(self.mw, self.dw, num_envs, device, self.rng,
@@ -238,7 +268,13 @@ class RunToTargetEnv:
         m2 = mask[:, None].expand(-1, 2)
         self.air_time = torch.where(m2, torch.zeros_like(self.air_time), self.air_time)
         self.prev_air = torch.where(m2, torch.zeros_like(self.prev_air), self.prev_air)
-        self.prev_foot_xy = torch.where(m2[:, :, None], torch.zeros_like(self.prev_foot_xy), self.prev_foot_xy)
+        # NOT zeroed. `prev_foot_xy` holds a world position, not a delta, so zeroing it makes the
+        # next step read a foot velocity of (position - 0) / dt -- hundreds of m/s for an athlete
+        # standing a few metres from the origin. It is re-seeded from the real foot position in
+        # `step` once the physics has been rolled forward; see the note there.
+        zero_j = torch.zeros_like(self.prev_qvel_j)
+        self.prev_qvel_j = torch.where(m1, zero_j, self.prev_qvel_j)
+        self.prev_qacc_j = torch.where(m1, zero_j, self.prev_qacc_j)
         if self.dr is not None:
             self.dr.resample(mask)
 
@@ -363,7 +399,9 @@ class RunToTargetEnv:
         self.prev_air = self.air_time.clone()
         self.air_time = torch.where(contact, torch.zeros_like(self.air_time), self.air_time + self.dt)
         first_contact = contact & (self.prev_air > 0.0)
-        r_air = 1.0 * ((self.prev_air - 0.25) * first_contact.float()).sum(-1) * moving
+        paid_air = (self.prev_air.clamp_max(self.air_time_cap) if self.air_time_cap > 0.0
+                    else self.prev_air)
+        r_air = 1.0 * ((paid_air - 0.25) * first_contact.float()).sum(-1) * moving
 
         # A foot in contact that is still moving is skating. Clamped: a body tumbling at 20 m/s would
         # otherwise score -200 here on its way down, which says nothing about its gait and swamps every
@@ -401,12 +439,20 @@ class RunToTargetEnv:
         reward = (r_track + r_prog + r_alive + r_upright + r_heading + r_height + r_lin_z + r_ang
                   + r_act + r_rate + r_limit + r_reach
                   + r_air + r_slip + r_clear + r_width + r_alt + r_arm + r_energy + r_qvel)
+        terms = (r_track, r_prog, r_alive, r_upright, r_heading, r_height, r_lin_z, r_ang,
+                 r_act, r_rate, r_limit, r_reach, r_air, r_slip, r_clear, r_width, r_alt,
+                 r_arm, r_energy, r_qvel)
 
         # ---- termination ----
         fell = (pos[:, 2] < self.stand_height * 0.6) | (upright < 0.4) | ~torch.isfinite(pos).all(-1)
         timeout = self.step_count >= self.max_steps
-        reward = reward - 2.0 * fell.float()
+        r_fall = -self.fall_penalty * fell.float()
+        reward = reward + r_fall
         done = fell | timeout
+        for name, t in zip(self.term_names, terms + (r_fall,)):
+            # `t` is (N,) for every term except r_alive, which is a python float.
+            self._acc[f"rt_{name}"] += (t.mean() if torch.is_tensor(t)
+                                        else torch.as_tensor(float(t), device=self.device))
 
         self.episode_return = self.episode_return + reward
         self.episode_len = self.episode_len + 1.0
@@ -426,13 +472,64 @@ class RunToTargetEnv:
         self._acc["slip_sum"] += (foot_v.norm(dim=-1) * contact.float()).sum(-1).mean()
         self._acc["duty_sum"] += contact.float().mean()
         self._acc["steps"] += 1.0
+        self._accumulate_kpis(action, v_toward, grav_b)
 
         # new target for envs that reached theirs (no reset), then masked resets for done envs
         self.targets = torch.where(reached[:, None], self._random_targets(pos[:, :2]), self.targets)
         self._apply_reset(done)
         self._physics_forward()
+        # Re-seed the foot tracker for the environments that just reset, now that the physics has
+        # placed the new pose. Without this the first step of every episode books a foot velocity of
+        # `foot_position / dt` -- measured at 6.8 m/s, which squares past the 25.0 clamp and hands the
+        # policy the maximum possible slip penalty, -24.5, for a body that has not moved. Averaged
+        # over the 85-step episodes this run was producing that is -0.29 per step, and the measured
+        # r_slip was -0.324: the single largest penalty in the whole reward was almost entirely this
+        # artefact. A policy minimising it learns to keep its feet off the ground.
+        self.prev_foot_xy = torch.where(done[:, None, None],
+                                        self.site_xpos[:, self.foot_sites, :2], self.prev_foot_xy)
         self._obs = self.compute_obs()
         return self._obs, reward, done, timeout
+
+    # ---- KPI instrumentation -------------------------------------------------------------------
+    def _accumulate_kpis(self, action: torch.Tensor, v_toward: torch.Tensor,
+                         grav_b: torch.Tensor) -> None:
+        """Stability and control-effort metrics. Sync-free: everything stays a GPU scalar until
+        `get_stats` reads it once per iteration.
+
+        These are measurements, not reward terms. The reward already pays for some of the same
+        quantities (r_act, r_energy, r_qvel), but a reward term tells you what the policy was asked
+        for and a metric tells you what it did -- and only the second can be compared against a
+        threshold like "control effort below X N m".
+        """
+        qv = self.qvel[:, 6:]
+        qacc = (qv - self.prev_qvel_j) / self.dt
+        jerk = (qacc - self.prev_qacc_j) / self.dt
+        self.prev_qvel_j = qv.clone()
+        self.prev_qacc_j = qacc
+
+        # Velocity tracking against the commanded pace.
+        err = (v_toward - self.target_speed).abs()
+        self._acc["verr_sum"] += err.mean()
+        self._acc["vhit_sum"] += (err <= 0.1 * abs(self.target_speed)).float().mean()
+
+        # Control effort: mean torque magnitude per joint (N m) and mechanical power (W). Clamped for
+        # the same reason the energy reward is -- a body tumbling through a contact spike would
+        # otherwise set the average for the whole iteration.
+        self._acc["torque_sum"] += self.act_force.abs().mean(-1).clamp_max(500.0).mean()
+        self._acc["power_sum"] += (self.act_force * qv).abs().sum(-1).clamp_max(20000.0).mean()
+
+        # Joint jerk, RMS across joints (rad/s^3). The quantity that separates smooth motion from
+        # chattering; the action-rate penalty is a proxy for it, this is the thing itself.
+        self._acc["jerk_sum"] += jerk.pow(2).mean(-1).clamp_max(1e12).sqrt().mean()
+
+        # Torso attitude off vertical, from the projected gravity the policy already observes.
+        gx, gy, gz = grav_b[:, 0], grav_b[:, 1], (-grav_b[:, 2]).clamp_min(1e-6)
+        self._acc["pitch_sum"] += torch.atan2(gx, gz).abs().mean()
+        self._acc["roll_sum"] += torch.atan2(-gy, gz).abs().mean()
+
+        # Fraction of action components sitting on the clip. A policy pinned to its clip is doing
+        # bang-bang control where the gradient is zero.
+        self._acc["sat_sum"] += (action.abs() >= 0.99 * self.action_clip).float().mean()
 
     def get_stats(self) -> Dict[str, float]:
         a = {k: v.item() for k, v in self._acc.items()}
@@ -443,6 +540,22 @@ class RunToTargetEnv:
                # foot_slip is metres/second of sliding under a loaded foot (want ~0), duty_factor is the
                # fraction of time a foot is down (human walking ~0.6, running ~0.35).
                "air_time": a["air_sum"] / s, "foot_slip": a["slip_sum"] / s, "duty_factor": a["duty_sum"] / s}
+        deg = 180.0 / math.pi
+        out.update({
+            # Survival step ratio: how much of the nominal episode the athlete actually lasted.
+            "surv_ratio": min(1.0, (a["len_sum"] / n * self.dt) / max(1e-6, self.episode_len_s)),
+            "v_err": a["verr_sum"] / s,                       # m/s off the commanded pace
+            "v_hit_frac": a["vhit_sum"] / s,                  # fraction of steps within +-10%
+            "torque": a["torque_sum"] / s,                    # N m, mean per joint
+            "power": a["power_sum"] / s,                      # W, whole body
+            "jerk": a["jerk_sum"] / s,                        # rad/s^3, RMS across joints
+            "pitch_dev": a["pitch_sum"] / s * deg,            # degrees off vertical
+            "roll_dev": a["roll_sum"] / s * deg,
+            "act_sat": a["sat_sum"] / s,                      # fraction of actions on the clip
+        })
+        # Reward terms as a per-step mean, so they add up to the mean step reward and can be read
+        # against each other directly.
+        out.update({f"rt_{t}": a[f"rt_{t}"] / s for t in self.term_names})
         for v in self._acc.values(): v.zero_()
         return out
 

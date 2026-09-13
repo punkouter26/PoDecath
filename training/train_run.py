@@ -129,6 +129,20 @@ def main() -> None:
                          "the ramp.")
     ap.add_argument("--dr-start-strength", type=float, default=0.15,
                     help="randomisation strength at iteration 0, as a fraction of --dr-strength.")
+    ap.add_argument("--air-time-cap", type=float, default=0.4,
+                    help="seconds of flight a single footfall can be paid for by the air-time "
+                         "reward. 0 removes the cap, which is what the term used to do and what "
+                         "the policy learned to exploit: dive, stay airborne, collect. A human "
+                         "sprint stride flies 0.10-0.20 s.")
+    ap.add_argument("--lr-adapt", type=float, default=1.5,
+                    help="multiplicative step of the KL-adaptive learning rate, applied per "
+                         "minibatch. 1.5 is the rsl_rl default and thrashes at 40 minibatches "
+                         "an iteration; 1.1 tracks the same target without the swing.")
+    ap.add_argument("--epochs", type=int, default=5, help="PPO epochs per iteration")
+    ap.add_argument("--fall-penalty", type=float, default=2.0,
+                    help="one-off reward cost of ending an episode fallen. Measured per-term on the "
+                         "baseline this is worth -0.025 per step, against -0.324 for the foot-slip term: "
+                         "falling was 13x cheaper than sliding a foot.")
     ap.add_argument("--keep-old-runs", action="store_true")
     ap.add_argument("--no-tensorboard", action="store_true")
     ap.add_argument("--unity-policies", default=os.path.join(HERE, "..", "Assets", "Policies"))
@@ -163,7 +177,8 @@ def main() -> None:
         "push_vel": 0.6 * k,
     } if domain_rand else None
     env = env_cls(args.xml, args.num_envs, device=device, seed=args.seed, target_speed=args.target_speed,
-                  domain_rand=domain_rand, dr_kwargs=dr_kwargs, cuda_graph=not args.no_cuda_graph)
+                  domain_rand=domain_rand, dr_kwargs=dr_kwargs, cuda_graph=not args.no_cuda_graph,
+                  air_time_cap=args.air_time_cap, fall_penalty=args.fall_penalty)
     if domain_rand:
         ramp = (f"ramping {args.dr_start_strength:g} -> 1 over {args.dr_ramp_iters} iters"
                 if args.dr_ramp_iters > 0 else "no ramp, full from iteration 0")
@@ -180,7 +195,8 @@ def main() -> None:
     # coarser average over a much bigger batch.
     minibatches = args.minibatches or max(1, round(args.steps * args.num_envs / 24576))
     cfg = PPOConfig(steps_per_env=args.steps, lr=args.lr, desired_kl=args.desired_kl,
-                    entropy_coef=args.entropy_coef, minibatches=minibatches)
+                    entropy_coef=args.entropy_coef, minibatches=minibatches,
+                    epochs=args.epochs, lr_adapt=args.lr_adapt)
     print(f"[ppo] batch {args.steps * args.num_envs:,} samples / iteration in {minibatches} minibatches "
           f"of {args.steps * args.num_envs // minibatches:,}")
     ppo = PPO(env.obs_dim, env.A, args.num_envs, device, cfg)
@@ -192,11 +208,23 @@ def main() -> None:
         start_iter = int(extra.get("iter", 0))
         print(f"resumed from {args.resume} at iter {start_iter}")
 
-    csv_path = os.path.join(HERE, "logs", f"{TASK}.csv")
+    # One CSV per run, named like the TensorBoard directory. The old shared "{TASK}.csv" was
+    # appended to by every run of the task, so two runs in flight at once interleaved their rows
+    # into one file with nothing to tell them apart -- and comparing an A against a B is the
+    # whole point of keeping the CSV.
+    csv_path = os.path.join(HERE, "logs", f"{run_name}.csv")
+    if not os.path.exists(csv_path):
+        open(csv_path, "w", encoding="utf-8").close()
     csv_f = open(csv_path, "a", newline="", encoding="utf-8")
     csv_w = csv.writer(csv_f)
     if os.path.getsize(csv_path) == 0:
-        csv_w.writerow(["iter", "steps", "fps", "ep_return", "ep_len_s", "fall_rate", "v_toward", "reach_frac", "kl", "lr", "std"])
+        csv_w.writerow(["iter", "steps", "fps", "ep_return", "ep_len_s", "fall_rate", "v_toward", "reach_frac",
+                        "kl", "lr", "std",
+                        # KPI columns (envs/run_to_target._accumulate_kpis). Present for target/track;
+                        # the get-up task leaves them 0, which is what "not measured here" looks like.
+                        "surv_ratio", "v_err", "v_hit_frac", "torque", "power", "jerk",
+                        "pitch_dev", "roll_dev", "act_sat", "duty_factor", "air_time", "foot_slip"]
+                       + sorted(k for k in env.get_stats() if k.startswith("rt_")))
 
     obs = env.reset()
     total_steps = start_iter * args.steps * args.num_envs
@@ -229,6 +257,9 @@ def main() -> None:
         s = env.get_stats()
         row = [it, total_steps, int(fps), s.get("ep_return", 0.0), s.get("ep_len_s", 0.0), s.get("fall_rate", 0.0),
                s.get("v_toward", 0.0), s.get("reach_frac", 0.0), stats["kl"], stats["lr"], stats["action_std"]]
+        row += [s.get(k, 0.0) for k in ("surv_ratio", "v_err", "v_hit_frac", "torque", "power", "jerk",
+                                        "pitch_dev", "roll_dev", "act_sat", "duty_factor", "air_time", "foot_slip")]
+        row += [s.get(k, 0.0) for k in sorted(k for k in s if k.startswith("rt_"))]
         csv_w.writerow([f"{x:.4f}" if isinstance(x, float) else x for x in row]); csv_f.flush()
         for k, v in s.items():
             writer.add_scalar(f"env/{k}", v, it)
@@ -263,6 +294,14 @@ def main() -> None:
             print(f"it {it:5d} | {fps:8.0f} sps | ret {s.get('ep_return', 0):7.2f} | len {s.get('ep_len_s', 0):5.1f}s "
                   f"{middle} "
                   f"| kl {stats['kl']:.4f} lr {stats['lr']:.1e} std {stats['action_std']:.2f} | {el/60:5.1f} min", flush=True)
+            if TASK != "get_up":
+                # The KPI line. Return says a run is improving; these say whether it is improving
+                # toward a humanoid that stays up, holds the pace and does not chatter.
+                print(f"          surv {s.get('surv_ratio', 0):4.2f} | v_err {s.get('v_err', 0):5.2f} "
+                      f"| hit {s.get('v_hit_frac', 0):4.2f} | tau {s.get('torque', 0):6.2f} Nm "
+                      f"| pwr {s.get('power', 0):7.1f} W | jerk {s.get('jerk', 0):8.0f} "
+                      f"| tilt {s.get('pitch_dev', 0):4.1f}/{s.get('roll_dev', 0):4.1f} deg "
+                      f"| sat {s.get('act_sat', 0):4.2f}", flush=True)
         if (it + 1) % args.save_every == 0 or it + 1 == args.iters:
             ck = os.path.join(ck_dir, f"model_{it + 1:05d}.pt")
             ppo.save(ck, {"iter": it + 1, "obs_dim": env.obs_dim, "act_dim": env.A})
