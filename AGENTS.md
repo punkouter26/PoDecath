@@ -142,11 +142,34 @@ GPU backends work but the readback allocates.
 Two editor tools, both driven from the `PoDecath` menu. They exist because "I watched it in play mode"
 cannot say whether a change helped, and cannot be re-run against the next checkpoint.
 
-**How to trigger a menu item without touching the editor.** There are two routes and only one of them
-is reliably present. The Unity CLI (`unity command menu --path "..."`) is what the rest of this file
-assumes, and it is a separate install that may well not be on the machine — it was not on 2026-09-12.
-The route that needs nothing installed is the MCP bridge from `com.anklebreaker.unity-mcp`, which
-auto-starts inside the editor on loopback and takes no credential.
+**How to trigger a menu item without touching the editor.** Two routes, both present as of 2026-09-13.
+
+The Unity CLI (`unity command menu --path "..."`) is what the rest of this file assumes, and it is now
+installed: `unity.exe` 1.0.0-beta.9 in `%LOCALAPPDATA%\Unity\bin`, on the user PATH, so a *new* terminal
+finds it (an already-open one will not). It is the client for `com.unity.pipeline`, which is already in
+`Packages/manifest.json` and auto-starts an HTTP server inside the editor — port and `evalToken` are
+written to `Library/Pipeline/.unity-pipeline-port`. Install it again with:
+
+```powershell
+$env:UNITY_CLI_CHANNEL='beta'; irm https://public-cdn.cloud.unity3d.com/hub/prod/cli/install.ps1 | iex
+```
+
+Run `unity command` from the project directory with no command name to auto-discover the running editor
+and list all 150 commands. `unity command editor_status` is the cheapest liveness check.
+
+**Prefer the CLI for anything that reloads the domain.** `unity command recompile` states outright that
+it works while the editor is unfocused or minimised, and `recompile_status` polls it to completion. That
+is the one thing the MCP bridge cannot do: a domain reload with the editor unfocused takes the bridge
+down until somebody clicks on Unity, which is exactly what happened on 2026-09-13 after a
+`Packages/manifest.json` edit. `unity command recompile_status` returns
+`{status, failed, errors[]}` and is the authoritative answer to "did it compile" -- better than
+grepping `Logs/Editor.log`, which keeps every error from the whole session and will happily show you
+one from five hours ago. `unity command console --level error --tail N` gives timestamped entries,
+and the `build` / `build_status` pair is likewise immune to focus.
+
+The second route is the MCP bridge from `com.anklebreaker.unity-mcp`, which auto-starts inside the editor
+on loopback and takes no credential. It is still the quicker one for read-only polling and for the
+`api/editor/execute-menu-item` fire-and-forget call, and the port caveats below apply only to it.
 
 **Find the port; do not assume it.** 7890 is only the first choice. The plugin walks upward when
 something already holds it, and more than one `Unity.exe` is normal (the editor plus its helpers), so on
