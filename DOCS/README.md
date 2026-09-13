@@ -164,7 +164,7 @@ Assets/Audio                    generated clips + AudioBank (PoDecath/Bake Audio
 Assets/Scripts/Editor           scene/prefab builders (PoDecath menu)
 Assets/Models                   WhiteHouse.glb, Athlete_Matt.glb, athlete.xml (copied from training)
 Assets/Models/Characters        rigged athlete models (.glb/.fbx); drop one in and rebuild the roster
-Assets/Athletes                 one AthleteDefinition per roster entry (Char_*.asset are the characters)
+Assets/Athletes                 one AthleteDefinition per roster entry (Athlete_*.asset, named after displayName)
 Assets/Policies                 ONNX checkpoints + PolicyLibrary (auto-refreshed)
 training/                       Python: MJCF generation, MuJoCo Warp env, PPO, eval, TensorBoard logs
 DOCS/                           this summary and the roadmap

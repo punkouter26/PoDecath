@@ -10,42 +10,42 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c6e225210831c5343946af1fe961ebdc, type: 3}
-  m_Name: Char_RIGGED_Grandpa
+  m_Name: Athlete_Trump
   m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Sim.AthleteDefinition
-  displayName: Grandpa
+  displayName: Trump
   kind: 2
   model: {fileID: 5022602860645237092, guid: a8269c2479fa3ae4aa1406384be837e1, type: 3}
   mjcfOverride: {fileID: 0}
   actionScale: 0.5
   topSpeed: 9
   accelSeconds: 3
-  skinOverride: {fileID: 8771091787928289351, guid: 171cf40c14517224ca58ae6eeeff3f80, type: 3}
+  skinOverride: {fileID: 6635245195314443262, guid: dfbb640436dfb754ca02fff2edfde1ed, type: 3}
   boneMap:
   - body: pelvis
-    bone: Hips
+    bone: bone_0
   - body: torso
-    bone: Spine02
+    bone: bone_1
   - body: thigh_r
-    bone: RightUpLeg
+    bone: bone_30
   - body: shin_r
-    bone: RightLeg
+    bone: bone_31
   - body: foot_r
-    bone: RightFoot
+    bone: bone_32
   - body: thigh_l
-    bone: LeftUpLeg
+    bone: bone_26
   - body: shin_l
-    bone: LeftLeg
+    bone: bone_27
   - body: foot_l
-    bone: LeftFoot
+    bone: bone_28
   - body: upper_arm_l
-    bone: LeftArm
+    bone: bone_7
   - body: forearm_l
-    bone: LeftForeArm
+    bone: bone_8
   - body: upper_arm_r
-    bone: RightArm
+    bone: bone_17
   - body: forearm_r
-    bone: RightForeArm
-  skinRootEuler: {x: 0, y: 88.40332, z: 0}
+    bone: bone_18
+  skinRootEuler: {x: 0, y: 90, z: 0}
   skinScale: 0
   customTexture: {fileID: 0}
-  customTint: {r: 0.7, g: 0.35, b: 0.9, a: 1}
+  customTint: {r: 0.6, g: 0.75, b: 0.2, a: 1}

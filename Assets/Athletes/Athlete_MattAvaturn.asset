@@ -10,42 +10,42 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c6e225210831c5343946af1fe961ebdc, type: 3}
-  m_Name: Char_TRUMP_Rigged
+  m_Name: Athlete_MattAvaturn
   m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Sim.AthleteDefinition
-  displayName: Trump
+  displayName: Matt Avaturn
   kind: 2
   model: {fileID: 5022602860645237092, guid: a8269c2479fa3ae4aa1406384be837e1, type: 3}
   mjcfOverride: {fileID: 0}
   actionScale: 0.5
   topSpeed: 9
   accelSeconds: 3
-  skinOverride: {fileID: 6635245195314443262, guid: dfbb640436dfb754ca02fff2edfde1ed, type: 3}
+  skinOverride: {fileID: 8771091787928289351, guid: a7e9af8efff671d47a33aa747ab5002f, type: 3}
   boneMap:
   - body: pelvis
-    bone: bone_0
+    bone: Hips
   - body: torso
-    bone: bone_1
-  - body: thigh_r
-    bone: bone_30
-  - body: shin_r
-    bone: bone_31
-  - body: foot_r
-    bone: bone_32
+    bone: Spine
   - body: thigh_l
-    bone: bone_26
+    bone: LeftUpLeg
   - body: shin_l
-    bone: bone_27
+    bone: LeftLeg
   - body: foot_l
-    bone: bone_28
+    bone: LeftFoot
+  - body: thigh_r
+    bone: RightUpLeg
+  - body: shin_r
+    bone: RightLeg
+  - body: foot_r
+    bone: RightFoot
   - body: upper_arm_l
-    bone: bone_7
+    bone: LeftArm
   - body: forearm_l
-    bone: bone_8
+    bone: LeftForeArm
   - body: upper_arm_r
-    bone: bone_17
+    bone: RightArm
   - body: forearm_r
-    bone: bone_18
+    bone: RightForeArm
   skinRootEuler: {x: 0, y: 90, z: 0}
   skinScale: 0
   customTexture: {fileID: 0}
-  customTint: {r: 0.6, g: 0.75, b: 0.2, a: 1}
+  customTint: {r: 0.2, g: 0.55, b: 0.95, a: 1}

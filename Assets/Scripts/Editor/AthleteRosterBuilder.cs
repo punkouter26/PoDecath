@@ -95,7 +95,11 @@ namespace PoDecath.EditorTools
         static AthleteDefinition Ensure(string modelPath, GameObject skin, ModelAsset policy, int index, StringBuilder report)
         {
             string file = System.IO.Path.GetFileNameWithoutExtension(modelPath);
-            string assetPath = $"{AthletesDir}/Char_{file}.asset";
+            // The asset is named after the athlete the game actually shows, not after whatever the
+            // source mesh happened to be called. "MATT_RiggedAvaturn.glb" displays as "Matt Avaturn"
+            // and is therefore Athlete_MattAvaturn.asset -- one rule, and the file you open in the
+            // project window matches the name you read on the finish line.
+            string assetPath = $"{AthletesDir}/Athlete_{DisplayName(file).Replace(" ", "")}.asset";
             var def = AssetDatabase.LoadAssetAtPath<AthleteDefinition>(assetPath);
             bool fresh = def == null;
             if (fresh)

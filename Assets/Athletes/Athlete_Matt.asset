@@ -10,42 +10,42 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c6e225210831c5343946af1fe961ebdc, type: 3}
-  m_Name: Char_NICK_RiggedDoggy
+  m_Name: Athlete_Matt
   m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Sim.AthleteDefinition
-  displayName: Nick Doggy
+  displayName: Matt
   kind: 2
   model: {fileID: 5022602860645237092, guid: a8269c2479fa3ae4aa1406384be837e1, type: 3}
   mjcfOverride: {fileID: 0}
   actionScale: 0.5
   topSpeed: 9
   accelSeconds: 3
-  skinOverride: {fileID: 919132149155446097, guid: 29ab4310c16717049ac7b8e49235eafe, type: 3}
+  skinOverride: {fileID: 8771091787928289351, guid: fb463a21af453b449b8fa111234c7a70, type: 3}
   boneMap:
   - body: pelvis
-    bone: CC_Base_Hip
+    bone: Hips
   - body: torso
-    bone: CC_Base_Waist
+    bone: Spine02
   - body: thigh_r
-    bone: CC_Base_R_Thigh
+    bone: RightUpLeg
   - body: shin_r
-    bone: CC_Base_R_Calf
+    bone: RightLeg
   - body: foot_r
-    bone: CC_Base_R_Foot
+    bone: RightFoot
   - body: thigh_l
-    bone: CC_Base_L_Thigh
+    bone: LeftUpLeg
   - body: shin_l
-    bone: CC_Base_L_Calf
+    bone: LeftLeg
   - body: foot_l
-    bone: CC_Base_L_Foot
+    bone: LeftFoot
   - body: upper_arm_l
-    bone: CC_Base_L_Upperarm
+    bone: LeftArm
   - body: forearm_l
-    bone: CC_Base_L_Forearm
+    bone: LeftForeArm
   - body: upper_arm_r
-    bone: CC_Base_R_Upperarm
+    bone: RightArm
   - body: forearm_r
-    bone: CC_Base_R_Forearm
-  skinRootEuler: {x: 0, y: 86.84457, z: 0}
+    bone: RightForeArm
+  skinRootEuler: {x: 0, y: 90.40122, z: 0}
   skinScale: 0
   customTexture: {fileID: 0}
-  customTint: {r: 0.95, g: 0.45, b: 0.1, a: 1}
+  customTint: {r: 0.1, g: 0.8, b: 0.8, a: 1}

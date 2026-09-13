@@ -10,33 +10,33 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c6e225210831c5343946af1fe961ebdc, type: 3}
-  m_Name: Char_MATT_RiggedAvaturn
+  m_Name: Athlete_Nick
   m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Sim.AthleteDefinition
-  displayName: Matt Avaturn
+  displayName: Nick
   kind: 2
   model: {fileID: 5022602860645237092, guid: a8269c2479fa3ae4aa1406384be837e1, type: 3}
   mjcfOverride: {fileID: 0}
   actionScale: 0.5
   topSpeed: 9
   accelSeconds: 3
-  skinOverride: {fileID: 8771091787928289351, guid: a7e9af8efff671d47a33aa747ab5002f, type: 3}
+  skinOverride: {fileID: 8771091787928289351, guid: 19f461d58914d7b4689b10d536af1c7f, type: 3}
   boneMap:
   - body: pelvis
     bone: Hips
   - body: torso
-    bone: Spine
-  - body: thigh_l
-    bone: LeftUpLeg
-  - body: shin_l
-    bone: LeftLeg
-  - body: foot_l
-    bone: LeftFoot
+    bone: Spine02
   - body: thigh_r
     bone: RightUpLeg
   - body: shin_r
     bone: RightLeg
   - body: foot_r
     bone: RightFoot
+  - body: thigh_l
+    bone: LeftUpLeg
+  - body: shin_l
+    bone: LeftLeg
+  - body: foot_l
+    bone: LeftFoot
   - body: upper_arm_l
     bone: LeftArm
   - body: forearm_l
@@ -45,7 +45,7 @@ MonoBehaviour:
     bone: RightArm
   - body: forearm_r
     bone: RightForeArm
-  skinRootEuler: {x: 0, y: 90, z: 0}
+  skinRootEuler: {x: 0, y: 91.92128, z: 0}
   skinScale: 0
   customTexture: {fileID: 0}
-  customTint: {r: 0.2, g: 0.55, b: 0.95, a: 1}
+  customTint: {r: 0.95, g: 0.25, b: 0.55, a: 1}
