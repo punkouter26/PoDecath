@@ -72,6 +72,11 @@ namespace PoDecath.UI
             Show(_stats, !handsOn);
             Show(_statsCard, !statsHiddenAtStart);
 
+            // The frame carries a MENU in the top right of every screen in the game. Where it is present
+            // this one is a second button, in a second place, doing the same job -- and until both were
+            // pointed at the same scene it was not even the same job. One control, one destination.
+            Show(_menu, FindFirstObjectByType<AppFrameView>(FindObjectsInactive.Include) == null);
+
             if (dash != null) dash.RaceFinished += OnRaceFinished;
             if (perturbation != null) perturbation.enabled = SessionSettings.PerturbationEnabled;
 

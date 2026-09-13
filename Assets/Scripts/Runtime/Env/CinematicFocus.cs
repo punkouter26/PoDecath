@@ -59,12 +59,41 @@ namespace PoDecath.Env
             if (!_live) enabled = false;
         }
 
+        /// <summary>
+        /// Finds the depth of field override this component drives, and refuses to take the scene down
+        /// with it if there is not one.
+        ///
+        /// The try/catch is load-bearing. <c>Volume.profile</c> is not a field read: it clones the shared
+        /// profile so per-frame writes cannot dirty the asset on disk, and cloning a profile whose
+        /// overrides were never saved as sub-assets throws MissingReferenceException from inside
+        /// Instantiate. Unhandled, that threw out of OnEnable, this component set itself disabled, and
+        /// focus racking was dead for the rest of the session with one exception line to show for it.
+        /// The underlying cause is fixed in LookBakery.Persist; this makes the symptom a warning that
+        /// names the fix instead of a silent feature loss.
+        /// </summary>
         bool Resolve()
         {
             if (view == null) view = Camera.main;
-            if (volume == null || volume.profile == null) return false;
-            // profile, not sharedProfile: this writes per-frame and must not dirty the asset on disk.
-            return volume.profile.TryGet(out _dof) && _dof != null;
+            if (volume == null) return false;
+
+            VolumeProfile profile;
+            try { profile = volume.profile; }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[CinematicFocus] '{volume.name}' has a volume profile that cannot be "
+                               + $"read ({e.GetType().Name}), so focus racking is off. Its overrides were "
+                               + "probably never saved into the asset; re-run PoDecath/Bake Look.", this);
+                return false;
+            }
+
+            if (profile == null) return false;
+            if (profile.components.Count == 0)
+            {
+                Debug.LogWarning($"[CinematicFocus] '{volume.name}' has an empty volume profile, so there "
+                               + "is no grade and no depth of field to drive. Re-run PoDecath/Bake Look.", this);
+                return false;
+            }
+            return profile.TryGet(out _dof) && _dof != null;
         }
 
         void LateUpdate()

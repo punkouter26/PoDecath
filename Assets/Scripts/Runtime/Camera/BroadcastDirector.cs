@@ -77,6 +77,25 @@ namespace PoDecath.Cam
         public float wideHeight = 30f;
         public float wideBack = 40f;
 
+        [Tooltip("Height above the deck for the shot on the grid. Like every trackside shot it has to "
+               + "clear the barrier and the bunting strung along it, or half the frame is rail.")]
+        public float startLineHeight = 3.4f;
+        [Tooltip("Height above the deck for the tight shot off the gun.")]
+        public float offTheGunHeight = 3.2f;
+        [Tooltip("Height above the deck for the shot at the line. This was 2.4 m, which is chest height on "
+               + "a camera parked 8.8 m outside a barrier: the rail ran across the middle of the frame and "
+               + "the bunting across the top of it, for the single shot the whole race builds to.")]
+        public float finishHeight = 3.6f;
+        [Tooltip("Height above the deck for the head-on shot up the home straight. Lower than the rest on "
+               + "purpose: running at a low camera is what makes a sprint look fast.")]
+        public float headOnHeight = 2.4f;
+
+        [Header("Framing check")]
+        [Tooltip("Layers that count as blocking the view of an athlete. Leave the athletes' own layer out "
+               + "of it or every subject blocks itself. Read by SubjectVisible, which is a measurement "
+               + "rather than a rule: nothing here changes a shot on its own.")]
+        public LayerMask occlusionMask = ~0;
+
         public Shot Current { get; private set; } = Shot.StartLine;
         public string CurrentName => Current.ToString();
 
@@ -253,12 +272,17 @@ namespace PoDecath.Cam
             float outward = Outward;
             Vector3 up = Vector3.up;
 
-            Place(startLineCam, path.Position(_startS - 6f, outward * 0.75f) + up * 2.2f);
-            Place(offTheGunCam, path.Position(_startS + 7f, outward * 0.7f) + up * 2.0f);
+            // Every trackside height is a named field now rather than a literal. The rail camera always
+            // had the right idea and said so in its own tooltip -- sit high enough to shoot over the near
+            // barrier and down onto the runner -- and the other four were left at chest height, where the
+            // rail and the bunting on it cross the picture. The finish shot was the worst of them, because
+            // it is the one shot the race exists to deliver.
+            Place(startLineCam, path.Position(_startS - 6f, outward * 0.75f) + up * startLineHeight);
+            Place(offTheGunCam, path.Position(_startS + 7f, outward * 0.7f) + up * offTheGunHeight);
             Place(railCam, path.Position(leaderS, outward) + up * railHeight);
             Place(bendCam, path.Position(NearestBendApex(leaderS), outward + 3f) + up * bendHeight);
-            Place(headOnCam, path.Position(leaderS + headOnLead, 0f) + up * 1.9f);
-            Place(finishCam, path.Position(_finishS, outward * 0.8f) + up * 2.4f);
+            Place(headOnCam, path.Position(leaderS + headOnLead, 0f) + up * headOnHeight);
+            Place(finishCam, path.Position(_finishS, outward * 0.8f) + up * finishHeight);
 
             // Stadium wide: high, set back off the finish straight, framing the whole loop.
             Vector3 loopCentre = path.transform.position;
@@ -272,6 +296,52 @@ namespace PoDecath.Cam
         static void Place(CinemachineCamera cam, Vector3 p)
         {
             if (cam != null) cam.transform.position = p;
+        }
+
+        /// <summary>
+        /// Whether the athlete on air can actually be seen from the live camera: inside the frustum, and
+        /// with nothing on <see cref="occlusionMask"/> across the line to it.
+        ///
+        /// This exists because the gallery had no idea. It aims correctly and places correctly and then
+        /// has no way to answer "is the shot any good", so a camera framing a barrier and a camera framing
+        /// a race look identical from in here. The scene sweep reads it, which turns "the finish shot looks
+        /// wrong" into a number that can be compared before and after a change.
+        ///
+        /// A measurement, deliberately: nothing in this class acts on it. Rejecting shots automatically is
+        /// a much bigger behavioural change than raising four camera heights, and it should be made with
+        /// this reading in hand rather than instead of it.
+        /// </summary>
+        public bool SubjectVisible
+        {
+            get
+            {
+                Camera cam = Camera.main;
+                if (cam == null || Featured == null) return false;
+                Vector3 p = Subject(Featured);
+                Vector3 vp = cam.WorldToViewportPoint(p);
+                if (vp.z <= 0f || vp.x < 0f || vp.x > 1f || vp.y < 0f || vp.y > 1f) return false;
+                return !Physics.Linecast(cam.transform.position, p, occlusionMask, QueryTriggerInteraction.Ignore);
+            }
+        }
+
+        /// <summary>
+        /// How many of the field are inside the live camera's frustum right now. On a portrait screen this
+        /// is the number that says whether a shot is a race or a close-up: measured on the shipped gallery
+        /// it was 2 of 11 at the finish, because the lens angles were authored as vertical ones.
+        /// See <see cref="PortraitLens"/>.
+        /// </summary>
+        public int AthletesInFrame()
+        {
+            Camera cam = Camera.main;
+            if (cam == null || race == null) return 0;
+            int n = 0;
+            foreach (RaceEvent.Athlete a in race.Athletes)
+            {
+                if (a == null || !a.IsRL) continue;
+                Vector3 vp = cam.WorldToViewportPoint(Subject(a));
+                if (vp.z > 0f && vp.x >= 0f && vp.x <= 1f && vp.y >= 0f && vp.y <= 1f) n++;
+            }
+            return n;
         }
 
         void Apply()

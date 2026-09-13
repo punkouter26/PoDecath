@@ -87,6 +87,68 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
 | Occlusion on the listener (a solid line to the featured athlete closes the low pass), Doppler on footfalls muted across cuts, a frame-time and battery chip in the frame, one JSON per race with the frame-time record | `ListenerAcoustics`, `AudioMix.MuteDoppler`, `AppFrameView.Chip`, `RaceLog.cs` -> `training/logs/races/` and the device's `persistentDataPath/races/` | done |
 | Other events (high jump, throws, ...) | `DOCS/ROADMAP.md` | placeholders |
 
+## State-flow and framing review, 2026-09-13
+
+Ten defects found by driving the live editor over the MCP bridge rather than by reading code, and fixed
+in one pass. The two that mattered were invisible from the source and obvious from the running game.
+
+**The results card had never worked.** `Results.uxml` line 6 mentioned the compact row class by name, two
+hyphens and all, inside an XML comment. XML forbids `--` there, so the importer threw and the file landed
+as an empty `VisualTreeAsset`: 0.2 kb against 8 to 16 kb for the other screens. Every lookup in
+`ResultsView` failed, `Show` returned at its first guard, and no race in the game ever displayed a result.
+It failed silently in both directions, because the scene still built, the event still ranked the field and
+the console only carried seven "no 'root' in Results" warnings among eighteen other lines. `RooftopRace`
+had `autoRestart` off on the reasoning that "the modal ends the race", so **every race ended in a state
+with no exit at all**: phase `Finished`, for ever, until somebody pressed MENU.
+
+Two guards now, and the second is the point: `RaceEvent.ResultsShown` is set only by a results card that
+actually drew itself, nothing restarts a race while it is up (which is separately what `RooftopLap` used
+to do, because it kept `autoRestart` on), and `deadEndSeconds` restarts a race whose card never reported
+itself after 30 s and says loudly why. Verified by disabling the card at runtime: the race sat in
+`Finished` and restarted itself 30 s later with the warning in the console.
+
+**The post-processing did not exist.** `LookBakery` built each override with `VolumeProfile.Add` and never
+wrote it into the asset, so both profiles serialised as a list of references to objects that were never
+saved. On disk: `Broadcast_Volume_Mobile` was seven `{fileID: 0}` entries and `_PC` ten, the exact count
+each recipe adds. At runtime the global volume loaded with **zero** components. No tonemapping, no bloom,
+no grade, no vignette, no depth of field, on either tier, while this file recorded the look as done. It
+also took `CinematicFocus` down with it every session: `Volume.profile` clones the shared profile, cloning
+a list of destroyed entries throws, and the throw came out of `OnEnable`, so focus racking disabled itself
+permanently behind one exception line. `LookBakery.Persist` now adds each override as a sub-asset; both
+profiles carry their full set (7 and 10, no nulls).
+
+**Camera angles were authored for the wrong axis.** Cinemachine's `Lens.FieldOfView` is the *vertical*
+angle, and this game is portrait. Measured on the shipped gallery at 9:16, the stadium wide covered 13.7 m
+across at 25 m, against a 22 m straight and a 51 x 26 m roof, and **2 athletes of 11 were inside the frame
+at the finish**. `PortraitLens` now holds each shot's *horizontal* angle and solves the vertical one from
+the live aspect every frame. Same race after: 8 of 11 in frame at the finish, 11 of 11 on the grid and
+through the bend. The four trackside shots also sat at chest height where the barrier and its bunting
+crossed the picture; their heights are named fields now, defaulted above the rail, and the director can
+measure its own framing (`SubjectVisible`, `AthletesInFrame`).
+
+**`IsRL` means "has a rig", and two places needed "is driven by a policy".** It stopped being an accurate
+test of the second the day the heuristic bot got a physics body, and nothing noticed. `RaceEvent.Register`
+handed the RED bot the reference slot, so on an eleven-strong field the HUD read 0.00 m/s, 0 % stability
+and 0 of 100 m for a whole race while ten RL athletes ran clean laps behind it, and the shorter
+`fallRestartDelay` was chosen every time. `AgentTelemetry` graded the same bot **Bad** for having no ONNX,
+which is the entire point of it, and since it sorts first the DEBUG chip in the corner of every screen had
+been red on every race ever run. Both now ask `IsPolicyDriven`. The chip reports the real finding instead:
+**15 to 19 % of joint targets are clamped to the rig's limits on every RL athlete**, which is a genuine
+open question about `actionScale` or rig limits and is deliberately left showing.
+
+Also fixed: a race scene carried two visible MENU buttons going to two different scenes (the frame's to
+`MAIN`, the HUD's to the retired `MainMenu`) - both point at `MAIN` and the HUD hides its own where the
+frame is present; the setup screen padded clear of the frame's bottom row but not its top, so its title
+was drawn under the game name and MENU, and it printed the product name a second time; `PolicyRunner`
+warned about a dynamic model shape once per athlete rather than once per model, eighteen times in a field
+of eleven; and `RaceLog` began recording on the gun, so the first attempt in a scene averaged shader
+warm-up and policy initialisation in as gameplay and reported **46 FPS mean, a 1 % low of 2 FPS and a
+worst frame of 3,456 ms** for a race the on-screen counter held at 59 FPS throughout. Warm-up and stalls
+are now counted in their own buckets and reported separately rather than defining the headline.
+
+Two things worth keeping: **never write `--` inside a UXML comment** (there is a warning in
+`Results.uxml` saying so), and a feature the docs record as done is not evidence that it runs.
+
 ## Folder map
 
 ```

@@ -66,6 +66,13 @@ namespace PoDecath.Sim
             [NonSerialized] public int uprightSamples;
             public float MeanUpright => uprightSamples > 0 ? uprightSum / uprightSamples : 0f;
             public bool IsRL => rig != null;
+            /// <summary>
+            /// Driven by a network, as opposed to merely having a body. Since the heuristic bot got a
+            /// physics rig, <see cref="IsRL"/> answers yes for it too, which is right for the forty-odd
+            /// places that mean "has a rig" and wrong for the two that mean "is a policy". This is the
+            /// test for the second sense, and picking the reference athlete is what it exists for.
+            /// </summary>
+            public bool IsPolicyDriven => runner != null;
         }
 
         [Header("Course")]
@@ -87,6 +94,10 @@ namespace PoDecath.Sim
         [Tooltip("Shorter pause before the automatic restart when the reference athlete fell.")]
         public float fallRestartDelay = 3f;
         public bool autoRestart = true;
+        [Tooltip("Last resort when autoRestart is off. A race whose results card never appeared would "
+               + "otherwise sit in Finished for ever, which is exactly what shipped: one unparseable "
+               + "character in Results.uxml left every race in the game with no way out. 0 disables it.")]
+        public float deadEndSeconds = 30f;
         float _currentRestartDelay = 4f;
 
         [Header("Pull-up after the line")]
@@ -135,6 +146,18 @@ namespace PoDecath.Sim
         /// attempt disturbed and that has to be standing again for this one — the hurdles, mainly.
         /// </summary>
         public event Action RaceStarted;
+        /// <summary>
+        /// Set by whatever put a results card on the screen for this race. While it is true the event
+        /// will not restart itself: a modal waiting for a tap is not a stalled game, and a race that
+        /// starts again underneath one is the bug that RooftopLap had and RooftopRace did not, purely
+        /// because the two scenes disagreed about <see cref="autoRestart"/>.
+        /// Cleared by <see cref="StartRace"/>, so the next attempt begins unacknowledged.
+        /// </summary>
+        public bool ResultsShown { get; private set; }
+
+        /// <summary>Called by the results screen once it has actually drawn itself.</summary>
+        public void NotifyResultsShown() => ResultsShown = true;
+
         public Phase Current { get; protected set; } = Phase.Idle;
         public float RaceTime { get; protected set; }
         public float Countdown { get; protected set; }
@@ -163,9 +186,26 @@ namespace PoDecath.Sim
         {
             a.lane = Athletes.Count;
             Athletes.Add(a);
-            // The reference athlete (camera + HUD) is the first RL athlete; fall back to whoever registered first.
-            if (a.IsRL && (Reference == null || !Reference.IsRL)) Reference = a;
-            else if (Reference == null) Reference = a;
+            if (Reference == null || ReferenceScore(a) > ReferenceScore(Reference)) Reference = a;
+        }
+
+        /// <summary>
+        /// How good a subject this athlete is for the HUD, the chase camera and the stability read.
+        ///
+        /// It used to be "the first one with a rig, else the first to register". That was a correct test
+        /// of "is a policy running this" until the heuristic bot was given a physics rig of its own, at
+        /// which point the RED bot registered first, answered yes, and took the slot. The measured cost:
+        /// on an eleven-strong field the RED bot falls at 0 m, so the HUD showed 0.00 m/s, 0 % stability
+        /// and 0 of 100 m for the whole race while ten RL athletes ran a clean lap behind it, and the
+        /// shorter fallRestartDelay was chosen every single time because the reference had "fallen".
+        /// Score the roster instead and keep the best: the house reference policy first, any other
+        /// policy second, a body without a policy last.
+        /// </summary>
+        static int ReferenceScore(Athlete a)
+        {
+            if (a == null) return -1;
+            if (!a.IsPolicyDriven) return a.IsRL ? 1 : 0;
+            return a.kind == AthleteKind.ReferenceRL ? 3 : 2;
         }
 
         int Lanes => Mathf.Max(1, maxLanes);
@@ -220,6 +260,7 @@ namespace PoDecath.Sim
         public virtual void StartRace()
         {
             if (Athletes.Count == 0) { Current = Phase.Idle; return; }
+            ResultsShown = false;
             foreach (var a in Athletes) ResetAthlete(a);
             RaceTime = 0f;
             Countdown = countdownSeconds;
@@ -309,10 +350,37 @@ namespace PoDecath.Sim
                     // Whoever crossed last is still mid-settle when the race ends; without this they are
                     // left to topple under the results card.
                     foreach (var a in Athletes) if (a.stopping) HoldStopped(a);
-                    _phaseTimer += dt;
-                    if (autoRestart && _phaseTimer >= _currentRestartDelay) StartRace();
+                    TickFinished(dt);
                     break;
             }
+        }
+
+        /// <summary>
+        /// What a finished race does next, for every event that has one.
+        ///
+        /// Three outcomes, in this order. A results card is up: wait, however long it takes, because the
+        /// card is the exit and restarting behind it would be the bug. Auto restart is on: go again after
+        /// the usual pause. Neither: the scene expected a card that never came, so after
+        /// <see cref="deadEndSeconds"/> start a new race anyway and say loudly why. That last branch is a
+        /// safety net, not a feature. It exists because the game shipped with a results card that could
+        /// not load, and one broken UI file should not be able to strand the whole thing.
+        /// </summary>
+        protected void TickFinished(float dt)
+        {
+            _phaseTimer += dt;
+            if (ResultsShown) return;
+
+            if (autoRestart)
+            {
+                if (_phaseTimer >= Mathf.Max(0.1f, _currentRestartDelay)) StartRace();
+                return;
+            }
+
+            if (deadEndSeconds <= 0f || _phaseTimer < deadEndSeconds) return;
+            Debug.LogWarning($"[{GetType().Name}] finished {deadEndSeconds:F0} s ago and no results screen "
+                           + "ever reported itself. Restarting so the game is not stranded; check that the "
+                           + "results document loaded.", this);
+            StartRace();
         }
 
         protected virtual void Go()

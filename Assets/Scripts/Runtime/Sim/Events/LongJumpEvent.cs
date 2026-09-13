@@ -151,8 +151,9 @@ namespace PoDecath.Sim
                     break;
                 case Phase.Finished:
                     ParkWaiting();
-                    _phaseTimer += dt;
-                    if (autoRestart && _phaseTimer >= restartDelay) StartRace();
+                    // Same exit rule as every other event: wait on the board if it is up, restart if the
+                    // scene asked for that, and restart anyway if the board never appeared at all.
+                    TickFinished(dt);
                     break;
             }
         }

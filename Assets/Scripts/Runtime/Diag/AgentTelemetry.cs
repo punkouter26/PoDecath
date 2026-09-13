@@ -200,7 +200,13 @@ namespace PoDecath.Diag
                 {
                     Agent a = Resolve(ath.runner, ath.name);
                     a.athlete = ath;
-                    a.isRL = ath.IsRL;
+                    // IsPolicyDriven, not IsRL. IsRL means "has a physics rig", and the heuristic bot has
+                    // had one since it stopped being kinematic -- so it answered yes here, skipped the
+                    // "nothing to train" branch in Diagnose, and was graded Bad for having no ONNX, which
+                    // is the whole point of it. It sorts first, so it became the headline, and DEBUG in the
+                    // corner of every screen has been red on every race since. A red light that is always
+                    // on is not a diagnostic.
+                    a.isRL = ath.IsPolicyDriven;
                     a.seen = true;
                 }
             }

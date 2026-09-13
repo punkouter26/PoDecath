@@ -28,9 +28,25 @@ namespace PoDecath.Diag
         [Tooltip("Frame samples kept. 6000 is ten minutes at 10 Hz, or 100 s at 60 Hz; the ring wraps.")]
         public int samples = 6000;
 
+        [Tooltip("Frames in this first window after the gun are recorded separately instead of counted. "
+               + "The first attempt in a scene starts moments after load, so shader warm-up, policy "
+               + "initialisation and asset loading all land in it, and they are not frames the device will "
+               + "ever render again. 0 counts everything from the gun.")]
+        public float warmUpSeconds = 1.5f;
+
+        [Tooltip("A frame longer than this is treated as a stall rather than a slow frame: an editor pause, "
+               + "an alt-tab, a breakpoint or an asset import. Counted and reported, never averaged, "
+               + "because no phone produces a one second frame and letting one into the sample makes the "
+               + "1% low meaningless.")]
+        public float stallCeilingMs = 1000f;
+
         float[] _ms;
         int _count, _head;
         float _worst;
+        float _warmUpWorst;
+        float _stallWorst;
+        int _stalls;
+        float _recordStart;
         long _drawSum, _triSum;
         int _renderSamples;
         float _batteryStart = -1f;
@@ -67,16 +83,47 @@ namespace PoDecath.Diag
         {
             _count = _head = 0;
             _worst = 0f;
+            _warmUpWorst = 0f;
+            _stallWorst = 0f;
+            _stalls = 0;
+            _recordStart = Time.unscaledTime;
             _drawSum = _triSum = 0;
             _renderSamples = 0;
             _batteryStart = SystemInfo.batteryLevel;
             _recording = true;
         }
 
+        /// <summary>
+        /// One frame. Three buckets, and which one a frame lands in is the difference between a useful
+        /// record and a misleading one.
+        ///
+        /// The measured example that put this here: a 100 m race logged 46 FPS mean, a 1% low of 2 FPS and
+        /// a worst frame of 3,456 ms, while the frame counter on screen sat at 59 FPS and 17.1 ms
+        /// throughout. Nothing in the race took three and a half seconds. Recording begins on the gun, the
+        /// first attempt in a scene starts moments after it loads, and the whole of shader warm-up and
+        /// policy initialisation was being averaged in as gameplay.
+        ///
+        /// Nothing is thrown away, because a load stall is worth knowing about; it is reported on its own
+        /// line instead of being allowed to define the headline.
+        /// </summary>
         void Update()
         {
             if (!_recording) return;
             float ms = Time.unscaledDeltaTime * 1000f;
+
+            if (warmUpSeconds > 0f && Time.unscaledTime - _recordStart < warmUpSeconds)
+            {
+                if (ms > _warmUpWorst) _warmUpWorst = ms;
+                return;
+            }
+
+            if (stallCeilingMs > 0f && ms > stallCeilingMs)
+            {
+                _stalls++;
+                if (ms > _stallWorst) _stallWorst = ms;
+                return;
+            }
+
             _ms[_head] = ms;
             _head = (_head + 1) % _ms.Length;
             if (_count < _ms.Length) _count++;
@@ -105,7 +152,11 @@ namespace PoDecath.Diag
                 Directory.CreateDirectory(projectDir);
                 File.WriteAllText(Path.Combine(projectDir, name), json);
 #endif
-                Debug.Log($"[RaceLog] {name}: {Fps(Mean()):F0} FPS mean, {Fps(OnePercentLow()):F0} FPS 1% low, worst frame {_worst:F1} ms.");
+                string aside = _stalls > 0
+                    ? $"  ({_stalls} stall(s) over {stallCeilingMs:F0} ms excluded, worst {_stallWorst:F0} ms; warm-up worst {_warmUpWorst:F0} ms)"
+                    : $"  (warm-up worst {_warmUpWorst:F0} ms, not counted)";
+                Debug.Log($"[RaceLog] {name}: {Fps(Mean()):F0} FPS mean, {Fps(OnePercentLow()):F0} FPS 1% low, "
+                        + $"worst frame {_worst:F1} ms.{aside}");
             }
             catch (Exception e)
             {
@@ -138,6 +189,10 @@ namespace PoDecath.Diag
             sb.AppendFormat(ci, "\"fps_1pct_low\":{0:F1},", Fps(low));
             sb.AppendFormat(ci, "\"frame_ms_mean\":{0:F2},", mean);
             sb.AppendFormat(ci, "\"frame_ms_worst\":{0:F2},", _worst);
+            sb.AppendFormat(ci, "\"frame_ms_worst_warmup\":{0:F2},", _warmUpWorst);
+            sb.AppendFormat(ci, "\"warmup_seconds\":{0:F2},", warmUpSeconds);
+            sb.AppendFormat(ci, "\"stalls_excluded\":{0},", _stalls);
+            sb.AppendFormat(ci, "\"frame_ms_worst_stall\":{0:F2},", _stallWorst);
             sb.AppendFormat(ci, "\"draw_calls_mean\":{0},", _renderSamples > 0 ? _drawSum / _renderSamples : 0);
             sb.AppendFormat(ci, "\"triangles_mean\":{0},", _renderSamples > 0 ? _triSum / _renderSamples : 0);
             sb.AppendFormat(ci, "\"battery_start\":{0:F2},", _batteryStart);

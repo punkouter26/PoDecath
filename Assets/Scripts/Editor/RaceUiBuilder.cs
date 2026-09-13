@@ -70,13 +70,23 @@ namespace PoDecath.EditorTools
             dir.path = path;
             dir.pit = pit;   // long jump: the director cuts the runway instead of the loop
             dir.drama = drama;
-            dir.startLineCam = ShotCam("CM Shot StartLine", 40f);
-            dir.offTheGunCam = ShotCam("CM Shot OffTheGun", 34f);
-            dir.railCam = ShotCam("CM Shot Rail", 38f);
-            dir.bendCam = ShotCam("CM Shot Bend", 42f);
-            dir.wideCam = ShotCam("CM Shot Wide", 52f);
-            dir.headOnCam = ShotCam("CM Shot HeadOn", 32f);
-            dir.finishCam = ShotCam("CM Shot Finish", 36f);
+            // These are HORIZONTAL angles now, and PortraitLens solves each one's vertical angle from the
+            // live aspect. The old numbers were vertical, which on a phone held upright is the narrow axis:
+            // the stadium wide covered 13.7 m across at 25 m, against a 22 m straight and a 51 m roof, and
+            // two athletes out of eleven were inside the frame at the finish. See PortraitLens for the
+            // whole measured table.
+            dir.startLineCam = ShotCam("CM Shot StartLine", 50f);
+            dir.offTheGunCam = ShotCam("CM Shot OffTheGun", 44f);
+            dir.railCam = ShotCam("CM Shot Rail", 48f);
+            dir.bendCam = ShotCam("CM Shot Bend", 55f);
+            dir.wideCam = ShotCam("CM Shot Wide", 65f);
+            dir.headOnCam = ShotCam("CM Shot HeadOn", 42f);
+            dir.finishCam = ShotCam("CM Shot Finish", 46f);
+
+            // The director's line-of-sight check must not count an athlete's own body as the thing
+            // blocking the view of it.
+            int creature = LayerMask.NameToLayer("Creature");
+            dir.occlusionMask = creature >= 0 ? ~(1 << creature) : ~0;
 
             var overlay = UiBakery.AddScreen<BroadcastView>("BroadcastOverlay", UiBakery.BroadcastUxml, OverlayOrder);
             if (overlay != null)
@@ -149,15 +159,30 @@ namespace PoDecath.EditorTools
             hud.cameraRig = camRig;
             hud.handsOn = handsOn;
             hud.statsHiddenAtStart = !handsOn;   // a broadcast scene opens on the overlay, not on the card
-            hud.menuSceneName = "MainMenu";
+            // The game's entry point, the same one the frame's MENU and the results card's CHANGE FIELD
+            // use. This said "MainMenu" -- the retired developer screen -- so a race scene carried two
+            // visible MENU buttons that went to two different places: the frame's to the event picker and
+            // the HUD's to a checkpoint chooser the game no longer opens on. HudView hides its own where
+            // the frame is present, so on a broadcast scene there is now exactly one.
+            hud.menuSceneName = System.IO.Path.GetFileNameWithoutExtension(SetupScenePath);
             return hud;
         }
 
-        static CinemachineCamera ShotCam(string name, float fov)
+        /// <summary>
+        /// One camera in the gallery. <paramref name="horizontalFov"/> is the angle across the screen, not
+        /// the one down it: <see cref="PortraitLens"/> converts it every frame for whatever shape the
+        /// display is, which is the only way a shot composed on a desktop still frames the same thing on a
+        /// phone held upright.
+        /// </summary>
+        static CinemachineCamera ShotCam(string name, float horizontalFov)
         {
             var go = new GameObject(name);
             var cm = go.AddComponent<CinemachineCamera>();
-            cm.Lens.FieldOfView = fov;
+            var lens = go.AddComponent<PortraitLens>();
+            lens.horizontalFov = horizontalFov;
+            // A sane value for anyone who opens the scene without entering play mode; PortraitLens
+            // overwrites it on the first frame from the real aspect.
+            cm.Lens.FieldOfView = horizontalFov;
             cm.Lens.NearClipPlane = 0.1f;
             cm.Lens.FarClipPlane = 1500f;
             cm.Priority = 10;

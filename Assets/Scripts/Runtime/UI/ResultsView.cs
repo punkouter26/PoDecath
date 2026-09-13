@@ -56,7 +56,16 @@ namespace PoDecath.UI
 
         public void Show(List<RaceEvent.RaceResult> results)
         {
-            if (_rows == null) return;
+            // Nothing to draw into means this document did not load, and the one thing that must not
+            // happen then is telling the event that a card is up. Leaving it unacknowledged is what lets
+            // RaceEvent.TickFinished notice the race has no exit and restart it anyway.
+            if (_rows == null)
+            {
+                Debug.LogError("[ResultsView] the Results document has no content, so no results card can "
+                             + "be shown. Check Assets/UI/Results.uxml imported (an XML error there makes "
+                             + "it load as an empty asset).", this);
+                return;
+            }
             _rows.Clear();
             // Past eight rows the card would need to scroll on a phone; compact rows keep sixteen on one screen.
             bool compact = results.Count > 8;
@@ -103,6 +112,13 @@ namespace PoDecath.UI
 
             Backdrop(false);
             Show(_rootEl, true);
+
+            // The card is up and owns the exit from here. This is what stops the event restarting the
+            // race underneath it -- which RooftopLap did, because it kept autoRestart on -- and equally
+            // what stops the dead-end guard firing while somebody is reading the board. Announced before
+            // the entrance animation, not after: a card that came up without its scale-in is still a card.
+            if (race != null) race.NotifyResultsShown();
+
             if (_modal == null) return;
             _modal.EnableInClassList("modal--out", true);
             _modal.EnableInClassList("modal--in", false);

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using Unity.InferenceEngine;
 
@@ -44,7 +45,6 @@ namespace PoDecath.Sim
 
         int _stepCounter;
         bool _ready;
-        bool _warnedShape;
 
         // ---------------------------------------------------------------- diagnostics
         //
@@ -190,6 +190,9 @@ namespace PoDecath.Sim
             _ready = true;
         }
 
+        /// <summary>Model inputs already warned about this session, so a full field says it once.</summary>
+        static readonly HashSet<string> _warnedShapeModels = new HashSet<string>();
+
         void ValidateShapes(int obsDim, int actDim)
         {
             if (_model.inputs.Count == 0) throw new InvalidOperationException("model has no inputs");
@@ -201,10 +204,13 @@ namespace PoDecath.Sim
                 if (last != obsDim)
                     throw new InvalidOperationException($"model expects {last} observations but PolicyConfig produces {obsDim}");
             }
-            else if (!_warnedShape)
+            else if (_warnedShapeModels.Add($"{_model.inputs[0].name}:{obsDim}"))
             {
-                _warnedShape = true;
-                Debug.LogWarning($"[PolicyRunner] Model input '{_model.inputs[0].name}' has a dynamic shape; assuming (1, {obsDim}).", this);
+                // Per model, not per athlete. A dynamic batch dimension is a property of how the
+                // checkpoint was exported, so a field of sixteen printed the same sentence sixteen times
+                // and buried whatever else was in the console. It is worth saying once.
+                Debug.LogWarning($"[PolicyRunner] Model input '{_model.inputs[0].name}' has a dynamic shape; assuming (1, {obsDim}). "
+                               + "Said once per distinct model input.", this);
             }
         }
 

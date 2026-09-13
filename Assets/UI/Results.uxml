@@ -3,8 +3,14 @@
     The card that comes up once every runner has finished or fallen. Rows are built in ResultsView from
     DashEvent.Results, so a field of two and a field of sixteen both fit without a pre-built row per slot.
 
-    No scrolling: a field past eight rows switches to compact rows (ResultsView adds result-row--compact),
-    so sixteen finishers still fit inside the modal on a portrait phone.
+    No scrolling: a field past eight rows switches to compact rows (ResultsView adds the compact
+    modifier class to each row), so sixteen finishers still fit inside the modal on a portrait phone.
+
+    Never write a double hyphen inside one of these comments. XML forbids it, the importer throws, and
+    the whole file lands as an EMPTY VisualTreeAsset (0.2 kb, against 8 to 16 kb for the other screens),
+    so every lookup in ResultsView fails and the results card silently never appears. That is exactly
+    how this file shipped: the compact row class name was spelled out in full here, two hyphens and all,
+    and it cost the game its entire end of race screen.
 -->
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Theme.uss" />

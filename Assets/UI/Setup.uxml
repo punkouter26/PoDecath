@@ -16,7 +16,8 @@
         <ui:VisualElement name="safe" class="safe">
             <ui:VisualElement class="setup">
 
-                <ui:Label class="label-micro" text="PODECATH" />
+                <!-- No game name here. AppFrame prints it in the top left of every screen, so this was
+                     the second copy of it, directly underneath the first. -->
                 <ui:Label name="title" class="label-display" text="EVENT SETUP" />
                 <ui:Label name="hint" class="label-small muted" text="" style="margin-bottom: 16px; white-space: normal;" />
 

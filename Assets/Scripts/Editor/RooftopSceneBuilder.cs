@@ -502,11 +502,19 @@ namespace PoDecath.EditorTools
             Debug.Log($"[PoDecath] Rooftop scene built: {scenePath}");
         }
 
-        static CinemachineCamera MakeCam(string name, Vector3 offset, BindingMode binding, float fov, Vector2 screenPos)
+        /// <summary>
+        /// The development scenes' chase/side pair. <paramref name="horizontalFov"/> is the angle across
+        /// the screen; PortraitLens turns it into the vertical one the lens actually wants, for whatever
+        /// shape the display is. Same reason as the broadcast gallery: a fixed vertical angle is a
+        /// telephoto on a phone held upright.
+        /// </summary>
+        static CinemachineCamera MakeCam(string name, Vector3 offset, BindingMode binding, float horizontalFov, Vector2 screenPos)
         {
             var go = new GameObject(name);
             var cm = go.AddComponent<CinemachineCamera>();
-            cm.Lens.FieldOfView = fov; cm.Lens.NearClipPlane = 0.1f; cm.Lens.FarClipPlane = 1500f;
+            var lens = go.AddComponent<PortraitLens>();
+            lens.horizontalFov = horizontalFov;
+            cm.Lens.FieldOfView = horizontalFov; cm.Lens.NearClipPlane = 0.1f; cm.Lens.FarClipPlane = 1500f;
             cm.Priority = 10;
             var follow = go.AddComponent<CinemachineFollow>();
             follow.FollowOffset = offset;

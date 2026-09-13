@@ -415,7 +415,16 @@
 /* The bottom padding clears the frame. START is the last thing in this column and is anchored to the
    bottom of a tall screen, so without it the button is drawn under DEBUG and the version number - which
    is exactly how it shipped in v0.1.4. */
-.setup { padding: var(--gap-4); padding-bottom: var(--frame-clear); flex-grow: 1; }
+.setup {
+    padding: var(--gap-4);
+    /* Both edges, not just the bottom. The frame's rows are absolute and 112px tall at each end, so a
+       screen that pads only one of them puts its own heading underneath the other. This one did: its
+       title sat under the game name, the frame-rate readout and MENU, with 32px of clearance against a
+       112px bar. The bottom was fixed after v0.1.4 shipped START underneath DEBUG; the top was not. */
+    padding-top: var(--frame-clear);
+    padding-bottom: var(--frame-clear);
+    flex-grow: 1;
+}
 
 /* One row of chips, however many events there are: five fit at 28px with the long names wrapping. */
 .event-grid { flex-direction: row; flex-wrap: nowrap; margin-bottom: var(--gap-2); }

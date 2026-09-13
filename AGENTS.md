@@ -8,7 +8,7 @@ Unity ML-Agents is not used and must not be added.
 
 | Item | Value |
 |---|---|
-| Unity | 6000.5.8f1, URP (Mobile renderer) |
+| Unity | 6000.6.0f1, URP (Mobile renderer) |
 | Inference | `com.unity.ai.inference` 2.6.1, CPU backend (zero-GC path) |
 | Physics | `ArticulationBody` chain, PhysX, 200 Hz fixed step |
 | Control | 50 Hz PD position targets (decimation 4) |

@@ -82,9 +82,13 @@ namespace PoDecath.EditorTools
             }
             // Rebuilt from scratch every bake: an override left behind by an earlier recipe would keep
             // applying, and a profile that is partly generated and partly historical is not reproducible.
+            // Each one has to leave the asset file as well as the list, or the next bake writes a new
+            // override into a file that still carries the old one as an orphaned sub-asset.
             foreach (VolumeComponent c in new List<VolumeComponent>(profile.components))
             {
                 profile.components.Remove(c);
+                if (c == null) continue;
+                if (AssetDatabase.IsSubAsset(c)) AssetDatabase.RemoveObjectFromAsset(c);
                 UnityEngine.Object.DestroyImmediate(c, true);
             }
             profile.components.Clear();
@@ -148,8 +152,39 @@ namespace PoDecath.EditorTools
                 grain.response.Override(0.7f);
             }
 
-            EditorUtility.SetDirty(profile);
+            Persist(profile);
             return profile;
+        }
+
+        /// <summary>
+        /// Writes the overrides into the profile asset as sub-assets.
+        ///
+        /// This is not bookkeeping, it is the difference between a grade and no grade at all.
+        /// <c>VolumeProfile.Add</c> creates each override with <c>CreateInstance</c> and puts it in
+        /// <c>profile.components</c>; nothing about that saves it. Unity then serialises the list as
+        /// references to objects that were never written to disk, so the file gets one <c>{fileID: 0}</c>
+        /// per override and the next domain reload leaves the profile holding nothing.
+        ///
+        /// Measured before this call existed: <c>Broadcast_Volume_Mobile</c> was seven empty slots and
+        /// <c>Broadcast_Volume_PC</c> ten, exactly the count each recipe adds, and the global volume in
+        /// the race scene loaded with a component count of zero. No tonemapping, no bloom, no grade, no
+        /// vignette, no depth of field, on either tier, while the docs recorded the look as done. Worse,
+        /// reading <c>Volume.profile</c> clones the shared profile, and cloning a list whose entries have
+        /// been destroyed throws, which is what left <see cref="PoDecath.Env.CinematicFocus"/> switched
+        /// off for whole sessions.
+        /// </summary>
+        static void Persist(VolumeProfile profile)
+        {
+            foreach (VolumeComponent c in profile.components)
+            {
+                if (c == null || AssetDatabase.IsSubAsset(c)) continue;
+                // Hidden because the profile's own inspector already draws every override; a sub-asset
+                // row per pass next to it is noise nobody wants to click.
+                c.hideFlags = HideFlags.HideInHierarchy | HideFlags.HideInInspector;
+                AssetDatabase.AddObjectToAsset(c, profile);
+            }
+            EditorUtility.SetDirty(profile);
+            AssetDatabase.SaveAssets();
         }
 
         // ---------------------------------------------------------------- sky
