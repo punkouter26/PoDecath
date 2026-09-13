@@ -50,6 +50,20 @@ namespace PoDecath.EditorTools
 
         const int WarmupFrames = 60;
         const int MaxLoggedErrors = 12;
+        const int MaxLoggedWarnings = 12;
+
+        /// <summary>
+        /// No athlete covers this much ground in one fixed step under its own power: at 50 Hz it would be
+        /// 37 m/s. A jump larger than this is the race teleporting the athlete back to the start after a
+        /// fall or a finish, so it is counted as a reset instead of being added to the distance walked.
+        /// </summary>
+        const float TeleportStepM = 0.75f;
+
+        /// <summary>Upright dot below which an athlete counts as down, matching the race's own fall test.</summary>
+        const float FallenDot = 0.3f;
+
+        /// <summary>An athlete that walked less than this in the whole window did not really run.</summary>
+        const float MovedAtAllM = 1.0f;
 
         /// <summary>
         /// Optional <c>training/logs/scene_sweep_config.json</c>:
@@ -76,6 +90,21 @@ namespace PoDecath.EditorTools
 
         static List<string> _scenes;
         static Dictionary<AthleteRig, Vector3> _startPos = new Dictionary<AthleteRig, Vector3>();
+        // Per-rig accumulators. `travelled` used to be `BasePosition - startPos`, which is displacement,
+        // not distance: an athlete that completes the 100 m loop arrives back beside its start line and
+        // scored ~0 m. A six-second window hid that, because six seconds is not long enough to get round.
+        // These accumulate the path actually walked, frame by frame, and survive the reset that ends a
+        // fall or a finish.
+        static AthleteRig[] _tracked = new AthleteRig[0];
+        static Dictionary<AthleteRig, Vector3> _lastPos = new Dictionary<AthleteRig, Vector3>();
+        static Dictionary<AthleteRig, float> _pathLen = new Dictionary<AthleteRig, float>();
+        static Dictionary<AthleteRig, float> _peakDisp = new Dictionary<AthleteRig, float>();
+        static Dictionary<AthleteRig, float> _topSpeed = new Dictionary<AthleteRig, float>();
+        static Dictionary<AthleteRig, int> _resets = new Dictionary<AthleteRig, int>();
+        static Dictionary<AthleteRig, int> _falls = new Dictionary<AthleteRig, int>();
+        static Dictionary<AthleteRig, bool> _wasDown = new Dictionary<AthleteRig, bool>();
+        static float _lastT;
+        static readonly List<string> _warnings = new List<string>();
         static readonly List<string> _errors = new List<string>();
         static bool _hooked;
 
@@ -169,6 +198,15 @@ namespace PoDecath.EditorTools
 
         static void OnLog(string msg, string stack, LogType type)
         {
+            // Warnings are recorded too, separately. A missing reference or a shader fallback logs a
+            // warning and nothing else, so a sweep that only watched for errors called those scenes fine.
+            if (type == LogType.Warning)
+            {
+                if (msg.StartsWith("[SceneSweep]") || msg.StartsWith("[GetUpProbe]")) return;
+                string w = msg.Replace("\n", " ").Trim();
+                if (_warnings.Count < MaxLoggedWarnings && !_warnings.Contains(w)) _warnings.Add(w);
+                return;
+            }
             if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert) return;
             // The probe's own chatter is not a scene fault.
             if (msg.StartsWith("[SceneSweep]") || msg.StartsWith("[GetUpProbe]")) return;
@@ -209,10 +247,19 @@ namespace PoDecath.EditorTools
                         if (Bump(KeyFrames) >= WarmupFrames)
                         {
                             SessionState.SetFloat(KeyT0, Time.fixedTime);
-                            _startPos = UnityEngine.Object
+                            _tracked = UnityEngine.Object
                                 .FindObjectsByType<AthleteRig>(FindObjectsSortMode.None)
                                 .Where(r => r.IsBound)
-                                .ToDictionary(r => r, r => r.BasePosition);
+                                .ToArray();
+                            _startPos = _tracked.ToDictionary(r => r, r => r.BasePosition);
+                            _lastPos = _tracked.ToDictionary(r => r, r => r.BasePosition);
+                            _pathLen = _tracked.ToDictionary(r => r, r => 0f);
+                            _peakDisp = _tracked.ToDictionary(r => r, r => 0f);
+                            _topSpeed = _tracked.ToDictionary(r => r, r => 0f);
+                            _resets = _tracked.ToDictionary(r => r, r => 0);
+                            _falls = _tracked.ToDictionary(r => r, r => 0);
+                            _wasDown = _tracked.ToDictionary(r => r, r => r.UprightDot < FallenDot);
+                            _lastT = Time.fixedTime;
                             Phase = "playing";
                         }
                         return;
@@ -220,6 +267,7 @@ namespace PoDecath.EditorTools
                     case "playing":
                         {
                             Step();
+                            Accumulate();
                             float t = Time.fixedTime - SessionState.GetFloat(KeyT0, Time.fixedTime);
                             if (t < PlaySeconds) return;
 
@@ -249,6 +297,58 @@ namespace PoDecath.EditorTools
             if (EditorApplication.isPlaying) EditorApplication.Step();
         }
 
+        /// <summary>
+        /// Adds one frame of motion to each tracked athlete. Called once per stepped frame, so it sees
+        /// the path rather than the endpoints -- the distinction that made a completed lap read as 2.6 m.
+        /// </summary>
+        static void Accumulate()
+        {
+            float now = Time.fixedTime;
+            float dt = now - _lastT;
+            _lastT = now;
+
+            foreach (var r in _tracked)
+            {
+                if (r == null || !r.IsBound) continue;
+                Vector3 p = r.BasePosition;
+
+                if (_lastPos.TryGetValue(r, out Vector3 prev))
+                {
+                    Vector3 d = p - prev; d.y = 0f;
+                    float step = d.magnitude;
+                    if (step > TeleportStepM)
+                    {
+                        // Teleported: a fall reset or a finish reset, not ground covered.
+                        _resets[r] = I(_resets, r) + 1;
+                    }
+                    else
+                    {
+                        _pathLen[r] = F(_pathLen, r) + step;
+                        if (dt > 0f)
+                        {
+                            float v = step / dt;
+                            if (v > F(_topSpeed, r)) _topSpeed[r] = v;
+                        }
+                    }
+                }
+                _lastPos[r] = p;
+
+                if (_startPos.TryGetValue(r, out Vector3 p0))
+                {
+                    Vector3 disp = p - p0; disp.y = 0f;
+                    if (disp.magnitude > F(_peakDisp, r)) _peakDisp[r] = disp.magnitude;
+                }
+
+                bool down = r.UprightDot < FallenDot;
+                bool was = _wasDown.TryGetValue(r, out bool w) && w;
+                if (down && !was) _falls[r] = I(_falls, r) + 1;
+                _wasDown[r] = down;
+            }
+        }
+
+        static float F(Dictionary<AthleteRig, float> d, AthleteRig r) => d.TryGetValue(r, out float v) ? v : 0f;
+        static int I(Dictionary<AthleteRig, int> d, AthleteRig r) => d.TryGetValue(r, out int v) ? v : 0;
+
         static int Bump(string key)
         {
             int v = SessionState.GetInt(key, 0) + 1;
@@ -274,8 +374,26 @@ namespace PoDecath.EditorTools
             var sb = new StringBuilder();
             sb.Append('{');
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"scene\":\"{0}\",", Esc(scenePath));
-            sb.AppendFormat(CultureInfo.InvariantCulture, "\"status\":\"{0}\",",
-                _errors.Count > 0 ? "errors" : "ok");
+            float far = 0f, sum = 0f; int n = 0, stalled = 0, totalFalls = 0, totalResets = 0;
+            foreach (var r in rigs)
+            {
+                if (!r.IsBound || !_startPos.ContainsKey(r)) continue;
+                float walked = F(_pathLen, r);
+                far = Mathf.Max(far, walked); sum += walked; n++;
+                totalFalls += I(_falls, r); totalResets += I(_resets, r);
+                if (walked < MovedAtAllM) stalled++;
+            }
+
+            // "ok" used to mean only "nothing was thrown", which is why a scene whose athletes all stood
+            // still, and whose event never left its countdown, still reported ok. Standing still throws
+            // nothing. A verdict that cannot say "stalled" is not worth reading.
+            string verdict = _errors.Count > 0 ? "errors"
+                : (rigs.Length > 0 && bound < rigs.Length) ? "rigs-unbound"
+                : (runners.Length > 0 && withModel < runners.Length) ? "policies-missing"
+                : nan ? "nan"
+                : (n > 0 && stalled > n / 2) ? "stalled"
+                : "ok";
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"status\":\"{0}\",", verdict);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"sim_seconds\":{0:0.##},", simSeconds);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"active_scene\":\"{0}\",",
                 Esc(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name));
@@ -289,14 +407,12 @@ namespace PoDecath.EditorTools
 
             // How far each athlete actually got, and how quickly. Horizontal only: vertical motion on a
             // rooftop is the athlete bobbing, or falling off, and neither is progress.
-            float far = 0f, sum = 0f; int n = 0;
-            foreach (var r in rigs)
-            {
-                if (!r.IsBound || !_startPos.TryGetValue(r, out Vector3 p0)) continue;
-                Vector3 d = r.BasePosition - p0; d.y = 0f;
-                float dist = d.magnitude;
-                far = Mathf.Max(far, dist); sum += dist; n++;
-            }
+            //
+            // `walked_m` is the summed path, not the displacement from the start. The two differ by the
+            // whole point of a lap: a policy that completes the 100 m loop finishes beside its start line,
+            // so the old displacement figure reported it as 2.6 m and a healthy scene looked dead.
+            // `net_m` keeps the displacement as well, because for a straight dash the two should agree.
+
             // Per athlete, because an aggregate cannot tell you which one fell over. Tuning a gait
             // needs to know whether the hand-coded bot is upright and moving, not whether the scene
             // averaged out acceptably.
@@ -307,24 +423,43 @@ namespace PoDecath.EditorTools
                 if (!r.IsBound) continue;
                 _startPos.TryGetValue(r, out Vector3 p0);
                 Vector3 d = r.BasePosition - p0; d.y = 0f;
+                float walked = F(_pathLen, r);
                 if (!first) sb.Append(',');
                 first = false;
                 sb.AppendFormat(CultureInfo.InvariantCulture,
-                    "{{\"name\":\"{0}\",\"upright\":{1:0.###},\"travelled_m\":{2:0.##},\"speed_mps\":{3:0.##}}}",
-                    Esc(RigName(r)), r.UprightDot, d.magnitude,
-                    simSeconds > 0f ? d.magnitude / simSeconds : 0f);
+                    "{{\"name\":\"{0}\",\"upright\":{1:0.###},\"walked_m\":{2:0.##}," +
+                    "\"net_m\":{3:0.##},\"peak_net_m\":{4:0.##},\"mean_speed_mps\":{5:0.##}," +
+                    "\"top_speed_mps\":{6:0.##},\"falls\":{7},\"resets\":{8}}}",
+                    Esc(RigName(r)), r.UprightDot, walked,
+                    d.magnitude, F(_peakDisp, r),
+                    simSeconds > 0f ? walked / simSeconds : 0f,
+                    F(_topSpeed, r), I(_falls, r), I(_resets, r));
             }
             sb.Append("],");
-            sb.AppendFormat(CultureInfo.InvariantCulture, "\"furthest_m\":{0:0.##},", far);
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"furthest_walked_m\":{0:0.##},", far);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"mean_speed_mps\":{0:0.##},",
                 n > 0 && simSeconds > 0f ? (sum / n) / simSeconds : 0f);
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"falls\":{0},", totalFalls);
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"resets\":{0},", totalResets);
+            sb.AppendFormat(CultureInfo.InvariantCulture, "\"athletes_that_never_moved\":{0},", stalled);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"draw_calls\":{0},", UnityStats.drawCalls);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"set_pass_calls\":{0},", UnityStats.setPassCalls);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"triangles\":{0},", UnityStats.triangles);
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"screenshot\":\"{0}\",", Esc(shot));
+            sb.Append("\"warnings\":[");
+            sb.Append(string.Join(",", _warnings.Select(e => "\"" + Esc(e) + "\"")));
+            sb.Append("],");
             sb.Append("\"errors\":[");
             sb.Append(string.Join(",", _errors.Select(e => "\"" + Esc(e) + "\"")));
             sb.Append("]}");
+
+            // Say it loudly in the console too. A scene that stands still, drops rigs or loses a policy
+            // is a failure even though nothing threw, and a report nobody opens is not a report.
+            if (verdict != "ok")
+                Debug.LogError($"[SceneSweep] {Path.GetFileNameWithoutExtension(scenePath)}: {verdict}");
+            else if (stalled > 0 && n > 0)
+                Debug.LogWarning($"[SceneSweep] {Path.GetFileNameWithoutExtension(scenePath)}: " +
+                                 $"{stalled}/{n} athletes walked under {MovedAtAllM} m in {simSeconds:0.#} s");
             AppendReport(sb.ToString());
 
             Debug.Log($"[SceneSweep] {Path.GetFileNameWithoutExtension(scenePath)}: " +
