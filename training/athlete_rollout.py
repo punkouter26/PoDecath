@@ -45,7 +45,8 @@ class Rollout:
     """One athlete, one policy, stepped at the trainer's control rate."""
 
     def __init__(self, xml: str, ckpt: str, target_dist: float, seed: int,
-                 reset_jitter: float = 0.05, action_scale: float | None = None):
+                 reset_jitter: float = 0.05, action_scale: float | None = None,
+                 gait_period: float = 0.8):
         self.m = mujoco.MjModel.from_xml_path(xml)
         self.d = mujoco.MjData(self.m)
         with open(os.path.splitext(xml)[0] + "_policy_config.json", encoding="utf-8") as f:
@@ -67,6 +68,8 @@ class Rollout:
         # What the checkpoint was trained with wins over what the model file currently says: the
         # config json carries whatever `rig_to_mjcf.py` last wrote, and a policy driven at a
         # different action scale than it learned at falls over for no visible reason.
+        self.gait_period = gait_period
+        self.phase = 0.0
         self.action_scale = float(action_scale if action_scale is not None
                                   else extra.get("action_scale", self.cfg.get("action_scale", 0.5)))
         # Read from the config rather than hard-coded: these two drifted apart from the trainer once
@@ -111,6 +114,7 @@ class Rollout:
         self.episode += 1
         self.t0 = self.d.time
         self.peak = 0.0
+        self.phase = 0.0
         self.new_target()
 
     def new_target(self) -> None:
@@ -134,18 +138,36 @@ class Rollout:
         cmd = np.array([dx / max(dist, 1e-3), dy / max(dist, 1e-3), min(dist, 10.0) / 10.0])
 
         parts = [lin_b, ang_b, grav_b, cmd, d.qpos[7:] - self.default, d.qvel[6:], self.last_action]
+        # n_obs is the contract: 78 is the foot-contact/base-height layout, 80 adds the gait clock.
+        # A policy trained with the clock cannot be driven without it, and the phase has to advance
+        # here at exactly the rate the trainer advances it (once per control step).
+
         if self.n_obs >= 78:
             # foot_contact(2) + base_height(1): added with the gait reward, and a policy trained with
             # them cannot be driven without them.
             # Lowest corner of the foot box, matching envs/run_to_target._foot_state. A flat-foot
             # estimate reads this policy as airborne while it runs on its toes.
-            cz = d.geom_xpos[self.foot_geoms][:, 2]
-            rz = d.geom_xmat[self.foot_geoms].reshape(-1, 3, 3)[:, 2, :]
-            sole_z = cz - (np.abs(rz) * self.foot_half).sum(-1)
-            parts.append((sole_z < self.sole_contact_h).astype(np.float64))
+            parts.append(self.foot_contact().astype(np.float64))
             parts.append(np.array([pos[2]]))
+        if self.n_obs >= 80:
+            tau = 2.0 * math.pi * self.phase
+            parts.append(np.array([math.sin(tau), math.cos(tau)]))
         obs = np.concatenate(parts).astype(np.float32)
         return np.clip(np.nan_to_num(obs), -100.0, 100.0)
+
+    def foot_contact(self) -> np.ndarray:
+        """(2,) bool: is each foot's lowest box corner within `sole_contact_height` of the deck?
+
+        The lowest *corner*, not the sole plane. This foot is 0.317 m long and the athlete runs on
+        its toes, so a flat-foot estimate reads a planted foot as airborne -- measured at 1.7 %
+        against MuJoCo's own 61 %. Matches `envs/run_to_target._foot_state` exactly; it is public so
+        a gait trace and the observation cannot drift apart.
+        """
+        d = self.d
+        cz = d.geom_xpos[self.foot_geoms][:, 2]
+        rz = d.geom_xmat[self.foot_geoms].reshape(-1, 3, 3)[:, 2, :]
+        sole_z = cz - (np.abs(rz) * self.foot_half).sum(-1)
+        return sole_z < self.sole_contact_h
 
     def step(self) -> dict:
         obs = self.observe()
@@ -162,6 +184,7 @@ class Rollout:
         self.d.ctrl[:] = np.clip(self.default + act * self.action_scale, self.lo, self.hi)
         for _ in range(self.decimation):
             mujoco.mj_step(self.m, self.d)
+        self.phase = (self.phase + self.decimation * self.m.opt.timestep / self.gait_period) % 1.0
 
         pos = self.d.xpos[self.pelvis]
         upright = float(-quat_rotate_inverse(self.d.xquat[self.pelvis],

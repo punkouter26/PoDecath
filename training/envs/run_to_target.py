@@ -53,7 +53,9 @@ class RunToTargetEnv:
                  cuda_graph: bool = True, action_clip: float = 3.0,
                  air_time_cap: float = 0.4, fall_penalty: float = 2.0,
                  track_var: float = 2.0, prog_w: float = 0.25, alt_w: float = 0.5,
-                 posture_w: float = 1.0, init_speed: float = 0.0):
+                 posture_w: float = 1.0, init_speed: float = 0.0, vel_gate: float = 0.0,
+                 spawn_facing: float = 0.0, gait_w: float = 0.0,
+                 gait_period: float = 0.8, gait_duty: float = 0.6):
         wp.init()
         wp.config.verbose_warnings = verbose
         self.device = device
@@ -86,7 +88,11 @@ class RunToTargetEnv:
         with open(cfg_path, "r", encoding="utf-8") as f:
             self.cfg = json.load(f)
         self.A = self.m.nu
-        self.obs_dim = 12 + 3 * self.A + 3      # + foot_contact(2) + base_height(1)
+        # + foot_contact(2) + base_height(1), and + gait phase(2) when the gait clock is on.
+        self.gait_w = gait_w
+        self.gait_period = gait_period
+        self.gait_duty = gait_duty
+        self.obs_dim = 12 + 3 * self.A + 3 + (2 if gait_w > 0.0 else 0)
 
         # torch views into warp data (no copies)
         self.qpos = wp.to_torch(self.dw.qpos)
@@ -157,6 +163,29 @@ class RunToTargetEnv:
         # in motion is the cheap half of reference-state initialisation: no motion capture, but the
         # same effect of seeding the buffer with states the final gait actually passes through.
         self.init_speed = init_speed
+        # Pay the velocity rewards only while the athlete is actually standing on its feet.
+        #
+        # Traced 2026-09-14 on the fastest policy this project had produced (`k2`, v_toward 0.68):
+        # it lifts its left foot at t = 0.42 s, never puts it down, drifts at 0.68 m/s with the
+        # pelvis sinking 0.90 -> 0.57 m, and hits the floor at 1.18 s having taken **zero
+        # footfalls**. r_track and r_prog read centre-of-mass velocity and do not care how it was
+        # produced, so a topple in roughly the target's direction is paid exactly like a walk in it,
+        # and toppling is by far the cheapest way for a standing body to acquire horizontal speed.
+        # Every "it moves but it falls" result in this log is that.
+        #
+        # The gate fades both terms out as the body drops or tilts, so a fall stops earning the
+        # moment it starts being a fall. 0 disables it and restores the old behaviour.
+        self.vel_gate = vel_gate
+        # Fraction of episodes that start with the athlete already facing its target.
+        #
+        # The athlete otherwise spawns at a uniformly random yaw and its target is placed at a
+        # uniformly random bearing, so the expected angle between them is 90 degrees and a quarter of
+        # episodes open facing away. Turning on the spot is a separate skill from walking, and a body
+        # that cannot yet do either has to discover both at once before r_prog pays anything. This is
+        # a curriculum knob, not a change to the task: at 0 it is the old behaviour, and a policy
+        # trained at 1 still has to turn as soon as it reaches a target and gets a new one, because
+        # `_random_targets` re-rolls the bearing without resetting the body.
+        self.spawn_facing = spawn_facing
         self.swing_clear_h = 0.10          # metres of clearance asked of a swing foot
         self.stance_width = 0.20           # metres between the feet in normal running
         # Paid when the athlete arrives at its target. Tasks whose target is a moving carrot the athlete
@@ -194,6 +223,14 @@ class RunToTargetEnv:
         self.episode_return = torch.zeros(N, device=device)
         self.episode_len = torch.zeros(N, device=device)
         self.gravity_world = torch.tensor([0.0, 0.0, -1.0], device=device).expand(N, 3)
+        # Gait clock. Walking is a periodic behaviour and the policy is a feedforward MLP with no
+        # memory of where it is in a stride; it can in principle read the phase out of its own leg
+        # angles, but nothing tells it that a stride is a thing that exists. A clock in the
+        # observation, plus a reward for matching a contact schedule to it, is the standard way to
+        # hand a memoryless policy a periodic gait (Siekmann et al., periodic reward composition),
+        # and it is what every attempt in this log has been missing: k2 covered 0.68 m/s and took
+        # **zero footfalls**. Phase is randomised per episode so the population is decorrelated.
+        self.phase = torch.rand(N, generator=self.rng, device=device)
         self.air_time = torch.zeros(N, 2, device=device)
         self.prev_air = torch.zeros(N, 2, device=device)
         self.prev_foot_xy = torch.zeros(N, 2, 2, device=device)
@@ -211,7 +248,7 @@ class RunToTargetEnv:
                       "pitch_sum", "roll_sum", "sat_sum")}
         # Per-term reward accounting. A rising return says nothing on its own about whether the
         # policy is getting better or just getting better at one term; this says which.
-        self.term_names = ['track', 'prog', 'alive', 'upright', 'heading', 'height', 'lin_z', 'ang', 'act', 'rate', 'limit', 'reach', 'air', 'slip', 'clear', 'width', 'alt', 'arm', 'energy', 'qvel', 'fall']
+        self.term_names = ['track', 'prog', 'alive', 'upright', 'heading', 'height', 'lin_z', 'ang', 'act', 'rate', 'limit', 'reach', 'air', 'slip', 'clear', 'width', 'alt', 'arm', 'energy', 'qvel', 'gait', 'fall']
         self._acc.update({f"rt_{t}": torch.zeros((), device=device) for t in self.term_names})
 
         # Built before the first reset: `_apply_reset` resamples through it, so it has to exist by then.
@@ -270,9 +307,12 @@ class RunToTargetEnv:
             mjw.forward(self.mw, self.dw)
 
     # ---- helpers -------------------------------------------------------------------------------
-    def _random_targets(self, pos_xy: torch.Tensor) -> torch.Tensor:
+    def _random_targets(self, pos_xy: torch.Tensor, yaw: Optional[torch.Tensor] = None) -> torch.Tensor:
         n = pos_xy.shape[0]
         ang = torch.rand(n, generator=self.rng, device=self.device) * 2 * math.pi
+        if yaw is not None and self.spawn_facing > 0.0:
+            facing = torch.rand(n, generator=self.rng, device=self.device) < self.spawn_facing
+            ang = torch.where(facing, yaw, ang)
         dist = self.target_dist[0] + torch.rand(n, generator=self.rng, device=self.device) * (self.target_dist[1] - self.target_dist[0])
         return pos_xy + torch.stack([torch.cos(ang), torch.sin(ang)], -1) * dist[:, None]
 
@@ -287,6 +327,7 @@ class RunToTargetEnv:
         # which opened every single episode with a 3 cm free fall and an impact the policy did not cause.
         q[:, 2] += 0.002
         q[:, 7:] += (torch.rand(N, self.A, generator=self.rng, device=self.device) * 2 - 1) * 0.05
+        self.reset_yaw = yaw
         v = torch.zeros(N, self.qvel.shape[1], device=self.device)
         v[:, :2] = (torch.rand(N, 2, generator=self.rng, device=self.device) * 2 - 1) * 0.2
         if self.init_speed > 0.0:
@@ -311,7 +352,9 @@ class RunToTargetEnv:
         self.step_count = torch.where(mask, torch.zeros_like(self.step_count), self.step_count)
         self.episode_return = torch.where(mask, torch.zeros_like(self.episode_return), self.episode_return)
         self.episode_len = torch.where(mask, torch.zeros_like(self.episode_len), self.episode_len)
-        self.targets = torch.where(m1, self._random_targets(q[:, :2]), self.targets)
+        self.targets = torch.where(m1, self._random_targets(q[:, :2], self.reset_yaw), self.targets)
+        self.phase = torch.where(mask, torch.rand(self.N, generator=self.rng, device=self.device),
+                                 self.phase)
         m2 = mask[:, None].expand(-1, 2)
         self.air_time = torch.where(m2, torch.zeros_like(self.air_time), self.air_time)
         self.prev_air = torch.where(m2, torch.zeros_like(self.prev_air), self.prev_air)
@@ -398,12 +441,16 @@ class RunToTargetEnv:
         """The shared observation layout. Every task builds the same vector with its own command."""
         _, _, contact = self._foot_state()
         base_h = self.xpos[:, self.pelvis, 2:3]
-        obs = torch.cat([lin_b, ang_b, grav_b, cmd,
-                         self.qpos[:, 7:] - self.default_joint,
-                         self.qvel[:, 6:],
-                         self.last_action,
-                         contact.float(),
-                         base_h], dim=-1)
+        parts = [lin_b, ang_b, grav_b, cmd,
+                 self.qpos[:, 7:] - self.default_joint,
+                 self.qvel[:, 6:],
+                 self.last_action,
+                 contact.float(),
+                 base_h]
+        if self.gait_w > 0.0:
+            tau = 2.0 * math.pi * self.phase
+            parts.append(torch.stack([torch.sin(tau), torch.cos(tau)], -1))
+        obs = torch.cat(parts, dim=-1)
         if self.dr is not None:
             obs = self.dr.noisy(obs, self.A)
         return torch.nan_to_num(obs).clamp(-100.0, 100.0)
@@ -435,8 +482,18 @@ class RunToTargetEnv:
         heading = (fwd_w * dir_w).sum(-1)
 
         # ---- reward ----
-        r_track = 1.5 * torch.exp(-((v_toward - self.target_speed) ** 2) / self.track_var)
-        r_prog = self.prog_w * v_toward.clamp(-1.0, self.target_speed)
+        if self.vel_gate > 0.0:
+            # 1 while standing (pelvis above 95 % of stand height, upright above 0.95), falling to 0
+            # by 85 % / 0.85. Both are far outside normal gait variation and far inside the
+            # termination test (60 % of stand height, upright 0.4), so this costs a real stride
+            # nothing and catches a topple in its first tenth of a second.
+            h_ok = ((pos[:, 2] / self.stand_height - 0.85) / 0.10).clamp(0.0, 1.0)
+            u_ok = ((upright - 0.85) / 0.10).clamp(0.0, 1.0)
+            gate = 1.0 - self.vel_gate * (1.0 - h_ok * u_ok)
+        else:
+            gate = 1.0
+        r_track = 1.5 * torch.exp(-((v_toward - self.target_speed) ** 2) / self.track_var) * gate
+        r_prog = self.prog_w * v_toward.clamp(-1.0, self.target_speed) * gate
         r_alive = 0.3 * self.posture_w
         r_upright = 0.3 * self.posture_w * upright.clamp_min(0.0)
         r_heading = 0.2 * self.posture_w * heading
@@ -500,15 +557,32 @@ class RunToTargetEnv:
         # a real runner is solving the same problem.
         r_energy = -2e-4 * (self.act_force * self.qvel[:, 6:]).abs().clamp_max(2000.0).sum(-1)
 
+        # Gait clock. The left foot is asked to be in stance for the first `gait_duty` of the cycle
+        # and the right for the same window half a cycle later, which at duty 0.6 leaves 20 % of the
+        # stride in double support -- a walk, not a run. The reward is signed: +1 per foot that is
+        # where the schedule asks, -1 per foot that is not, so a body standing with both feet planted
+        # scores 2*(2*duty - 1) = +0.4 of the +2.0 a correct alternating gait earns, rather than the
+        # half it would collect from an unsigned match.
+        self.phase = torch.remainder(self.phase + self.dt / self.gait_period, 1.0)
+        if self.gait_w > 0.0:
+            ph_l = self.phase
+            ph_r = torch.remainder(self.phase + 0.5, 1.0)
+            want = torch.stack([(ph_l < self.gait_duty).float(),
+                                (ph_r < self.gait_duty).float()], -1)
+            r_gait = self.gait_w * ((2.0 * want - 1.0) * (2.0 * contact.float() - 1.0)).sum(-1)
+        else:
+            r_gait = torch.zeros_like(v_toward)
+
         # House rule 15: joints move no faster than a human's.
         r_qvel = -0.02 * (self.qvel[:, 6:].abs() - self.qvel_limit).clamp(0.0, 5.0).pow(2).sum(-1)
 
         reward = (r_track + r_prog + r_alive + r_upright + r_heading + r_height + r_lin_z + r_ang
                   + r_act + r_rate + r_limit + r_reach
-                  + r_air + r_slip + r_clear + r_width + r_alt + r_arm + r_energy + r_qvel)
+                  + r_air + r_slip + r_clear + r_width + r_alt + r_arm + r_energy + r_qvel
+                  + r_gait)
         terms = (r_track, r_prog, r_alive, r_upright, r_heading, r_height, r_lin_z, r_ang,
                  r_act, r_rate, r_limit, r_reach, r_air, r_slip, r_clear, r_width, r_alt,
-                 r_arm, r_energy, r_qvel)
+                 r_arm, r_energy, r_qvel, r_gait)
 
         # ---- termination ----
         fell = (pos[:, 2] < self.stand_height * 0.6) | (upright < 0.4) | ~torch.isfinite(pos).all(-1)

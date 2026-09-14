@@ -733,3 +733,418 @@ little in survival (0.905 vs 0.925) and is measurably worse everywhere else (`fo
 0.112, `jerk` 3042 vs 2150). `i3` shows the walk-first curriculum *costs* survival on top of the
 noise fix (0.707 vs 0.925) while buying no speed, because at this stage the curriculum never ramps —
 it is gated on `fall_rate < 0.05` and `fall_rate` is 0.41.
+
+## 2.8 Batches J and K — the two halves of the answer, and neither together
+
+**J: cutting the posture income does not help, because r_track takes over as the free income.**
+`--posture-w` 1.0 -> 0.3 drops alive + upright + heading from 0.789 per step to 0.237. The athlete
+stayed a statue (`v_toward` 0.038 at best), and the per-term accounting says exactly why:
+
+| standing still earns | j1 (track_var 2.0) | j2 (track_var 8.0) |
+|---|---:|---:|
+| `rt_alive` + `rt_upright` + `rt_heading` | 0.19 | 0.19 |
+| `rt_track` | **0.939** | **1.328** |
+
+`r_track` is a Gaussian of variance `track_var` about the commanded speed, so against a 1.0 m/s
+command a body that never moves scores `1.5 * exp(-1/8) = 1.33` of the 1.5 on offer. The kernel was
+widened from 2.0 to 8.0 to give the reward a gradient at zero speed against a **3.5 m/s** target,
+which it does; at 1.0 m/s the same width pays 89 % of the tracking reward for not moving. Cutting the
+posture income just moved the free lunch to a different term.
+
+**K: narrowing the kernel makes it move, and it falls again.** `track_var` 0.25 pays a standing body
+`1.5 * exp(-4) = 0.03`, and the linear `r_prog` carries the low-speed gradient instead.
+
+| KPI | i1 (var 8) | k1 (var 0.5) | k2 (var 0.25) |
+|---|---:|---:|---:|
+| `surv_ratio` | **0.925** | 0.079 | 0.071 |
+| `v_toward` | 0.006 | 0.620 | **0.677** |
+| `v_err` | 3.494 | 0.416 | **0.361** |
+| `v_hit_frac` | 0.000 | 0.163 | **0.284** |
+| `air_time` | 0.027 | 0.118 | **0.094 (in band)** |
+| `ep_len_s` | 18.5 | 1.58 | 1.41 |
+
+`v_err` 0.361 against a 0.35 threshold and `v_hit_frac` 0.284 are both far and away the best this
+project has measured. And the episode is 1.4 s.
+
+**L: pricing the fall higher does not fix it.** `--fall-penalty` 5 -> 25 -> 50 on k2's settings, and
+`fall_rate` stayed at 1.000 in all three. Stopped at ~115 iterations once that was unambiguous.
+
+## 2.9 What the "fast" policy is actually doing: falling toward the target
+
+`tools/gait_trace.py` dumps one episode at the control rate rather than a summary. On k2:
+
+```
+     t       x       y  pelv_z       v  feet
+  0.34  -0.037  -0.121   0.887   -0.27  LR
+  0.42  -0.063  -0.151   0.892   -0.41  -R     <- left foot leaves the ground
+  0.74  -0.269  -0.366   0.839   -0.69  -R
+  1.06  -0.481  -0.608   0.653   -0.63  -R
+  FELL at t=1.18 s
+footfalls: left 0, right 0 over 1.18 s
+```
+
+**Zero footfalls.** It lifts one foot, never puts it down, and travels 0.68 m/s while its pelvis
+sinks from 0.90 m to 0.57 m. It is not walking badly. It is not walking at all — it is falling over,
+and the direction it falls in happens to be the direction of its target.
+
+`r_track` and `r_prog` read centre-of-mass velocity and do not ask how it was produced. For a
+standing body, **toppling is by far the cheapest way to acquire horizontal speed**, and the reward
+pays for it at exactly the rate it pays for a walk, for the entire 1.5 s the fall takes. The fall
+penalty arrives once, at the end, which is why raising it from 5 to 50 changed nothing: it is
+competing against 75 steps of paid falling.
+
+This is the same class of error as the two the previous session found, and it explains every "moves
+but falls" result in this log:
+
+- **E1's `r_air`**: the cheapest way to be off the ground is to fall over.
+- **E1b's `r_slip`**: a reset artefact, not sliding.
+- **This**: the cheapest way to have forward velocity is to fall over.
+
+Each time, a term that names the right quantity was measuring it in a state where the quantity means
+something else. The lesson AGENTS.md already records — *check what a metric counts before trusting
+it* — applies to reward terms exactly as it does to readouts, and a per-term accounting does not
+catch this one. `rt_track` looked healthy. Only the per-step trace showed there were no footfalls.
+
+**The fix under test (batch M): `--vel-gate`.** Both velocity terms are multiplied by a factor that
+is 1 while the pelvis is above 95 % of stand height and uprightness is above 0.95, and falls to 0 by
+85 % / 0.85. Both bounds sit far outside normal gait variation and far inside the termination test
+(60 % of stand height, upright 0.4), so a real stride pays nothing for it and a topple stops earning
+in its first tenth of a second.
+
+## 2.10 Batch M — the gate works, and reveals that the athlete has no way to discover stepping
+
+`--vel-gate 1.0` on k2's settings. Stopped at ~145 of 400 iterations once the direction was clear.
+
+| KPI @ ~145 | k2 (no gate) | m1 gate + fall 25 | m2 gate + fall 5 | m3 gate + 48-step horizon |
+|---|---:|---:|---:|---:|
+| `surv_ratio` | 0.071 | **0.389** | 0.083 | **0.436** |
+| `v_toward` | 0.677 | 0.072 | 0.576 | 0.055 |
+
+The gate does what it was built to do. m1 and m3 stop toppling — survival rises five-fold — and the
+athlete goes straight back to standing still. m2, which kept the low fall penalty, still topples:
+the gate removes the *payment* for a fall but a 5.0 termination cost still leaves it cheap.
+
+Doubling the GAE horizon (24 -> 48 steps, m3) helps survival about as much as the gate does and is
+worth keeping, but it does not produce movement either.
+
+So the exercise arrives at a clean statement of the real problem. With the body fixed and the topple
+no longer paid for, the athlete has **two reachable behaviours and no path between them**: stand
+still, or fall over. It has never once taken a step, in any run in this log.
+
+## 2.11 Batch N — the thing that was missing: the policy had no stride to be in
+
+The policy is a feedforward MLP. Walking is a *periodic* behaviour, and nothing in the 78-float
+observation says where in a stride the body is. It can in principle infer phase from its own leg
+angles, but nothing in the task says a stride is a thing that exists, and the reward terms that
+mention the feet (`r_air`, `r_alt`, `r_clear`) only pay *after* a footfall has happened — they can
+refine a gait, they cannot get one started.
+
+That is the gap every result above has been circling, and it is what periodic reward composition
+(Siekmann et al.) exists to close. `--gait-w` adds both halves at once:
+
+- **A clock in the observation** — `sin`, `cos` of a phase advancing once per control step over a
+  `--gait-period` (0.8 s) cycle. Observation goes 78 -> 80.
+- **A signed reward for matching a walking contact schedule** — the left foot asked to be in stance
+  for the first `--gait-duty` (0.6) of the cycle, the right the same window half a cycle later, so
+  20 % of the stride is double support. `+1` per foot where the schedule asks, `-1` per foot where it
+  does not. A body standing with both feet planted scores `2 * (2 * 0.6 - 1) = +0.4` of the `+2.0` a
+  correct alternating gait earns — verified against the implementation at 0.198 vs 0.200 predicted
+  with `gait_w` 0.5 — so **stepping is worth five times standing still**.
+
+Also added and used from this batch on: `--spawn-facing`, which starts an episode with the athlete
+already pointed at its target. It otherwise spawns at a uniformly random yaw with its target at a
+uniformly random bearing, so the expected angle between them is 90 degrees and a quarter of episodes
+open facing backwards — meaning turning on the spot has to be learned before walking pays anything.
+Mid-episode targets are still re-rolled to a random bearing, so the skill is still required, just not
+before the first step.
+
+**Batch N result: it declined the offer.** Stopped at ~93 of 400 iterations once all three arms had
+settled.
+
+| KPI @ ~93 | n1 gait 0.5 | n2 gait 1.0 | n3 gait 1.0, 1.0 s stride |
+|---|---:|---:|---:|
+| `surv_ratio` | 0.157 | **0.814** | 0.469 |
+| `v_toward` | 0.123 | -0.004 | -0.011 |
+| `duty_factor` | 0.989 | **0.9988** | 0.9987 |
+| `rt_gait` | 0.207 | **0.3995** | 0.3985 |
+
+`rt_gait` 0.3995 against a predicted statue floor of `2 * (2 * 0.6 - 1) = 0.400`. To four figures,
+n2 is collecting the exact amount a body with both feet planted collects and **not one step above
+it**. Traced through `gait_trace.py`, the saved policy holds its pelvis at 0.887 m for four seconds
+with both feet down and zero footfalls — a better statue than i1, and still a statue.
+
+So the gait clock is not sufficient either, and the reason is an economic one rather than a
+representational one. Standing still banks about 0.57 per step for a thousand steps. A correct stride
+is worth +1.6 per step more than that — but reaching it means balancing on one leg for 0.32 s, which
+takes a lateral weight shift over the stance foot, and **one failed attempt ends the episode**. With
+`--fall-penalty` at 25 and exploration at `init_std` 0.25, the policy will not buy a lottery ticket
+that expensive.
+
+Every earlier attempt to make falling cheap produced toppling instead of stepping, because a topple
+toward the target was paid like a walk toward it. Two things now block that: `--vel-gate` stops the
+velocity terms paying a body on its way down, and the gait reward cannot be collected by falling at
+all — it pays only for feet that are where a walking schedule asks, and a body on the floor has both
+feet in contact at all the wrong times. **For the first time in this log, exploration can be made
+cheap without opening an exploit**, which is what batch O tests.
+
+## 2.12 Batch O — the athlete takes its first steps
+
+Falls made cheap (`--fall-penalty` 2.0) and exploration turned back up (`--init-std` 0.5,
+`--entropy-coef` 0.01), on top of the gait clock and the velocity gate. Stopped at iteration 97 when
+the clock ran short; every number below was still moving in the same direction.
+
+| iteration | 4 | 23 | 44 | 69 | 97 |
+|---|---:|---:|---:|---:|---:|
+| `rt_gait` (o2, floor 0.80, max 4.00) | 0.72 | 1.05 | 1.93 | 2.63 | **3.37** |
+| `duty_factor` (o2) | 0.937 | 0.875 | 0.754 | 0.689 | **0.621** |
+| `rt_gait` (o1, floor 0.40, max 2.00) | 0.36 | 0.50 | 0.91 | 1.33 | **1.62** |
+| `v_toward` (o1) | -0.17 | 0.09 | 0.24 | 0.32 | **0.47** |
+
+**This is the first stepping in this project's history.** `rt_gait` goes from the statue floor to
+84 % of a perfect alternating gait, and `duty_factor` from 0.999 — both feet planted, permanently —
+to 0.62, which is inside the human walking band. The athlete is putting one foot down at a time, in
+time with the clock.
+
+The three changes that made it possible are not independent, and none of them works alone:
+
+1. **The body can stand** (Section 2.4), so a step is a thing it can attempt.
+2. **The exploration no longer knocks it over** (Section 2.5), so an attempt is not immediately
+   destroyed by noise.
+3. **Falling is cheap *and* cannot be profitable.** Every previous attempt at (3) produced toppling,
+   because a topple toward the target was paid like a walk toward it. `--vel-gate` closes that, and
+   the gait reward cannot be farmed by falling either. Cheap falls plus a closed exploit is what
+   turns "do not risk it" into "try it".
+
+`o1` (gait weight 1.0) and `o2` (gait weight 2.0) reach the same fraction of a perfect gait, but
+`o1` also moves at 0.47 m/s where `o2` sits at 0.25: doubling the gait reward drowns out the tracking
+and progress terms, and **marching on the spot collects it just as well as walking does**. The gait
+reward has to stay small enough that going somewhere still matters.
+
+All three arms fall every episode, at 1.8-2.3 s. That is what cheap falls buy, and it is the point of
+stage two.
+
+## 2.13 Batch P — stage two: keep the stride, stop the falling
+
+Resumed from o1 with the two settings that made trying a step affordable reversed —
+`--fall-penalty` 2 -> 10 / 25, `--entropy-coef` 0.01 -> 0.003 / 0.001 — and nothing else changed.
+
+**It walks.** Progress from the resumed base (iteration 50, a half-formed stride that fell every
+episode) over the following ~150 iterations:
+
+| iteration | 132 | 148 | 154 | 183 | 197 |
+|---|---:|---:|---:|---:|---:|
+| `surv_ratio` (p1) | 0.146 | 0.248 | 0.317 | **0.928** | **0.950** |
+| `fall_rate` (p1) | 1.000 | 1.000 | 0.999 | 0.218 | **0.133** |
+| `ep_len_s` (p1) | 2.93 | 4.96 | 6.35 | 18.57 | **19.00** |
+| `v_toward` (p1) | 0.527 | 0.595 | 0.592 | 0.538 | **0.567** |
+| `duty_factor` (p1) | 0.624 | 0.615 | 0.610 | 0.601 | **0.596** |
+
+Survival and locomotion at the same time, which no run in this log had ever produced. And unlike
+every previous "survival" result, `duty_factor` is 0.60 rather than 0.999 — it is not standing still.
+
+Traced step by step (`tools/gait_trace.py`, 8 s):
+
+```
+  6.50   2.569  -1.495   0.884    0.09  LR
+  6.62   2.593  -1.524   0.900    0.34  L-
+  6.74   2.649  -1.570   0.895    0.51  L-
+  6.86   2.707  -1.619   0.884    0.49  LR
+  6.98   2.749  -1.658   0.904    0.26  -R
+  7.10   2.782  -1.724   0.905    0.28  -R
+footfalls: left 10, right 10 over 8.00 s
+```
+
+Ten footfalls on each side, strictly alternating, with the pelvis holding 0.88-0.91 m against a stand
+height of 0.902 — and the `L- / LR / -R / LR` cycle is single support, double support, single
+support: **a walk, with the double-support phase a walk is supposed to have.**
+
+Confirmed outside the trainer on the iteration-150 checkpoint, `eval_100m.py`, 8 runs from different
+seeds:
+
+```
+run 0: fell        2.22s    -0.9 m
+run 1: timed out  30.00s    15.7 m    peak 1.07 m/s
+... (runs 2-7 identical to within 0.4 m)
+mean distance 13.5 m, mean upright 26.5 s
+```
+
+**Seven of eight walk for the full thirty seconds and cover 15.5 m** at a sustained 0.52 m/s. The
+training metric and the independent rollout agree.
+
+### A KPI that no real gait could ever have passed
+
+`air_time`'s convergence threshold in Section 1.7 is **0.05-0.25 s**, justified there as "a human
+sprint stride flies 0.10-0.20 s". The walking policy measures **0.30 s** and fails it.
+
+The threshold is wrong, and in the way this log keeps finding. Whole-body flight time -- the part of
+a sprint where neither foot is down -- is indeed 0.10-0.20 s. But the metric does not measure that.
+`air_sum` accumulates `prev_air` at each first contact, which is **how long that foot was off the
+ground**: swing time, per foot, not flight time for the body. A human walking swings each leg for
+about 0.4 s and a sprinter for about 0.35 s, so **no real gait of any kind can score inside the
+0.05-0.25 band**, and the baseline's 0.61 was never the "not a stride" evidence Section 1.5 read it
+as -- only its size was.
+
+The commanded gait settles it arithmetically. `--gait-period` 0.8 s with `--gait-duty` 0.6 asks each
+foot to swing for `(1 - 0.6) * 0.8 = 0.32 s`, and the policy measures 0.30. It is doing exactly what
+it was asked, to within 6 %.
+
+Corrected band for this metric, as swing time: **0.25-0.50 s**, and the walking policy passes it.
+`duty_factor` remains the honest gait discriminator, and it reads 0.59.
+
+---
+
+# Session 2 results
+
+## What was actually wrong, in order of how much it mattered
+
+1. **The body could not stand up.** Holding its own stand keyframe with zero action, the athlete
+   toppled backwards and was on the floor in **1.75 s** — the episode length every run in this
+   project had ever reported. Under the trainer's own reset noise, **0 of 40 trials survived 5 s**.
+   Two causes: a stand pose whose centre of mass sat at 17 % of the heel-to-toe span (a standing
+   human is near 45 %), and joint gains below the `M*g*h` = 662 N m/rad stability floor for an
+   inverted pendulum, with the ankle shipping at 250. Fixed in the generator: a 3 degree forward lean
+   and 3x the leg and trunk stiffness, force and velocity limits untouched. **92 % of noisy resets now
+   hold for 10 s.**
+2. **The policy's own exploration noise knocked the fixed body over.** At `init_std` 0.8 and
+   `action_scale` 0.5 the sampled action moves all 21 joint targets by about +-0.4 rad at 50 Hz.
+   Measured: 0 % survive 5 s at every standard deviation these runs actually operate at. Training
+   opened every run by shaking the athlete apart. At `action_scale` 0.167 and `init_std` 0.25,
+   survival went from 0.29 to **0.925** in 220 iterations.
+3. **A topple toward the target was paid exactly like a walk toward it.** `r_track` and `r_prog` read
+   centre-of-mass velocity and do not ask how it was produced; toppling is the cheapest way for a
+   standing body to acquire horizontal speed. The fastest policy in this project covered 0.68 m/s and
+   took **zero footfalls**. `--vel-gate` fades both terms out as the body drops or tilts.
+4. **The policy had no stride to be in.** A feedforward MLP was being asked for a periodic behaviour
+   with nothing in its 78 observations saying where in a stride it was, and the terms that mention the
+   feet only pay *after* a footfall — they can refine a gait, they cannot start one. `--gait-w` adds a
+   clock to the observation and a signed reward for matching a walking contact schedule.
+5. **Trying a step was unaffordable.** Even with the clock, the athlete sat at `rt_gait` 0.3995
+   against a statue floor of 0.400 — not one step above it — because one failed attempt ended a
+   1000-step episode. Only once (3) and (4) made falling *unprofitable* could falling be made *cheap*
+   without opening an exploit. Cheap falls plus real exploration is what produced the first steps.
+6. **The tracking kernel's width was tuned for the wrong target speed.** Widened to 8.0 to give a
+   gradient at zero speed against a 3.5 m/s target, it pays a standing body 89 % of the tracking
+   reward at a 1.0 m/s target. Narrowed to 0.25, with the linear progress term carrying the low-speed
+   gradient instead.
+7. **The speed curriculum was built to ramp the wrong way.** `--target-speed` is the *floor* of the
+   adaptive ramp and every run had set it to 3.5, so the curriculum could only ever ramp upward from
+   a sprint. There had never been a walk-first curriculum; the flag already existed.
+8. **Two `air_time` mistakes.** The metric measures per-foot swing time, not whole-body flight time,
+   so its 0.05-0.25 s threshold was unreachable by any real gait. Corrected to 0.25-0.50 s.
+
+## Measured and rejected
+
+- **The double-support penalty is not what stops it walking.** Removing `r_alt` entirely changes
+  nothing (`surv_ratio` 0.099 vs 0.113).
+- **Resetting episodes already moving makes things worse** (`surv_ratio` 0.046, worst of its batch).
+  A standing pose travelling at 2 m/s is a shove, not a state the final gait passes through.
+- **Raising the fall penalty does not stop a topple** (5 -> 25 -> 50, `fall_rate` 1.000 throughout).
+  The topple is paid for the whole 1.5 s it lasts; the penalty arrives once at the end.
+- **`action_scale` 0.167 does not prevent a stride.** Open-loop, the swing foot still clears 0.20 m
+  against the 0.05-0.10 m a walk needs.
+- **Widening the tracking kernel does not raise speed** (f1: `v_toward` 0.440 against the control's
+  0.495), contrary to the commit that introduced it.
+
+## Two process failures fixed
+
+- **Runs did not record their own arguments.** Two three-hour runs left a CSV, a log and a
+  TensorBoard directory between them and not one setting, so their target speed had to be recovered
+  from event files. Now `logs/<run>.args.json`.
+- **Checkpoints were not namespaced per run**, so short A/Bs overwrote long runs' weights and
+  concurrent runs interleaved their saves. Now `checkpoints/<task>/<run>/`, and a checkpoint carries
+  the `action_scale` it was trained at.
+
+Also recorded, because it cost a policy: **the foot-contact fix invalidated every checkpoint trained
+before it.** It changed two of the 78 observations, so `overnight_3h` — 1.4 billion steps, the best
+result the project had — now falls after 1.5 s when driven through the current rig.
+
+## Final result
+
+`p1_soft`, iteration 287 (stopped by the clock, still improving), graded over its last 20 iterations.
+
+| KPI | threshold | session start (baseline) | **final** | |
+|---|---|---:|---:|---|
+| `surv_ratio` | > 0.90 | 0.080 | **0.986** | PASS |
+| `fall_rate` | < 0.10 | 1.000 | **0.055** | PASS |
+| `v_err` | <= 0.35 | 2.42 | **0.344** | PASS |
+| `duty_factor` | 0.35-0.65 | 0.259 | **0.578** | PASS |
+| `pitch_dev` | < 15 deg | 10.0 | **2.39** | PASS |
+| `air_time` (corrected band, see above) | 0.25-0.50 s | 0.614 | **0.333** | PASS |
+| `v_hit_frac` | > 0.50 | 0.000 | 0.251 | fail |
+| `foot_slip` | < 0.15 m/s | 0.259 | 0.309 | fail |
+| `roll_dev` | < 10 deg | 15.1 | 12.5 | fail |
+| `ep_len_s` | (20 s episode) | 1.60 | **19.72** | |
+
+**Six of ten, from none.** And independently, outside the trainer, on the saved checkpoint
+(`eval_100m.py`, ten runs from ten seeds, 30 s each — half again the training episode):
+
+```
+run 0..9: timed out  30.00s   25.5-26.5 m   peak 1.36-1.39 m/s
+10/10 upright for the full 30 s, mean distance 26.0 m, mean peak 1.38 m/s
+```
+
+**Ten consecutive evaluation episodes, zero falls**, each covering 26 m at a sustained 0.87 m/s.
+`gait_trace.py` over ten seconds counts **12 left footfalls and 12 right**, strictly alternating, at a
+0.83 s stride against the 0.8 s commanded, with the pelvis holding 0.88-0.92 m throughout.
+
+The athlete walks.
+
+## Exit criteria — which one fired
+
+| Exit condition | Status |
+|---|---|
+| All KPIs met over 10 consecutive evaluation episodes | **partly** — 10/10 episodes upright with zero falls, but 3 of 10 KPIs still short |
+| Improvement plateau < 3 % over 3 runs | **not met** — `v_toward` rose 0.55 -> 0.79 over the final 60 iterations |
+| Time limit | **fired** |
+
+The run was still improving monotonically on every headline number when the clock stopped it, at
+**287 iterations of a task this project budgets 2000-2500 for**. Nothing here has converged; what has
+happened is that the failure modes blocking convergence have been removed.
+
+## What is left, in priority order
+
+1. **Just run it longer.** `p1_soft` was stopped at 287 iterations by the clock, not by a plateau.
+   `v_toward` was rising 0.55 -> 0.79 across its last 60 iterations and `v_hit_frac` 0.15 -> 0.25.
+   Resume it and the speed KPIs are the ones that move.
+
+   ```
+   cd training
+   .venv/Scripts/python.exe train_run.py --task target --num-envs 8192 --iters 2500        --resume checkpoints/run_to_target/p1_soft/latest.pt        --track-var 0.25 --prog-w 0.75 --posture-w 0.3 --target-speed 1.0        --target-speed-final 3.5 --speed-adaptive        --vel-gate 1.0 --spawn-facing 1.0 --gait-w 1.0        --action-scale 0.167 --entropy-coef 0.003 --fall-penalty 10.0
+   ```
+
+   `--speed-adaptive` is now worth setting: it ramps when `fall_rate < 0.05`, and `fall_rate` is
+   0.055 and falling, so the walk-to-run curriculum will actually start. Note `--target-speed` is the
+   ramp's **floor** — 1.0, not 3.5.
+
+2. **`foot_slip` 0.31 against a 0.15 threshold** is the largest remaining gait defect and the most
+   likely thing holding `v_hit_frac` down: a foot that slides under load cannot push. Worth
+   raising `r_slip`'s weight now that the gait exists to be refined, which was never true before.
+
+3. **`roll_dev` 12.5 degrees** — the walk rolls side to side more than it should. `r_ang` and
+   `r_width` are the levers, and `--gait-duty` slightly higher would lengthen double support.
+
+4. **The action standard deviation is still 0.47.** `--entropy-coef` 0.003 held it up to keep the
+   stride forming; with the stride established, annealing it toward 0.15 should improve slip, roll
+   and jerk together — Section 2.5 measured 88 % survival at std 0.15 against 32 % at 0.30.
+
+5. **Unity transfer is not done.** The MJCF gains changed, so `Athlete_PolicyConfig`'s Kp/Kd must be
+   brought into step with `models/athlete_policy_config.json`, and the observation is now **80**
+   floats, not 78 — the two extra are the gait clock, `sin` and `cos` of a phase advancing once per
+   50 Hz control step over 0.8 s. `PolicyRunner` validates observation width and will log an error
+   rather than fail silently, but nothing on the Unity side generates that clock yet.
+
+## Throughput and hardware efficiency
+
+Unchanged from Section 1.6 and re-confirmed: ~177k steps/s for one 8192-environment run with the GPU
+to itself, ~68k each for two concurrent 4096-environment runs (136k aggregate), ~44k each for three
+(132k aggregate). Running experiments **concurrently costs about 25 % of aggregate throughput and
+buys three controlled answers in the wall-clock time of one**, which for A/B work is the right trade;
+the final long runs used two at a time. Nothing in this session was throughput-limited — every
+conclusion came from 220-400 iteration runs of 10-25 minutes.
+
+---
+
+## TL;DR
+
+The athlete could not stand: it fell over in 1.75 s under its own weight, which was every run's
+episode length. Fixed the body, the exploration noise, and a reward that paid for falling. It walks.

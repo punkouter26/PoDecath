@@ -158,6 +158,21 @@ def main() -> None:
                          "stiffer joints this also scales the torque the exploration noise injects.")
     ap.add_argument("--init-std", type=float, default=0.8,
                     help="initial exploration standard deviation of the Gaussian policy.")
+    ap.add_argument("--gait-w", type=float, default=0.0,
+                    help="weight on matching a periodic contact schedule, and the switch that puts "
+                         "the gait clock into the observation (obs 78 -> 80). 0 is off.")
+    ap.add_argument("--gait-period", type=float, default=0.8, help="stride period in seconds")
+    ap.add_argument("--gait-duty", type=float, default=0.6,
+                    help="fraction of the cycle each foot is asked to be in stance. 0.6 leaves 20%% "
+                         "of the stride in double support, which is a walk; below 0.5 is a run.")
+    ap.add_argument("--spawn-facing", type=float, default=0.0,
+                    help="fraction of episodes that start with the athlete already facing its "
+                         "target, so walking does not have to be learned at the same time as "
+                         "turning on the spot. 0 is the old uniformly random bearing.")
+    ap.add_argument("--vel-gate", type=float, default=0.0,
+                    help="fade the tracking and progress rewards out as the body drops or tilts, so "
+                         "a topple toward the target stops being paid like a walk toward it. "
+                         "0 off, 1 full.")
     ap.add_argument("--posture-w", type=float, default=1.0,
                     help="multiplier on alive+upright+heading, the income an athlete collects for "
                          "standing still and facing the target (0.79/step at 1.0).")
@@ -229,7 +244,9 @@ def main() -> None:
                   air_time_cap=args.air_time_cap, fall_penalty=args.fall_penalty,
                   track_var=args.track_var, prog_w=args.prog_w, alt_w=args.alt_w,
                   posture_w=args.posture_w, init_speed=args.init_speed,
-                  action_scale=args.action_scale)
+                  action_scale=args.action_scale, vel_gate=args.vel_gate,
+                  spawn_facing=args.spawn_facing, gait_w=args.gait_w,
+                  gait_period=args.gait_period, gait_duty=args.gait_duty)
     if domain_rand:
         ramp = (f"ramping {args.dr_start_strength:g} -> 1 over {args.dr_ramp_iters} iters"
                 if args.dr_ramp_iters > 0 else "no ramp, full from iteration 0")
