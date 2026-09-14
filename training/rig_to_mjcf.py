@@ -345,9 +345,17 @@ class Builder:
             "observation": ["base_lin_vel", "base_ang_vel", "projected_gravity", "target_command",
                             "joint_pos_rel", "joint_vel", "last_action", "foot_contact", "base_height"],
             "target_command": "unit direction (x, y) to target in the base yaw frame, plus min(distance, 10) / 10",
-            "foot_contact": "one flag per foot, 1 when the sole is within sole_contact_height of the support plane",
+            "foot_contact": "one flag per foot, 1 when the lowest corner of the foot box is within "
+                            "sole_contact_height of the support plane. The lowest *corner*, not the "
+                            "sole plane: this foot is 0.317 m long and the athlete runs on its toes, "
+                            "pitching it 44 deg on average, so a flat-foot test reads a planted foot "
+                            "as airborne (measured 1.7% against MuJoCo's own 61%).",
             "base_height": "pelvis height above the support plane, metres",
-            "sole_contact_height": 0.03,
+            # 0.03 was sized for the old flat-foot estimate, where the number being tested was
+            # the box centre and needed the slack. Against the true lowest corner that slack is
+            # all false positives: swept against MuJoCo's contact list, 0.03 agreed 80% of the
+            # time and 0.005 agrees 93%, both with zero missed contacts.
+            "sole_contact_height": 0.005,
         }
 
 

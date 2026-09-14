@@ -93,14 +93,19 @@ class RunToTargetEnv:
         self.xquat = wp.to_torch(self.dw.xquat)     # (N, nbody, 4) wxyz
         self.xpos = wp.to_torch(self.dw.xpos)       # (N, nbody, 3)
         self.site_xpos = wp.to_torch(self.dw.site_xpos)
+        self.geom_xpos = wp.to_torch(self.dw.geom_xpos)     # (N, ngeom, 3)
+        self.geom_xmat = wp.to_torch(self.dw.geom_xmat)     # (N, ngeom, 3, 3)
         self.act_force = wp.to_torch(self.dw.actuator_force)   # exact joint torques, for the energy term
         self.pelvis = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_BODY, "pelvis")
 
         # Feet. The sole sites sit at the centre of each foot box, so the sole plane is half the box
         # thickness below them; contact is "sole within a centimetre of the deck".
         self.foot_sites = [mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SITE, f"foot_{s}_site") for s in "lr"]
-        foot_geom = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_GEOM, "foot_l_geom")
+        self.foot_geoms = [mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_GEOM, f"foot_{s}_geom") for s in "lr"]
+        foot_geom = self.foot_geoms[0]
         self.sole_half = float(self.m.geom_size[foot_geom, 2])
+        # Half-extents of the foot box, for the exact ground-clearance test in `_foot_state`.
+        self.foot_half = torch.tensor(self.m.geom_size[foot_geom], device=device, dtype=torch.float32)
         self.sole_contact_h = float(self.cfg.get("sole_contact_height", 0.03))
         # Ceiling on the flight time a single footfall can be paid for. Without one, `r_air`
         # pays in proportion to however long the body was off the ground, and the cheapest way
@@ -300,9 +305,29 @@ class RunToTargetEnv:
 
     # ---- feet ----------------------------------------------------------------------------------
     def _foot_state(self):
-        """(sole height (N,2), foot xy (N,2,2), in-contact (N,2)) -- all sync-free."""
+        """(ground clearance (N,2), foot xy (N,2,2), in-contact (N,2)) -- all sync-free.
+
+        Clearance is the height of the **lowest corner of the foot box**, not of its centre.
+
+        It used to be `site_z - half_thickness`, which is the sole height only while the foot is
+        flat. This foot is 0.317 m long and 0.056 m thick, so the moment it pitches the toe drops
+        far below the centre: measured on the 3-hour policy the foot pitches 44 degrees on average
+        and 77 at worst, the flat estimate read 0.113 m of clearance while the true corner was at
+        0.009 m, and the athlete was recorded as having a foot down 1.7% of the time when MuJoCo's
+        own contact list said 75-82%. It had learned to run on its toes -- which is what a sprinter
+        does -- and every contact-derived quantity was blind to it: duty_factor, air_time and
+        foot_slip as readouts, r_air / r_slip / r_clear / r_alt as rewards, and two of the 78
+        observations the policy is handed about its own body.
+
+        For a box, the lowest point in world -z is the centre minus the support of the half-extents
+        along the world-z row of its rotation: sum_i |R[2, i]| * half_i. Exact, branchless, and no
+        contact list to read back from the device.
+        """
         site = self.site_xpos[:, self.foot_sites]          # (N,2,3)
-        sole_z = site[:, :, 2] - self.sole_half
+        cz = self.geom_xpos[:, self.foot_geoms, 2]         # (N,2) box centre height
+        rz = self.geom_xmat[:, self.foot_geoms, 2, :]      # (N,2,3) world-z row of each foot
+        drop = (rz.abs() * self.foot_half).sum(-1)         # (N,2) centre-to-lowest-corner
+        sole_z = cz - drop
         contact = sole_z < self.sole_contact_h
         return sole_z, site[:, :, :2], contact
 

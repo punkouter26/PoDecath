@@ -139,6 +139,11 @@ def main() -> None:
                          "minibatch. 1.5 is the rsl_rl default and thrashes at 40 minibatches "
                          "an iteration; 1.1 tracks the same target without the swing.")
     ap.add_argument("--epochs", type=int, default=5, help="PPO epochs per iteration")
+    ap.add_argument("--max-hours", type=float, default=0.0,
+                    help="stop cleanly after this many hours, saving and exporting first. 0 = no "
+                         "limit. Throughput moves with how often the bodies are falling, so an "
+                         "iteration count is a poor way to ask for a fixed wall-clock budget; "
+                         "this is the honest way to say 'train while I am out'.")
     ap.add_argument("--fall-penalty", type=float, default=2.0,
                     help="one-off reward cost of ending an episode fallen. Measured per-term on the "
                          "baseline this is worth -0.025 per step, against -0.324 for the foot-slip term: "
@@ -302,7 +307,8 @@ def main() -> None:
                       f"| pwr {s.get('power', 0):7.1f} W | jerk {s.get('jerk', 0):8.0f} "
                       f"| tilt {s.get('pitch_dev', 0):4.1f}/{s.get('roll_dev', 0):4.1f} deg "
                       f"| sat {s.get('act_sat', 0):4.2f}", flush=True)
-        if (it + 1) % args.save_every == 0 or it + 1 == args.iters:
+        out_of_time = args.max_hours > 0.0 and (time.time() - t_start) >= args.max_hours * 3600.0
+        if (it + 1) % args.save_every == 0 or it + 1 == args.iters or out_of_time:
             ck = os.path.join(ck_dir, f"model_{it + 1:05d}.pt")
             ppo.save(ck, {"iter": it + 1, "obs_dim": env.obs_dim, "act_dim": env.A})
             shutil.copyfile(ck, os.path.join(ck_dir, "latest.pt"))
@@ -311,6 +317,10 @@ def main() -> None:
             os.makedirs(args.unity_policies, exist_ok=True)
             shutil.copyfile(onnx_path, os.path.join(args.unity_policies, onnx_name))
             print(f"saved {ck} and exported ONNX -> Assets/Policies/{onnx_name}", flush=True)
+        if out_of_time:
+            print(f"[max-hours] reached {args.max_hours:g} h at iteration {it + 1}; stopping cleanly "
+                  f"after {(time.time() - t_start) / 3600:.2f} h", flush=True)
+            break
     writer.close()
     csv_f.close()
 

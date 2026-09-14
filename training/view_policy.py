@@ -78,8 +78,11 @@ class Rollout:
         self.pelvis = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_BODY, "pelvis")
         self.foot_sites = [mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SITE, f"foot_{s}_site")
                            for s in "lr"]
-        fg = mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_GEOM, "foot_l_geom")
+        self.foot_geoms = [mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_GEOM, f"foot_{s}_geom")
+                           for s in "lr"]
+        fg = self.foot_geoms[0]
         self.sole_half = float(self.m.geom_size[fg, 2])
+        self.foot_half = self.m.geom_size[fg].copy()
         self.sole_contact_h = float(self.cfg.get("sole_contact_height", 0.03))
 
         self.target_dist = target_dist
@@ -123,7 +126,11 @@ class Rollout:
         if self.n_obs >= 78:
             # foot_contact(2) + base_height(1): added with the gait reward, and a policy trained with
             # them cannot be driven without them.
-            sole_z = d.site_xpos[self.foot_sites][:, 2] - self.sole_half
+            # Lowest corner of the foot box, matching envs/run_to_target._foot_state. A flat-foot
+            # estimate reads this policy as airborne while it runs on its toes.
+            cz = d.geom_xpos[self.foot_geoms][:, 2]
+            rz = d.geom_xmat[self.foot_geoms].reshape(-1, 3, 3)[:, 2, :]
+            sole_z = cz - (np.abs(rz) * self.foot_half).sum(-1)
             parts.append((sole_z < self.sole_contact_h).astype(np.float64))
             parts.append(np.array([pos[2]]))
         obs = np.concatenate(parts).astype(np.float32)

@@ -225,7 +225,7 @@
     "base_height"
   ],
   "target_command": "unit direction (x, y) to target in the base yaw frame, plus min(distance, 10) / 10",
-  "foot_contact": "one flag per foot, 1 when the sole is within sole_contact_height of the support plane",
+  "foot_contact": "one flag per foot, 1 when the lowest corner of the foot box is within sole_contact_height of the support plane",
   "base_height": "pelvis height above the support plane, metres",
-  "sole_contact_height": 0.03
+  "sole_contact_height": 0.005
 }
