@@ -43,7 +43,9 @@ namespace PoDecath.Sim
             }
         }
 
-        public void Fill(float[] obs, AthleteRig rig, Vector3 commandExt, float[] lastAction, float[] jointPosExt, float[] jointVelExt)
+        /// <param name="gaitPhase">Stride phase in [0, 1). Ignored unless the config asks for the
+        /// gait clock; see PolicyRunner, which owns it and advances it once per control step.</param>
+        public void Fill(float[] obs, AthleteRig rig, Vector3 commandExt, float[] lastAction, float[] jointPosExt, float[] jointVelExt, float gaitPhase = 0f)
         {
             int o = 0;
             float clip = _cfg.observationClip;
@@ -119,6 +121,17 @@ namespace PoDecath.Sim
                     height = bp.y - ground.point.y;
                 obs[o] = height;
                 o += 1;
+            }
+
+            // The gait clock, written after base height and before any height scan, which is where
+            // the trainer writes it. sin first, then cos, matching
+            // `torch.stack([sin(tau), cos(tau)], -1)` in envs/run_to_target.py.
+            if (_cfg.includeGaitPhase)
+            {
+                float tau = gaitPhase * 2f * Mathf.PI;
+                obs[o + 0] = Mathf.Sin(tau);
+                obs[o + 1] = Mathf.Cos(tau);
+                o += 2;
             }
 
             int h = _scanOffsetsExt.Length;

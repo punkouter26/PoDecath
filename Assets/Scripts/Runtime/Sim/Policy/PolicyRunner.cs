@@ -37,6 +37,10 @@ namespace PoDecath.Sim
         ObservationBuilder _obsBuilder;
 
         float[] _obs = new float[0];
+        // Walking-stride phase in [0, 1), advanced once per control step. The trainer randomises it
+        // per episode and the policy only ever sees a steadily advancing clock, so the starting
+        // offset does not matter -- the *rate* does, and it is controlDeltaTime / gaitPeriod.
+        float _gaitPhase;
         float[] _action = new float[0];
         float[] _lastAction = new float[0];
         float[] _targets = new float[0];
@@ -243,7 +247,7 @@ namespace PoDecath.Sim
                 cmd = commandSource.Command;
             }
 
-            _obsBuilder.Fill(_obs, rig, cmd, _lastAction, _jointPos, _jointVel);
+            _obsBuilder.Fill(_obs, rig, cmd, _lastAction, _jointPos, _jointVel, _gaitPhase);
 
             MeasureObservationClipping();
 
@@ -292,6 +296,16 @@ namespace PoDecath.Sim
             TargetClamping += (clamped / (float)n - TargetClamping) * Ema;
             rig.ApplyTargets(_targets);
             PolicySteps++;
+
+            // Advance the stride clock after the targets are written, so the observation the policy
+            // just acted on carried the phase it was meant to act on -- the same order the trainer's
+            // rollout uses. Wrapped rather than accumulated: a float counting seconds for a whole
+            // race loses resolution on the fraction that actually matters.
+            if (config.includeGaitPhase && config.gaitPeriod > 1e-4f)
+            {
+                _gaitPhase += (1f / Mathf.Max(1f, config.ControlHz)) / config.gaitPeriod;
+                if (_gaitPhase >= 1f) _gaitPhase -= Mathf.Floor(_gaitPhase);
+            }
 
             _hzWindowSteps++;
             float window = Time.unscaledTime - _hzWindowStart;

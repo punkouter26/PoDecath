@@ -58,6 +58,39 @@ def clean_old_runs(tb_root: str, task: str) -> None:
             print(f"[tensorboard] removed obsolete run {name}")
 
 
+def write_policy_manifest(env, args, run_name: str, path: str) -> None:
+    """Write the contract this *policy* was trained against, next to the exported ONNX.
+
+    `models/athlete_policy_config.json` describes the rig, and Unity reads it to decide which
+    observations to build. But two things in that decision belong to the training run, not the rig:
+    `action_scale`, and whether the gait clock is in the observation at all. A run trained with
+    --gait-w 1.0 produces an 80-float policy against the rig file's 78, and a run trained at
+    --action-scale 0.167 driven at the rig file's 0.5 simply falls over -- with, in both cases,
+    nothing on either side to say why.
+
+    So the exported policy carries its own copy, with those fields corrected. Copy this file into
+    Assets/Models/ alongside the .onnx and Unity is reading the same contract the policy learned.
+    """
+    cfg = dict(env.cfg)
+    cfg["action_scale"] = env.action_scale
+    obs = list(cfg.get("observation", []))
+    if getattr(env, "gait_w", 0.0) > 0.0:
+        if "gait_phase" not in obs:
+            obs.append("gait_phase")
+        cfg["gait_period"] = env.gait_period
+        cfg["gait_duty"] = env.gait_duty
+    else:
+        obs = [o for o in obs if o != "gait_phase"]
+        cfg.pop("gait_period", None)
+        cfg.pop("gait_duty", None)
+    cfg["observation"] = obs
+    cfg["observation_size"] = env.obs_dim
+    cfg["trained_by"] = {"run": run_name, "task": args.task,
+                         "target_speed": env.target_speed}
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(cfg, fh, indent=2)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--xml", default=os.path.join(HERE, "models", "athlete.xml"))
@@ -391,6 +424,8 @@ def main() -> None:
             export_onnx(ppo, onnx_path, env.obs_dim)
             os.makedirs(args.unity_policies, exist_ok=True)
             shutil.copyfile(onnx_path, os.path.join(args.unity_policies, onnx_name))
+            write_policy_manifest(env, args, run_name,
+                                  os.path.join(args.unity_policies, "athlete_policy_config.json"))
             dest = args.unity_policies
             if args.publish:
                 pub = os.path.join(HERE, "..", "Assets", "Policies")

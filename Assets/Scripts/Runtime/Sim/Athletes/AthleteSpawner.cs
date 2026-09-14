@@ -73,6 +73,8 @@ namespace PoDecath.Sim
             public float action_clip = 5f;
             public float spawn_clearance_m = 0.02f;
             public string[] observation;
+            // Seconds per stride, present only when the run put a gait clock in the observation.
+            public float gait_period = 0.8f;
         }
 
         void Awake()
@@ -335,6 +337,8 @@ namespace PoDecath.Sim
             {
                 cfg.includeFootContact = System.Array.IndexOf(pj.observation, "foot_contact") >= 0;
                 cfg.includeBaseHeight = System.Array.IndexOf(pj.observation, "base_height") >= 0;
+                cfg.includeGaitPhase = System.Array.IndexOf(pj.observation, "gait_phase") >= 0;
+                if (cfg.includeGaitPhase && pj.gait_period > 1e-4f) cfg.gaitPeriod = pj.gait_period;
             }
             cfg.minBaseHeight = cfg.spawnHeight * 0.6f;
             cfg.minUprightDot = 0.4f;

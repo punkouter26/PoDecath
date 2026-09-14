@@ -52,6 +52,15 @@ namespace PoDecath.Sim
         public int footCount = 2;
         [Tooltip("How far down to look for the surface under the pelvis when filling base height.")]
         public float baseHeightMaxDistance = 4f;
+        [Tooltip("Two slots carrying sin and cos of a walking-stride phase. Walking is periodic and " +
+                 "the policy is a feedforward network with no memory of where in a stride it is, so " +
+                 "the trainer hands it a clock and pays it for putting each foot down in time with " +
+                 "it. A policy trained with the clock cannot be driven without it.")]
+        public bool includeGaitPhase = false;
+        [Tooltip("Seconds per stride. Must match the trainer's --gait-period; the clock advances " +
+                 "controlDeltaTime / gaitPeriod every control step, so a mismatch here walks the " +
+                 "athlete to the wrong rhythm.")]
+        public float gaitPeriod = 0.8f;
 
         [Header("Height scan (0 = disabled)")]
         [Tooltip("Grid extent along the external X axis in metres.")]
@@ -122,6 +131,7 @@ namespace PoDecath.Sim
                 if (includeLastActions) n += JointCount;
                 if (includeFootContact) n += Mathf.Max(0, footCount);
                 if (includeBaseHeight) n += 1;
+                if (includeGaitPhase) n += 2;
                 n += HeightScanCount;
                 return n;
             }

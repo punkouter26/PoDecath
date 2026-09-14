@@ -14,6 +14,7 @@ needs a way to export an arbitrary checkpoint, which is this.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -33,6 +34,14 @@ def main() -> None:
     ap.add_argument("--obs-dim", type=int, default=0,
                     help="0 (default) reads it from the checkpoint's own extra block")
     ap.add_argument("--act-dim", type=int, default=0, help="0 (default) reads it from the checkpoint")
+    ap.add_argument("--manifest", default="",
+                    help="also write the policy contract here (the observation groups this policy "
+                         "emits, its action scale and its stride period). Unity reads this file to "
+                         "decide what to build; without it the rig's own config is used, which "
+                         "describes the body rather than the policy.")
+    ap.add_argument("--gait-period", type=float, default=0.8,
+                    help="stride period the checkpoint was trained with, written into --manifest")
+    ap.add_argument("--xml", default=os.path.join(HERE, "models", "athlete.xml"))
     args = ap.parse_args()
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
@@ -48,6 +57,27 @@ def main() -> None:
 
     print(f"{os.path.basename(args.ckpt)} (iter {extra.get('iter', '?')}, "
           f"obs {obs_dim}, act {act_dim}) -> {args.out}")
+
+    if args.manifest:
+        with open(os.path.splitext(args.xml)[0] + "_policy_config.json", encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        base = 12 + 3 * act_dim + 3          # the layout through foot_contact + base_height
+        obs = [o for o in cfg.get("observation", []) if o != "gait_phase"]
+        if obs_dim == base + 2:
+            obs.append("gait_phase")
+            cfg["gait_period"] = args.gait_period
+        elif obs_dim != base:
+            raise SystemExit(f"cannot describe a {obs_dim}-float policy: this rig builds {base} "
+                             f"without the gait clock and {base + 2} with it")
+        cfg["observation"] = obs
+        cfg["observation_size"] = obs_dim
+        cfg["action_scale"] = float(extra.get("action_scale", cfg.get("action_scale", 0.5)))
+        cfg["trained_by"] = {"checkpoint": os.path.basename(args.ckpt),
+                             "run": extra.get("run_name", "?"), "iter": extra.get("iter", "?")}
+        with open(args.manifest, "w", encoding="utf-8") as fh:
+            json.dump(cfg, fh, indent=2)
+        print(f"  manifest -> {args.manifest} "
+              f"(obs {obs_dim}: {', '.join(obs)}; action_scale {cfg['action_scale']})")
 
 
 if __name__ == "__main__":
