@@ -16,10 +16,11 @@ MonoBehaviour:
   kind: 0
   model: {fileID: 0}
   mjcfOverride: {fileID: 0}
-  actionScale: 0.5
+  actionScale: 0
   topSpeed: 9.2
   accelSeconds: 3.2
   skinOverride: {fileID: 0}
+  skinOverrideMobile: {fileID: 0}
   boneMap: []
   skinRootEuler: {x: 0, y: 90, z: 0}
   skinScale: 0

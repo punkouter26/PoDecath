@@ -114,6 +114,14 @@ namespace PoDecath.EditorTools
             def.skinOverride = skin;
             if (policy != null) def.model = policy;
 
+            // The phone's copy, if training/tools/athlete_lods.py has made one. Same file name under
+            // Mobile/, so the roster can wire it without a second list to keep in step. Cleared when the
+            // file has gone, so a stale reference cannot outlive the asset it pointed at.
+            string mobilePath = $"{System.IO.Path.GetDirectoryName(modelPath).Replace('\\', '/')}/Mobile/{file}_LOD1.glb";
+            var mobileSkin = AssetDatabase.LoadAssetAtPath<GameObject>(mobilePath);
+            def.skinOverrideMobile = mobileSkin;
+            if (mobileSkin != null) report.AppendLine($"    mobile skin: {mobilePath}");
+
             // The bone map is only ever inferred once. After that it is the owner's, because correcting a
             // rig the geometry got wrong is exactly the edit this must not undo on the next run.
             if (def.boneMap == null || def.boneMap.Count == 0)

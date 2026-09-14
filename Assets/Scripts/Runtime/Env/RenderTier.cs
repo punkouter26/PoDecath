@@ -86,8 +86,23 @@ namespace PoDecath.Env
             if (QualitySettings.GetQualityLevel() != level) QualitySettings.SetQualityLevel(level, true);
             // The building carries LOD groups (BuildingLodBuilder). A phone never draws LOD0 at all: the
             // decimated LOD1 is its building, which is what brings the 833k-triangle model under budget.
-            QualitySettings.maximumLODLevel = IsMobile ? 1 : 0;
+            QualitySettings.maximumLODLevel = IsMobile ? MobileLodCeiling : 0;
         }
+
+        /// <summary>
+        /// The lowest level of detail a phone is allowed to draw as its building. 1 is the decimated
+        /// LOD1 (273k triangles in the glb); 2 is the LOD2 shell (68k).
+        ///
+        /// Measured 2026-09-12 with the sweep: the race scene on the mobile tier draws 712k triangles
+        /// against a 200k target, 3.5x over, and the LOD ceiling is the biggest single lever left. It
+        /// stays at 1 for one reason: the shipped <c>WhiteHouse_LOD2.glb</c> was cut by a rule that
+        /// deletes every window segment (<c>W_*</c>), the cars and the flags outright, so a phone on
+        /// LOD2 would look at a windowless facade from twenty metres. <c>training/tools/whitehouse_lods.py</c>
+        /// now keeps the windows at LOD2 as a hard-decimated mesh instead; once that script has been
+        /// re-run in Blender and the sweep has been re-measured, raise this to 2. Nothing else needs to
+        /// change: BuildingLodBuilder already wires three levels.
+        /// </summary>
+        public const int MobileLodCeiling = 1;
 
         // ------------------------------------------------------------------ budgets
         //

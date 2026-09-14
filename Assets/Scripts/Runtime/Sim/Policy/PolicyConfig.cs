@@ -83,6 +83,11 @@ namespace PoDecath.Sim
         public float actionScale = 0.25f;
         public float actionClip = 100f;
         public bool clampTargetsToJointLimits = true;
+        [Tooltip("Fraction of joint targets the trainer clamped to the actuator range while this policy " +
+                 "was being trained (train_target_clamp in the policy manifest). The clamp is part of " +
+                 "the trained behaviour; the diagnostics compare the live figure against this rather " +
+                 "than against a fixed bar. 0 = unknown, older manifest.")]
+        public float trainedTargetClamping = 0f;
 
         [Header("Stepping")]
         [Tooltip("Physics steps per second. Sets Time.fixedDeltaTime = 1 / physicsHz.")]

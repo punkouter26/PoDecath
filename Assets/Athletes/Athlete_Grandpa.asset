@@ -16,10 +16,11 @@ MonoBehaviour:
   kind: 2
   model: {fileID: 5022602860645237092, guid: a8269c2479fa3ae4aa1406384be837e1, type: 3}
   mjcfOverride: {fileID: 0}
-  actionScale: 0.5
+  actionScale: 0
   topSpeed: 9
   accelSeconds: 3
   skinOverride: {fileID: 8771091787928289351, guid: 171cf40c14517224ca58ae6eeeff3f80, type: 3}
+  skinOverrideMobile: {fileID: 0}
   boneMap:
   - body: pelvis
     bone: Hips

@@ -87,6 +87,12 @@ def write_policy_manifest(env, args, run_name: str, path: str) -> None:
     cfg["observation_size"] = env.obs_dim
     cfg["trained_by"] = {"run": run_name, "task": args.task,
                          "target_speed": env.target_speed}
+    # What fraction of joint targets this policy pushed past the actuator range *in training*. Unity
+    # measures the same thing live and grades its number against this one rather than against a
+    # fixed threshold: the clamp is part of the trained behaviour, not a fault, until Unity clamps
+    # materially more than the trainer did. Absent (0) on a manifest from before this field existed,
+    # and Unity falls back to its old fixed threshold with a caveat in the verdict.
+    cfg["train_target_clamp"] = float(getattr(env, "last_target_clamp", 0.0))
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(cfg, fh, indent=2)
 

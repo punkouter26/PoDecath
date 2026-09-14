@@ -74,6 +74,8 @@ namespace PoDecath.Diag
 
             // Execution — see the PolicyRunner properties of the same names.
             public float inferMs, clampFrac, obsClipFrac, jitter, actionMag, controlHz;
+            // What the trainer itself clamped, from the policy manifest. 0 when the manifest predates it.
+            public float trainedClampFrac;
 
             // Effort — see EffortMeter. Mean and peak joint torque against the drives' own force limits,
             // the mechanical power that implies, and the cosmetic fatigue built off it.
@@ -288,6 +290,7 @@ namespace PoDecath.Diag
 
             a.inferMs = r.InferenceMs;
             a.clampFrac = r.TargetClamping;
+            a.trainedClampFrac = r.config != null ? r.config.trainedTargetClamping : 0f;
             a.obsClipFrac = r.ObservationClipping;
             a.jitter = r.ActionRate;
             a.actionMag = r.ActionMagnitude;
@@ -299,7 +302,16 @@ namespace PoDecath.Diag
         // Thresholds, in one place, with the reason each was picked. They are deliberately loose: this is
         // a panel that has to be right about the direction of a problem, not precise about its size.
         const float ObsClipBad = 0.02f;    // 1 slot in 48 clipped is already a config fault, not noise
-        const float ClampBad = 0.10f;      // a tenth of the joints asking for a pose the rig cannot hold
+        // Target clamping is graded against what the *trainer* clamped, not against a fixed bar. The
+        // trainer clamps targets to the actuator range in exactly the same way (run_to_target.py, step),
+        // so a policy that trained with 15% of its targets on the stops is behaving as trained when it
+        // does the same here — and that is what every RL athlete was doing when this panel was calling
+        // them Bad on every race. The fault is Unity clamping *more* than training did: a rig whose
+        // limits drifted from the MJCF, or an actionScale that is not the one it trained at. ClampOver
+        // is how far above the trained figure the live one has to sit; ClampBad is the old fixed bar,
+        // kept only for a manifest that carries no trained figure at all.
+        const float ClampOver = 0.08f;     // live clamp this far above the trained one is the rig, not the policy
+        const float ClampBad = 0.10f;      // fallback bar when the manifest has no train_target_clamp
         const float JitterWarn = 0.35f;    // action units per 20 ms step; a clean gait sits well under this
         const float HzSlack = 0.9f;        // control rate this far under the config's is the device losing
         // A joint pinned at its limit for a whole second of control steps, on a body that is working hard
@@ -340,12 +352,25 @@ namespace PoDecath.Diag
                 return;
             }
 
-            if (a.clampFrac > ClampBad)
+            if (a.trainedClampFrac > 0f)
+            {
+                if (a.clampFrac > a.trainedClampFrac + ClampOver)
+                {
+                    a.grade = Grade.Bad;
+                    a.verdict = $"{Pct(a.clampFrac)} of joint targets are being clamped to the rig's limits, against "
+                              + $"{Pct(a.trainedClampFrac)} when this policy was trained. The extra is the rig, not the "
+                              + "policy: regenerate it — its limits have drifted from training/models/athlete.xml — or "
+                              + "check actionScale matches the manifest.";
+                    return;
+                }
+            }
+            else if (a.clampFrac > ClampBad)
             {
                 a.grade = Grade.Bad;
-                a.verdict = $"{Pct(a.clampFrac)} of joint targets are being clamped to the rig's limits. The pose the "
-                          + "policy asks for is not the pose the body gets. Lower actionScale, or regenerate the rig — "
-                          + "its limits have drifted from training/models/athlete.xml.";
+                a.verdict = $"{Pct(a.clampFrac)} of joint targets are being clamped to the rig's limits, and this "
+                          + "policy's manifest does not say how much its trainer clamped, so that cannot be read as "
+                          + "normal or not. Re-export the policy (train_run.py writes train_target_clamp now), or "
+                          + "lower actionScale / regenerate the rig if the figure is clearly off.";
                 return;
             }
 

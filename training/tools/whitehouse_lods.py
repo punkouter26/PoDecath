@@ -48,7 +48,12 @@ RULES = [
     ("Grounds_Props",  0.30, None),
     ("Detail_Fixed",   0.30, None),
     ("Grounds_Hard",   1.00, 1.00),
-    ("W_",             1.00, None),
+    # Windows survive LOD2. They used to be deleted here, which made LOD2 unusable as the phone's
+    # building: from the rooftop deck the facade is twenty metres away and a windowless wall reads
+    # as broken, not distant. Each window segment is a small mesh, so a hard cut keeps the
+    # rectangle and the reveal and drops the mullion detail, which is all a phone can show anyway.
+    # RenderTier.MobileLodCeiling is what a phone draws; it can move from 1 to 2 once this has run.
+    ("W_",             1.00, 0.15),
     ("Car_",           1.00, None),
     ("Flag",           1.00, None),
 ]

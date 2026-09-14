@@ -72,6 +72,9 @@ namespace PoDecath.Sim
             // moment the trainer changed. They come out of the same generated file as everything else now.
             public float action_clip = 5f;
             public float spawn_clearance_m = 0.02f;
+            // Fraction of joint targets the trainer itself clamped to the actuator range. Zero on a
+            // manifest written before the field existed; AgentTelemetry then falls back to a fixed bar.
+            public float train_target_clamp = 0f;
             public string[] observation;
             // Seconds per stride, present only when the run put a gait clock in the observation.
             public float gait_period = 0.8f;
@@ -305,7 +308,11 @@ namespace PoDecath.Sim
             cfg = null;
             TextAsset xml = def.mjcfOverride != null ? def.mjcfOverride : defaultMjcf;
             if (xml == null) { Debug.LogError("[AthleteSpawner] No MJCF assigned.", this); return null; }
+            // A phone gets the decimated skin when one has been made (athlete_lods.py), otherwise the
+            // same skin the PC tier draws. The building got three levels of detail and the athletes
+            // got none, and with sixteen of them on the deck they are the other half of the budget.
             GameObject skinPrefab = def.skinOverride != null ? def.skinOverride : defaultSkin;
+            if (RenderTier.IsMobile && def.skinOverrideMobile != null) skinPrefab = def.skinOverrideMobile;
 
             var opt = new MjcfImporter.Options
             {
@@ -326,6 +333,7 @@ namespace PoDecath.Sim
             cfg.controlDecimation = pj.control_decimation > 0 ? pj.control_decimation : controlDecimation;
             cfg.actionScale = def.actionScale > 0f ? def.actionScale : pj.action_scale;
             cfg.actionClip = pj.action_clip > 0f ? pj.action_clip : 5f;
+            cfg.trainedTargetClamping = Mathf.Clamp01(pj.train_target_clamp);
             cfg.observationClip = 100f;
             // The trainer's own reset clearance. It used to be 0.02 here and 0.02 there by coincidence;
             // the trainer now rests the soles 2 mm off the deck instead of dropping the athlete 3 cm,

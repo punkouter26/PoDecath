@@ -1,7 +1,8 @@
 # PoDecath — agent and contributor guide
 
 Physics-driven creature evaluation runtime for **mobile portrait (9:16)**. Policies are trained
-**externally** (MuJoCo Warp / Newton; Isaac Lab kept only as a cross-check) and executed in Unity
+**externally** (MuJoCo Warp / Newton — the only trainer; the Isaac Lab twin was deleted 2026-09-14)
+and executed in Unity
 through **Unity Inference Engine**
 (package `com.unity.ai.inference`, the Unity 6.2+ name for Sentis; namespace `Unity.InferenceEngine`).
 Unity ML-Agents is not used and must not be added.
@@ -450,15 +451,17 @@ named so nobody has to rediscover it.
 
 ### Training stack
 
-5. **MuJoCo / Newton only.** Training is `mujoco_warp` PPO (`training/train_run.py`, envs in
-   `training/envs/`), moving to Newton as it matures. Unity ML-Agents is not used and must not be
-   added. The Isaac Lab twin under `training/isaac/` is kept for cross-checking only — new training
-   work does not go there (owner decision, 2026-09-12).
+5. **MuJoCo / Newton only — there is no second trainer.** Training is `mujoco_warp` PPO
+   (`training/train_run.py`, envs in `training/envs/`), moving to Newton as it matures. Unity
+   ML-Agents is not used and must not be added. The Isaac Lab twin, its athlete and its comparison
+   tool were **deleted on 2026-09-14** (owner decision). Do not reintroduce them, and do not add a
+   second trainer "for cross-checking": that call has been made and reversed once already.
 6. **Ask for the skinned mesh first.** Do not start training until the owner has supplied the model.
    The rig comes *out of that model*: `training/rig_to_mjcf.py` reads the glb bone hierarchy into
-   `training/models/athlete.xml` (21 DoF) / `athlete_chain.xml` (one hinge per body, required for the
-   Isaac importer). Rig descriptions live in `training/rigs/*.json`. Unity binds the same skeleton by
-   bone name via `SkinBinder` + `AthleteDefinition.boneMap`, so the names must survive the round trip.
+   `training/models/athlete.xml` (21 DoF). Rig descriptions live in `training/rigs/*.json`. Unity
+   binds the same skeleton by bone name via `SkinBinder` + `AthleteDefinition.boneMap`, so the names
+   must survive the round trip. (`rig_to_mjcf.py --chain` still emits `athlete_chain.xml`; nothing
+   consumes it now that the Isaac importer is gone.)
 7. **One model, all behaviours, first.** More creature/human models will arrive later; until then,
    train the initial athlete through every behaviour it needs (run-to-target, track lap, get-up, the
    `DOCS/ROADMAP.md` events) rather than adding skeletons.
@@ -501,7 +504,13 @@ named so nobody has to rediscover it.
     "re-run `PoDecath/Build Everything` instead of editing scene YAML" rule: anything the owner is
     expected to hand-place must be a prefab the builder *instantiates and leaves alone*, not geometry
     the builder recreates from scratch every run, or their edits get overwritten.
-18. **Which MCP to use** — whichever gives the best result for the job:
+18. **Which tool to drive Unity with** — whichever gives the best result for the job:
+    - **Unity CLI / Pipeline** (`unity command ...`, the client for `com.unity.pipeline`, already in
+      `Packages/manifest.json`). Preferred for anything that reloads the domain, or that has to run
+      while the editor is unfocused or minimised: `recompile` / `recompile_status`, `console`, and the
+      `build` / `build_status` pair are all immune to focus, which the HTTP bridges are not. Call editor
+      tooling through `unity command menu --path "PoDecath/Build Everything"`. See *Measuring a policy
+      in Unity* above.
     - `com.anklebreaker.unity-mcp` (https://github.com/AnkleBreaker-Studio/unity-mcp-plugin) is already
       in `Packages/manifest.json` and auto-starts an HTTP bridge on 127.0.0.1 with no credential (port
       7890 upward; find it rather than assuming it) —
@@ -510,6 +519,32 @@ named so nobody has to rediscover it.
     - https://github.com/IvanMurzak/Unity-MCP — configured as MCP server `UnityMCP` at
       http://127.0.0.1:8080/mcp. It refuses connections unless the editor is open with that plugin
       installed; a refusal means "not running", not "not available".
+
+### Collision
+
+19. **Every body part of every creature collides.** Nothing passes through a creature, through another
+    creature, or through anything in the environment. The only contacts that may be missing are the ones
+    the trainer itself removes: `training/models/athlete.xml` sets `contype="1" conaffinity="1"` on every
+    geom and then names the eleven pairs that overlap by construction across a joint in
+    `<contact><exclude>`, and `MjcfImporter.ApplyContactExcludes` mirrors exactly that list onto PhysX per
+    rig. The MJCF is the authority, and the repair for an overlap is to add one more named pair — never a
+    layer-wide ignore, which silently switches off the whole body rather than the one pair.
+
+    **Two gaps against this rule, both in the layer matrix rather than in the rig code.** Neither is a
+    silent fix: both change how a body behaves, and every policy here was trained against a specific
+    contact model, so each is an owner decision.
+    - `RooftopSceneBuilder.BuildScene` runs `Physics.IgnoreLayerCollision(Creature, Creature, true)` at the
+      top of every scene build, and `ProjectSettings/DynamicsManager.asset` has it baked in (layer 8
+      collides with every layer except 8). So today a creature's own parts **do not touch each other at
+      all**, which contradicts the MJCF and makes `ApplyContactExcludes` inert — the exclude list is
+      already implied by the wider ignore. It also contradicts `AthleteSpawner.Awake`'s own comment that
+      self-collision is on. Restoring the MJCF behaviour means deleting that one line *and* clearing the
+      bit in the matrix, then re-measuring.
+    - `AthleteSpawner.IgnoreBetweenAthletes` disables every pair of athletes against every other at spawn.
+      That is deliberate: training only ever sees one body on an empty plane, so no policy has an answer
+      for a shoulder charge, and the symptom of turning it on now would be "the policy got worse when the
+      runners got close" — which reads as a training failure. Enabling it needs a task that trains for
+      contact first.
 
 ## Phase 1 game direction (2026-09-04)
 
@@ -550,23 +585,27 @@ named so nobody has to rediscover it.
   `AthleteRosterBuilder.DressFbx` extracts them to `<model>_Textures/`, binds them to a real material in
   `<model>_Materials/` and remaps the importer onto it. glTF needs none of this; glTFast unpacks images
   as a matter of course.
-- **Isaac Lab twin (`training/isaac/`):** Isaac Sim 5.1 + IsaacLab 2.3 in a separate Python 3.11 venv.
-  The MJCF importer maps a multi-joint body onto one D6 joint with PhysX's fixed X/Y/Z axis order, which
-  swapped the abdomen axes and bent the shoulder sideways (measured with body-quaternion probes). Always
-  convert the **chained** model (`rig_to_mjcf.py --chain` -> `athlete_chain.xml`, one hinge per body) and run
-  `fix_usd.py` (single articulation root, no imported floor). Joint order there is breadth-first, so map by
-  name. The Isaac task also uses Isaac Lab's standard domain randomisation (friction, base mass, pushes,
-  observation noise); the MuJoCo Warp run has none. Exported policy: `Assets/Policies/athlete_isaac.onnx`,
-  yellow athlete "Matt Isaac".
+- **The Isaac Lab twin is gone (removed 2026-09-14).** `training/isaac/`, `training/compare.py`, the
+  `athlete_isaac.onnx` policy and the "Matt Isaac" athlete were deleted by owner decision: one trainer,
+  MuJoCo Warp, and no second path to keep in step. One of its findings is still load-bearing and is
+  kept here: PhysX's MJCF importer maps a multi-joint body onto a single D6 joint in a fixed X/Y/Z axis
+  order, which swapped the abdomen axes and bent the shoulder sideways — which is why the rig is
+  chained. Its numbers are in `DOCS/COMPARISON.md`, which is now a historical record.
 - **Lap running:** `TrackPath` (Unity) and `training/envs/run_track.py` share one centre-line parametrisation
   (straights at +-R along x, clockwise ends, arc length s from the start of the dash straight). Policies
   keep the run-to-target observation; `TrackFollower` places the target 6 m ahead on the centre line
   ("carrot"), and `LapEvent` measures progress along s. Train with `train_run.py --task track`, resuming
   from `checkpoints/run_to_target/latest.pt`, which exports `Assets/Policies/athlete_track.onnx`.
   `RooftopSceneBuilder` prefers that file for the lap scene when it exists.
-- **Creature self-collision is off** (`Physics.IgnoreLayerCollision(Creature, Creature)`), matching the MJCF
-  `contype/conaffinity`. PhysX only skips parent-child link pairs, and the intermediate hinge links break
-  that adjacency, so pelvis/thigh capsules otherwise collide and force the hips to their abduction limits.
+- **Creature self-collision: the intent and the build disagree.** This note used to say self-collision was
+  off "matching the MJCF `contype/conaffinity`", and the MJCF no longer says that: every geom in
+  `training/models/athlete.xml` is `contype="1" conaffinity="1"` with the eleven overlapping pairs named in
+  `<contact><exclude>`, which `MjcfImporter.ApplyContactExcludes` mirrors onto PhysX. PhysX only skips
+  parent-child link pairs, and the intermediate hinge links break that adjacency, so pelvis/thigh capsules
+  otherwise collide and force the hips to their abduction limits — which is precisely what the exclude list
+  exists to prevent. But `RooftopSceneBuilder` still calls `Physics.IgnoreLayerCollision(Creature, Creature,
+  true)` at the head of every build, so the **layer-wide ignore is what is actually in effect** and the
+  per-pair excludes never get a chance to matter. See house rule 19.
 - **Never edit scripts while play mode is running.** The Editor's recompile-and-continue keeps serialized
   fields but drops plain C# objects (Inference Engine worker, observation builder). `PolicyRunner` now
   re-initializes itself when that happens, but any measurement taken in that session is suspect.

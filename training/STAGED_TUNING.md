@@ -221,8 +221,9 @@ what to do when shoulder-charged.
 
 Every shipped `.onnx` takes a 75-float observation and was trained on a 49.8 kg body whose legs could
 pass through each other. All four are now stale:
-`athlete_run.onnx`, `athlete_track.onnx`, `athlete_getup.onnx`, `athlete_isaac.onnx`. They are left in
-place, untouched, as the comparison baseline.
+`athlete_run.onnx`, `athlete_track.onnx`, `athlete_getup.onnx`. They are left in place, untouched, as
+the comparison baseline. (`athlete_isaac.onnx` was the fourth until it was deleted with the rest of
+the Isaac Lab twin on 2026-09-14.)
 
 `training/.venv` was missing entirely and has been rebuilt. There is still no `checkpoints/`, so the
 first run cannot `--resume`.

@@ -134,6 +134,9 @@ namespace PoDecath.EditorTools
             agents.race = dash;
             // One JSON per race with the frame-time record, for comparing devices and builds.
             if (dash != null) agentsGo.AddComponent<RaceLog>().race = dash;
+            // And one beside it with what the broadcast layer's guessed thresholds actually saw:
+            // hurdle impulses, work done per athlete, risk at the moment of each fall.
+            if (dash != null) agentsGo.AddComponent<TuningLog>().race = dash;
 
             var telemetry = UiBakery.AddScreen<TelemetryOverlay>("Telemetry", UiBakery.TelemetryUxml, TelemetryOrder);
             if (telemetry != null)

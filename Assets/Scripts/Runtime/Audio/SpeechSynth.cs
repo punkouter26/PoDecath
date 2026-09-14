@@ -35,8 +35,21 @@ namespace PoDecath.Audio
     ///   driven out of process. It is not elegant — it shells out per line — but a line every few seconds
     ///   is well inside what that costs, and it means the owner hears the commentary on the machine the
     ///   game is actually developed on rather than only on a phone.
-    /// - **Everything else** gets no voice, and the subtitles carry the commentary on their own. That is
-    ///   a real limitation, not a temporary one: it needs a bundled synthesiser to fix.
+    /// - **macOS** (editor and standalone) gets the system voice through <c>/usr/bin/say</c>, the same
+    ///   shape as Windows: one process per line, killed when the next line pre-empts it.
+    /// - **iOS** gets <c>AVSpeechSynthesizer</c> through a twenty-line native plugin
+    ///   (<c>Assets/Plugins/iOS/PoDecathSpeech.mm</c>). Built into every iPhone; nothing to bundle.
+    /// - **Linux** gets whichever of <c>spd-say</c>, <c>espeak-ng</c> or <c>espeak</c> is installed,
+    ///   in that order, and no voice if none is — desktop Linux ships speech-dispatcher almost
+    ///   everywhere, so in practice this is "a voice", but it is the one platform where it is not
+    ///   guaranteed.
+    /// - **Everything else** (WebGL, consoles) gets no voice, and the subtitles carry the commentary
+    ///   on their own.
+    ///
+    /// None of these is a bundled synthesiser, and that is a choice: the platform voices are free,
+    /// already installed, and speak the user's own language settings. A bundled model (Piper,
+    /// sherpa-onnx) would sound the same on every device at the cost of 20+ MB and a native library
+    /// per platform, and would be the right move only if the platform voices proved too uneven.
     ///
     /// The subtitle is not a fallback for the voice. It is always drawn, on every platform, because a
     /// broadcast caption is useful with the sound off and because it is the only part of this feature that
@@ -99,6 +112,18 @@ namespace PoDecath.Audio
             var windows = new WindowsVoice();
             if (windows.Available) { name = "Windows System.Speech"; return windows; }
             windows.Dispose();
+#elif UNITY_IOS && !UNITY_EDITOR
+            var ios = new IosVoice();
+            if (ios.Available) { name = "iOS AVSpeechSynthesizer"; return ios; }
+            ios.Dispose();
+#elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+            var mac = new MacVoice();
+            if (mac.Available) { name = "macOS say"; return mac; }
+            mac.Dispose();
+#elif UNITY_STANDALONE_LINUX || UNITY_EDITOR_LINUX
+            var linux = new LinuxVoice();
+            if (linux.Available) { name = "Linux " + linux.Tool; return linux; }
+            linux.Dispose();
 #endif
             name = "none (subtitles only)";
             return null;
@@ -231,6 +256,150 @@ namespace PoDecath.Audio
                 }
                 catch { }
                 _speaking = null;
+            }
+
+            public void Dispose() => Stop();
+        }
+#endif
+
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX || UNITY_STANDALONE_LINUX || UNITY_EDITOR_LINUX
+        /// <summary>
+        /// One shelled-out process per line, killed when the next line pre-empts it. The Windows voice
+        /// above does the same through PowerShell; this is the POSIX half of that idea, shared by the
+        /// macOS and Linux voices, which differ only in which binary they run and how it takes a rate.
+        /// </summary>
+        abstract class ProcessVoice : ISpeechVoice
+        {
+            System.Diagnostics.Process _speaking;
+
+            public bool Available { get; protected set; } = true;
+
+            protected abstract System.Diagnostics.ProcessStartInfo Start(string text, float rate);
+
+            public void Speak(string text, float rate)
+            {
+                Stop();
+                System.Diagnostics.ProcessStartInfo info;
+                try { info = Start(text, rate); }
+                catch (Exception e) { Available = false; Debug.LogWarning($"[SpeechSynth] voice disabled: {e.Message}"); return; }
+                if (info == null) { Available = false; return; }
+                info.UseShellExecute = false;
+                info.CreateNoWindow = true;
+                info.RedirectStandardInput = true;
+                try
+                {
+                    _speaking = System.Diagnostics.Process.Start(info);
+                    // The text goes down stdin rather than the argument list, so nothing in a line —
+                    // an apostrophe, a quote, a dash — can ever be read as an option.
+                    _speaking.StandardInput.Write(text);
+                    _speaking.StandardInput.Close();
+                }
+                catch (Exception e)
+                {
+                    Available = false;
+                    Debug.LogWarning($"[SpeechSynth] voice disabled: {e.Message}");
+                }
+            }
+
+            public void Stop()
+            {
+                try { if (_speaking != null && !_speaking.HasExited) _speaking.Kill(); }
+                catch { }
+                _speaking = null;
+            }
+
+            public void Dispose() => Stop();
+
+            protected static bool OnPath(string tool)
+            {
+                string path = Environment.GetEnvironmentVariable("PATH") ?? "";
+                foreach (string dir in path.Split(':'))
+                    if (dir.Length > 0 && System.IO.File.Exists(System.IO.Path.Combine(dir, tool))) return true;
+                return false;
+            }
+        }
+#endif
+
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+        /// <summary>The macOS system voice. <c>say</c> is on every Mac and reads stdin when given no text.</summary>
+        class MacVoice : ProcessVoice
+        {
+            public MacVoice() { Available = System.IO.File.Exists("/usr/bin/say"); }
+
+            protected override System.Diagnostics.ProcessStartInfo Start(string text, float rate)
+            {
+                // say takes words per minute; its default is about 175.
+                int wpm = Mathf.Clamp(Mathf.RoundToInt(175f * rate), 90, 400);
+                return new System.Diagnostics.ProcessStartInfo("/usr/bin/say", $"-r {wpm}");
+            }
+        }
+#endif
+
+#if UNITY_STANDALONE_LINUX || UNITY_EDITOR_LINUX
+        /// <summary>
+        /// Whichever speech tool the distribution has. speech-dispatcher's <c>spd-say</c> is the usual
+        /// one on a desktop; the two espeaks are the fallbacks. All three read stdin.
+        /// </summary>
+        class LinuxVoice : ProcessVoice
+        {
+            public string Tool { get; private set; } = "none";
+
+            public LinuxVoice()
+            {
+                foreach (string t in new[] { "spd-say", "espeak-ng", "espeak" })
+                    if (OnPath(t)) { Tool = t; return; }
+                Available = false;
+            }
+
+            protected override System.Diagnostics.ProcessStartInfo Start(string text, float rate)
+            {
+                switch (Tool)
+                {
+                    case "spd-say":
+                        // -r is -100..100 around the default; +25 per 0.25x is about right by ear.
+                        int r = Mathf.Clamp(Mathf.RoundToInt((rate - 1f) * 100f), -100, 100);
+                        return new System.Diagnostics.ProcessStartInfo("spd-say", $"-w -r {r} -e");
+                    case "espeak-ng":
+                    case "espeak":
+                        int wpm = Mathf.Clamp(Mathf.RoundToInt(175f * rate), 80, 450);
+                        return new System.Diagnostics.ProcessStartInfo(Tool, $"-s {wpm} --stdin");
+                }
+                return null;
+            }
+        }
+#endif
+
+#if UNITY_IOS && !UNITY_EDITOR
+        /// <summary>
+        /// The iPhone's own voice, through <c>AVSpeechSynthesizer</c>. The three externs live in
+        /// <c>Assets/Plugins/iOS/PoDecathSpeech.mm</c>; nothing is bundled and the voice follows the
+        /// phone's language settings.
+        /// </summary>
+        class IosVoice : ISpeechVoice
+        {
+            [System.Runtime.InteropServices.DllImport("__Internal")] static extern int PoDecathSpeech_Available();
+            [System.Runtime.InteropServices.DllImport("__Internal")] static extern void PoDecathSpeech_Speak(string text, float rate);
+            [System.Runtime.InteropServices.DllImport("__Internal")] static extern void PoDecathSpeech_Stop();
+
+            public bool Available { get; private set; }
+
+            public IosVoice()
+            {
+                try { Available = PoDecathSpeech_Available() != 0; }
+                catch (Exception e) { Available = false; Debug.LogWarning($"[SpeechSynth] iOS voice disabled: {e.Message}"); }
+            }
+
+            public void Speak(string text, float rate)
+            {
+                if (!Available) return;
+                try { PoDecathSpeech_Speak(text, rate); }
+                catch (Exception e) { Available = false; Debug.LogWarning($"[SpeechSynth] iOS voice disabled: {e.Message}"); }
+            }
+
+            public void Stop()
+            {
+                if (!Available) return;
+                try { PoDecathSpeech_Stop(); } catch { }
             }
 
             public void Dispose() => Stop();

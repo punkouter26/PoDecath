@@ -97,17 +97,31 @@ Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
   sprint policy reaches only ~4.5 m/s on the 17.9 m runway, so its marks are ~2-3 m against the RED bot's
   ~6 m at 9 m/s; a take-off policy trained on the runway is the real fix, not a bigger impulse.
 - Kart deck columns are decorative; no kart physics.
-- **Commentary has no voice on Mac, Linux or iOS.** Android speaks through the platform
-  `TextToSpeech` and Windows through the system synthesiser (shelled out per line, which is not how a
-  shipping game should talk); everywhere else the captions carry it alone. Fixing it properly means
-  bundling a synthesiser — Piper (MIT) or sherpa-onnx (Apache-2.0, and it runs ONNX, which this
-  project already ships a runtime for).
+- ~~Commentary has no voice on Mac, Linux or iOS.~~ **Closed 2026-09-14** without bundling anything:
+  macOS through `say`, iOS through `AVSpeechSynthesizer` (`Assets/Plugins/iOS/PoDecathSpeech.mm`),
+  Linux through `spd-say` / `espeak-ng` / `espeak` when one is installed. Each is the platform's own
+  voice, so it follows the user's language and costs no megabytes. None of the three has been heard
+  yet — there is no Mac, iPhone or Linux box here — so the first run on each is a check, not a
+  formality. A bundled synthesiser (Piper, sherpa-onnx) is still the answer if the platform voices
+  turn out too uneven to tune commentary against, and only then.
 - **The broadcast layer's thresholds are first guesses and want a watched race.** `DramaMeter`'s
   lateral-acceleration scale (3.44 m/s2) and close-gap (2.5 m) come from measurements this project
   already made, but `BroadcastDirector.anticipateRisk` (0.72), `RaceVfx.referenceImpulse` (45 N s) and
   `EffortMeter.fatigueJoules` (16000) do not: nothing has measured what a real hurdle knock or a real
   400 m actually produces. Watch one race and re-tune, rather than trusting the numbers in the file.
+  **The measuring is now automatic (2026-09-14):** `TuningLog` writes `training/logs/races/tuning_*.json`
+  after every race with every strike impulse, every finisher's joules and the risk reading before every
+  fall, and logs one line comparing them to the three values in force. What is still to do is the
+  watching: run a hurdles race and a 400 m, read the line, set the numbers.
 - **None of it has been profiled.** The effort meters, the stress meshes, the skid quads and the camera
   shake are all cheap by design and all untested against a frame budget that is already 10x over on
   the building mesh. Re-run `PoDecath/Sweep All Scenes` and compare before believing otherwise.
 - Mobile build not yet profiled with the 25 MB White House mesh (consider LODs / mesh decimation).
+- **The mobile triangle budget is 3.5x over and the two remaining levers are staged, not pulled
+  (2026-09-14).** Both need Blender, which is not installed here (`DOCS/BLENDER_EXPORT.md`). Once it is:
+  `training/tools/athlete_lods.py` (the athletes have never been decimated; Trump alone is 25.7 MB and
+  sixteen run at once), then `whitehouse_lods.py` again (LOD2 now keeps the windows) and
+  `whitehouse_facade_bake.py`, then raise `RenderTier.MobileLodCeiling` from 1 to 2, rebuild the scenes,
+  and re-run `PoDecath/Sweep All Scenes`. Expect the race scene's 712k to land near the 200k target;
+  measure it rather than expecting it. No phone has been plugged in since any of the effort, stress,
+  skid or shake work landed either — `adb devices` was empty on 2026-09-14.

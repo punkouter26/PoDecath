@@ -17,8 +17,8 @@ Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the te
 ### Training
 
 6. All training runs on **MuJoCo / Newton** (`mujoco_warp` today, Newton as it lands). No Unity
-   ML-Agents. The Isaac Lab twin in `training/isaac/` stays as a comparison reference only — new
-   training work goes to the MuJoCo/Newton path.
+   ML-Agents, and no second trainer: the Isaac Lab twin, its athlete and its comparison tool were
+   deleted on 2026-09-14 (owner decision). MuJoCo/Newton is the only training path.
 7. **Ask the owner for a skinned mesh before attempting to train.** Read the rig (bone hierarchy,
    pivots, limits) out of that model and import it into MuJoCo/Newton
    (`training/rig_to_mjcf.py` -> `training/models/*.xml`) instead of inventing a skeleton.
@@ -55,10 +55,26 @@ Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the te
     static object positions can be nudged in the editor instead of being hard-coded in a builder
     script.
 19. Drive Unity through whichever of these gives the best result:
+    - **Unity CLI / Pipeline** (`unity command ...`, the client for `com.unity.pipeline`) — the only one
+      that keeps working through a domain reload while the editor is unfocused, so it is the right tool
+      for `recompile` / `recompile_status` / `console` / `build_status`. Call editor tooling as
+      `unity command menu --path "PoDecath/Build Everything"`.
     - `com.anklebreaker.unity-mcp` (already in `Packages/manifest.json`; HTTP bridge on
       127.0.0.1, port 7890 upward — find it, see `AGENTS.md`)
     - https://github.com/CoplayDev/unity-mcp
     - https://github.com/IvanMurzak/Unity-MCP (the `UnityMCP` server on 127.0.0.1:8080)
+20. **Every body part of every creature collides.** Nothing passes through a creature, through another
+    creature, or through anything in the environment; the only contacts that may be missing are the ones
+    the trainer itself removes. The MJCF is the authority — `contype="1" conaffinity="1"` on every geom
+    plus the eleven `<contact><exclude>` pairs, mirrored onto PhysX by
+    `MjcfImporter.ApplyContactExcludes`. Never paper over an overlap with a layer-wide ignore, because
+    that switches off the entire body instead of the one pair.
+
+    **Two gaps, both owner decisions** (the detail is in `AGENTS.md` house rule 19):
+    `RooftopSceneBuilder` still applies `Physics.IgnoreLayerCollision(Creature, Creature, true)` on every
+    build, so a creature's own parts do not collide and the exclude list is inert; and
+    `AthleteSpawner.IgnoreBetweenAthletes` deliberately lets athletes pass through one another, because
+    training only ever shows a policy one body on an empty plane.
 
 ## Hard constraints
 

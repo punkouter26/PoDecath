@@ -245,7 +245,7 @@ class RunToTargetEnv:
                       # KPI instrumentation. None of these change the reward; they exist so a run can
                       # be graded against a threshold instead of eyeballed off the return curve.
                       "verr_sum", "vhit_sum", "torque_sum", "power_sum", "jerk_sum",
-                      "pitch_sum", "roll_sum", "sat_sum")}
+                      "pitch_sum", "roll_sum", "sat_sum", "tclamp_sum")}
         # Per-term reward accounting. A rising return says nothing on its own about whether the
         # policy is getting better or just getting better at one term; this says which.
         self.term_names = ['track', 'prog', 'alive', 'upright', 'heading', 'height', 'lin_z', 'ang', 'act', 'rate', 'limit', 'reach', 'air', 'slip', 'clear', 'width', 'alt', 'arm', 'energy', 'qvel', 'gait', 'fall']
@@ -464,7 +464,14 @@ class RunToTargetEnv:
         applied = self.dr.delay(action, self.last_action) if self.dr is not None else action
         self.prev_action = self.last_action
         self.last_action = action
-        target = (self.default_joint + applied * self.action_scale).clamp(self.ctrl_lo, self.ctrl_hi)
+        want = self.default_joint + applied * self.action_scale
+        # Fraction of joint targets outside the actuator range *before* the clamp below. Unity computes
+        # the identical number on its side (PolicyRunner.TargetClamping) and used to grade it against a
+        # fixed 10%, which called a healthy policy Bad on every race: the clamp is part of how this policy
+        # was trained, so the fair test is "does Unity clamp materially more than training did", and for
+        # that Unity needs to know what training did. Exported as tgt_clamp and written into the manifest.
+        self._acc["tclamp_sum"] += ((want < self.ctrl_lo) | (want > self.ctrl_hi)).float().mean()
+        target = want.clamp(self.ctrl_lo, self.ctrl_hi)
         self.ctrl.copy_(target)
         if self.dr is not None:
             self.dr.maybe_push(self.qvel)
@@ -693,7 +700,10 @@ class RunToTargetEnv:
             "pitch_dev": a["pitch_sum"] / s * deg,            # degrees off vertical
             "roll_dev": a["roll_sum"] / s * deg,
             "act_sat": a["sat_sum"] / s,                      # fraction of actions on the clip
+            "tgt_clamp": a["tclamp_sum"] / s,                 # fraction of joint targets outside ctrlrange
         })
+        # Kept for the manifest: the last value is what the exported policy actually did.
+        self.last_target_clamp = out["tgt_clamp"]
         # Reward terms as a per-step mean, so they add up to the mean step reward and can be read
         # against each other directly.
         out.update({f"rt_{t}": a[f"rt_{t}"] / s for t in self.term_names})

@@ -74,7 +74,13 @@ namespace PoDecath.EditorTools
             bool devScene = mode == Mode.Dash;                      // the only scene that keeps the hands-on HUD
             PoDecathSceneBuilder.EnsureLayer(CreatureLayer, 8);
             int creatureLayer = LayerMask.NameToLayer(CreatureLayer);
-            if (creatureLayer > 0) Physics.IgnoreLayerCollision(creatureLayer, creatureLayer, true);   // no self-collision, like the MJCF
+            // This used to say "no self-collision, like the MJCF", which is the opposite of what the MJCF
+            // says. It is the widest of the gaps against AGENTS.md house rule 19: a layer-wide ignore stops
+            // *any* two Creature colliders from touching, so a body's own parts never meet and
+            // MjcfImporter.ApplyContactExcludes has nothing left to exclude. Left as it is because
+            // re-enabling self-collision changes contact dynamics on every trained policy and is an owner
+            // decision, not a silent fix -- see the file's own note when that decision is made.
+            if (creatureLayer > 0) Physics.IgnoreLayerCollision(creatureLayer, creatureLayer, true);
             PolicyLibraryTools.EnsureFolder("Assets/Materials");
             Material asphalt = PoDecathSceneBuilder.Mat("Track_Asphalt", new Color(0.16f, 0.16f, 0.18f));
             Material barrier = PoDecathSceneBuilder.Mat("Track_Barrier", new Color(0.85f, 0.12f, 0.12f));

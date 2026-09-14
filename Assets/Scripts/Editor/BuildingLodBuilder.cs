@@ -65,6 +65,8 @@ namespace PoDecath.EditorTools
             Dictionary<string, MeshRenderer> lod2 = lod2Asset != null
                 ? Instantiate(lod2Asset, building.transform, "LOD2", materials)
                 : new Dictionary<string, MeshRenderer>();
+            int baked = ApplyFacadeBakes(lod2);
+            if (baked > 0) Debug.Log($"[PoDecath] {baked} LOD2 part(s) carry baked facade textures from {BakeDir}.");
 
             int groups = 0;
             foreach (KeyValuePair<string, MeshRenderer> kv in lod0)
@@ -89,6 +91,63 @@ namespace PoDecath.EditorTools
             foreach (KeyValuePair<string, MeshRenderer> kv in lod1) if (!lod0.ContainsKey(kv.Key)) kv.Value.enabled = false;
             foreach (KeyValuePair<string, MeshRenderer> kv in lod2) if (!lod0.ContainsKey(kv.Key)) kv.Value.enabled = false;
             return groups;
+        }
+
+        public const string BakeDir = "Assets/Textures/Building";
+
+        /// <summary>
+        /// A LOD2 part whose relief and colour have been baked down from the full-detail mesh
+        /// (<c>training/tools/whitehouse_facade_bake.py</c>) gets its own material instead of the LOD0
+        /// one by name: the bake's albedo and tangent-space normal on a lit URP surface. This is what
+        /// lets a phone draw the 68k-triangle shell and still see columns and window reveals. Parts with
+        /// no <c>&lt;name&gt;_bakeD.png</c> under <see cref="BakeDir"/> are left exactly as before, so
+        /// this is a no-op until the bake has been run.
+        /// </summary>
+        static int ApplyFacadeBakes(Dictionary<string, MeshRenderer> lod2)
+        {
+            int n = 0;
+            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit == null) return 0;
+            foreach (KeyValuePair<string, MeshRenderer> kv in lod2)
+            {
+                string albedoPath = $"{BakeDir}/{kv.Key}_bakeD.png";
+                string normalPath = $"{BakeDir}/{kv.Key}_bakeN.png";
+                var albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(albedoPath);
+                if (albedo == null) continue;
+                var normal = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
+                if (normal != null)
+                {
+                    // The bake writes a plain PNG; Unity has to be told it is a normal map or it is read
+                    // as colour and the relief comes out flat and blue.
+                    var imp = AssetImporter.GetAtPath(normalPath) as TextureImporter;
+                    if (imp != null && imp.textureType != TextureImporterType.NormalMap)
+                    {
+                        imp.textureType = TextureImporterType.NormalMap;
+                        imp.SaveAndReimport();
+                    }
+                }
+
+                string matPath = $"{BakeDir}/{kv.Key}_Baked.mat";
+                var mat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+                if (mat == null)
+                {
+                    mat = new Material(lit);
+                    AssetDatabase.CreateAsset(mat, matPath);
+                }
+                mat.SetTexture("_BaseMap", albedo);
+                if (normal != null)
+                {
+                    mat.SetTexture("_BumpMap", normal);
+                    mat.EnableKeyword("_NORMALMAP");
+                }
+                EditorUtility.SetDirty(mat);
+
+                Material[] mats = kv.Value.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+                kv.Value.sharedMaterials = mats;
+                n++;
+            }
+            return n;
         }
 
         static Dictionary<string, MeshRenderer> Instantiate(GameObject asset, Transform parent, string name,

@@ -42,12 +42,14 @@ Green athlete = MuJoCo Warp policy. Yellow athlete = Isaac Lab policy. Both race
 ## Reproduce
 
 ```
-# MuJoCo Warp
+# MuJoCo Warp — the only trainer since 2026-09-14
 cd training && .venv/Scripts/python.exe train_run.py --num-envs 4096 --iters 1500
-# Isaac Lab
-cd training/isaac && .venv/Scripts/python.exe -u train_isaac.py --headless --num-envs 2048 --iters 1500
-# table from TensorBoard logs
-cd training && .venv/Scripts/python.exe compare.py     # writes DOCS/COMPARISON_TABLE.md
 ```
 
-TensorBoard (both runs): http://localhost:6006
+The Isaac Lab half of this comparison **can no longer be reproduced**: `training/isaac/` and
+`training/compare.py` were deleted on 2026-09-14, along with the "Matt Isaac" athlete and the
+`athlete_isaac.onnx` policy. Everything below is a historical record of that one experiment, not a
+live capability — read the Isaac column as "what a second trainer did once", and remember that the
+athletes named here no longer exist in the roster.
+
+TensorBoard: http://localhost:6006

@@ -62,13 +62,21 @@ namespace PoDecath.EditorTools
 
             panel.scaleMode = PanelScaleMode.ScaleWithScreenSize;
             panel.referenceResolution = new Vector2Int(RefWidth, RefHeight);
-            // Halfway between matching width and matching height. The game is designed portrait at
-            // 1080x1920 but is played and captured in every aspect from a phone to a desktop game view;
-            // matching width alone makes a landscape window's text enormous, matching height alone makes a
-            // narrow phone's text tiny, and 0.5 is the only setting that is merely wrong at both extremes
-            // rather than unusable at one.
-            panel.screenMatchMode = PanelScreenMatchMode.MatchWidthOrHeight;
-            panel.match = 0.5f;
+            // Fit, rather than a fixed blend between the two axes. The game is designed portrait at
+            // 1080x1920 but is played and captured in every aspect from a phone to a desktop game view,
+            // and the two failure modes pull opposite ways: matching width alone makes a landscape
+            // window's text enormous, matching height alone squeezes a tall phone's layout narrower than
+            // it was designed. The old setting was a 0.5 blend, which is merely wrong at both extremes
+            // rather than unusable at one -- but it is wrong on the shipping target. On a 20:9 phone
+            // (1080x2400) a 0.5 blend scales by 1.12, so the 1080-wide layout is handed 966 reference
+            // pixels of width and is pinched sideways, while being given vertical room it never needed.
+            //
+            // Expand takes the smaller of the two scale factors, which is exactly "never crop either
+            // axis": the tall phone gets its full designed 1080 of width and spare height (no horizontal
+            // pinch, and more room to fit a screen without scrolling), and the landscape game view gets
+            // its full designed 1920 of height instead of giant text. Both extremes are correct rather
+            // than equally compromised, and it needs no per-frame code.
+            panel.screenMatchMode = PanelScreenMatchMode.Expand;
             panel.clearColor = false;
             panel.sortingOrder = 0f;
 
