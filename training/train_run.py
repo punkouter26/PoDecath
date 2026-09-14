@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import shutil
 import subprocess
@@ -152,6 +153,20 @@ def main() -> None:
                     help="variance of the speed-tracking Gaussian. At the 2.0 default a standing body "
                          "scores exp(-3.5^2/2/2.0) = 0.0024 of the 1.5 on offer, with a gradient to "
                          "match, so nothing pulls it toward the commanded pace. Widen to restore it.")
+    ap.add_argument("--action-scale", type=float, default=0.5,
+                    help="radians of joint target per unit action. With the regenerated model's "
+                         "stiffer joints this also scales the torque the exploration noise injects.")
+    ap.add_argument("--init-std", type=float, default=0.8,
+                    help="initial exploration standard deviation of the Gaussian policy.")
+    ap.add_argument("--posture-w", type=float, default=1.0,
+                    help="multiplier on alive+upright+heading, the income an athlete collects for "
+                         "standing still and facing the target (0.79/step at 1.0).")
+    ap.add_argument("--init-speed", type=float, default=0.0,
+                    help="reset episodes already moving forward at U[0, this] m/s, so the policy "
+                         "experiences being at speed instead of having to discover it first.")
+    ap.add_argument("--alt-w", type=float, default=0.5,
+                    help="weight on the double-support penalty. A run has no double-support phase, "
+                         "but every walk does; 0 lets the athlete reach a walk before a run.")
     ap.add_argument("--prog-w", type=float, default=0.25,
                     help="weight on raw forward progress. Has to beat the 0.79/step that alive + "
                          "upright + heading pay for standing still, or standing still wins.")
@@ -184,6 +199,17 @@ def main() -> None:
     run_name = args.run_name or f"{TASK}_{time.strftime('%Y%m%d_%H%M%S')}"
     tb_dir = os.path.join(tb_root, run_name)
     writer = SummaryWriter(tb_dir)
+    # Record what this run actually was. Two three-hour runs on 2026-09-13 left a CSV, a log and a
+    # TensorBoard directory between them and no record of a single argument, so the only way to
+    # recover their target speed was to read `env/target_speed` back out of the event files and the
+    # rest was unrecoverable. A run whose configuration is not written down cannot be reproduced or
+    # honestly compared against another.
+    cfg_json = os.path.join(HERE, "logs", run_name + ".args.json")
+    with open(cfg_json, "w", encoding="utf-8") as fh:
+        json.dump({"argv": sys.argv[1:], "args": vars(args),
+                   "started": time.strftime("%Y-%m-%d %H:%M:%S")}, fh, indent=2, sort_keys=True)
+    print("[run] " + " ".join([os.path.basename(sys.argv[0])] + sys.argv[1:]))
+    print(f"[run] config written to {cfg_json}")
     if not args.no_tensorboard:
         launch_tensorboard(tb_root, args.tb_port)
 
@@ -201,7 +227,9 @@ def main() -> None:
     env = env_cls(args.xml, args.num_envs, device=device, seed=args.seed, target_speed=args.target_speed,
                   domain_rand=domain_rand, dr_kwargs=dr_kwargs, cuda_graph=not args.no_cuda_graph,
                   air_time_cap=args.air_time_cap, fall_penalty=args.fall_penalty,
-                  track_var=args.track_var, prog_w=args.prog_w)
+                  track_var=args.track_var, prog_w=args.prog_w, alt_w=args.alt_w,
+                  posture_w=args.posture_w, init_speed=args.init_speed,
+                  action_scale=args.action_scale)
     if domain_rand:
         ramp = (f"ramping {args.dr_start_strength:g} -> 1 over {args.dr_ramp_iters} iters"
                 if args.dr_ramp_iters > 0 else "no ramp, full from iteration 0")
@@ -219,11 +247,17 @@ def main() -> None:
     minibatches = args.minibatches or max(1, round(args.steps * args.num_envs / 24576))
     cfg = PPOConfig(steps_per_env=args.steps, lr=args.lr, desired_kl=args.desired_kl,
                     entropy_coef=args.entropy_coef, minibatches=minibatches,
-                    epochs=args.epochs, lr_adapt=args.lr_adapt)
+                    epochs=args.epochs, lr_adapt=args.lr_adapt, init_std=args.init_std)
     print(f"[ppo] batch {args.steps * args.num_envs:,} samples / iteration in {minibatches} minibatches "
           f"of {args.steps * args.num_envs // minibatches:,}")
     ppo = PPO(env.obs_dim, env.A, args.num_envs, device, cfg)
-    ck_dir = os.path.join(HERE, "checkpoints", TASK)
+    # Per run, not per task. Every run used to write model_<iter>.pt into one directory shared by
+    # the whole task, so a short A/B overwrote a long run's early checkpoints and three concurrent
+    # A/Bs interleaved their saves into a single sequence that belonged to none of them. On
+    # 2026-09-13 that put a 220-iteration experiment's weights under the same names as a
+    # 7105-iteration run's, and only the high iteration numbers survived because the short run
+    # never reached them. `latest.pt` was the same file for all of them.
+    ck_dir = os.path.join(HERE, "checkpoints", TASK, run_name)
     os.makedirs(ck_dir, exist_ok=True)
     start_iter = 0
     if args.resume:
@@ -328,7 +362,13 @@ def main() -> None:
         out_of_time = args.max_hours > 0.0 and (time.time() - t_start) >= args.max_hours * 3600.0
         if (it + 1) % args.save_every == 0 or it + 1 == args.iters or out_of_time:
             ck = os.path.join(ck_dir, f"model_{it + 1:05d}.pt")
-            ppo.save(ck, {"iter": it + 1, "obs_dim": env.obs_dim, "act_dim": env.A})
+            # action_scale and the target speed travel with the weights. `athlete_rollout.py`
+            # otherwise reads action_scale out of athlete_policy_config.json, which is whatever the
+            # model was last generated with -- so a checkpoint trained at 0.167 would be evaluated at
+            # 0.5 and simply fall over, with nothing anywhere to say why.
+            ppo.save(ck, {"iter": it + 1, "obs_dim": env.obs_dim, "act_dim": env.A,
+                          "action_scale": env.action_scale, "target_speed": env.target_speed,
+                          "run_name": run_name})
             shutil.copyfile(ck, os.path.join(ck_dir, "latest.pt"))
             onnx_path = os.path.join(ck_dir, "latest.onnx")
             export_onnx(ppo, onnx_path, env.obs_dim)

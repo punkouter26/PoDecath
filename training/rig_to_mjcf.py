@@ -88,7 +88,14 @@ VELOCITY_LIMIT = {
 }
 STAND_DEG = {  # default posture (external convention) used as policy default_joint_pos
     "abdomen_z": 0, "abdomen_y": 0, "abdomen_x": 0,
-    "hip_x": 0, "hip_z": 0, "hip_y": 0, "knee": 0, "ankle_y": 0, "ankle_x": 0,
+    # A 3 degree forward lean at the ankle, with the hip taking the opposite sign so the trunk stays
+    # vertical rather than the whole body pitching. Measured 2026-09-14: the rig's rest pose puts the
+    # whole-body centre of mass at **17% of the heel-to-toe span**, where a standing human sits near
+    # 45%, and the foot has only 6.4 cm of heel behind the ankle against 27 cm of toe in front. From
+    # there the body topples backwards under its own weight in 1.75 s holding its own pose with zero
+    # action -- which is the episode length every training run on this model has ever reported.
+    # 3 degrees moves the centre of mass to mid-foot; see tools/pose_sweep.py and tools/stand_robust.py.
+    "hip_x": 0, "hip_z": 0, "hip_y": 3, "knee": 0, "ankle_y": -3, "ankle_x": 0,
     "shoulder_x": -78, "shoulder_z": 0, "elbow": -35,
 }
 RADII = {"pelvis": 0.085, "torso": 0.085, "head": 0.085, "thigh": 0.06, "shin": 0.045,

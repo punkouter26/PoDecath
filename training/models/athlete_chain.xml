@@ -125,29 +125,29 @@
     <exclude body1="upper_arm_r" body2="forearm_r" />
   </contact>
   <actuator>
-    <position name="abdomen_z" joint="abdomen_z" kp="150.0" kv="7.0" forcerange="-170.0 170.0" ctrlrange="-0.7854 0.7854" />
-    <position name="abdomen_y" joint="abdomen_y" kp="150.0" kv="7.0" forcerange="-170.0 170.0" ctrlrange="-1.0472 0.5236" />
-    <position name="abdomen_x" joint="abdomen_x" kp="150.0" kv="7.0" forcerange="-170.0 170.0" ctrlrange="-0.6109 0.6109" />
+    <position name="abdomen_z" joint="abdomen_z" kp="450.0" kv="21.0" forcerange="-170.0 170.0" ctrlrange="-0.7854 0.7854" />
+    <position name="abdomen_y" joint="abdomen_y" kp="450.0" kv="21.0" forcerange="-170.0 170.0" ctrlrange="-1.0472 0.5236" />
+    <position name="abdomen_x" joint="abdomen_x" kp="450.0" kv="21.0" forcerange="-170.0 170.0" ctrlrange="-0.6109 0.6109" />
     <position name="shoulder_x_l" joint="shoulder_x_l" kp="50.0" kv="2.5" forcerange="-60.0 60.0" ctrlrange="-2.9671 0.5236" />
     <position name="shoulder_z_l" joint="shoulder_z_l" kp="50.0" kv="2.5" forcerange="-60.0 60.0" ctrlrange="-1.5708 1.5708" />
     <position name="elbow_l" joint="elbow_l" kp="40.0" kv="2.0" forcerange="-50.0 50.0" ctrlrange="-2.6180 0.0000" />
     <position name="shoulder_x_r" joint="shoulder_x_r" kp="50.0" kv="2.5" forcerange="-60.0 60.0" ctrlrange="-0.5236 2.9671" />
     <position name="shoulder_z_r" joint="shoulder_z_r" kp="50.0" kv="2.5" forcerange="-60.0 60.0" ctrlrange="-1.5708 1.5708" />
     <position name="elbow_r" joint="elbow_r" kp="40.0" kv="2.0" forcerange="-50.0 50.0" ctrlrange="0.0000 2.6180" />
-    <position name="hip_x_l" joint="hip_x_l" kp="200.0" kv="10.0" forcerange="-240.0 240.0" ctrlrange="-0.6981 0.6981" />
-    <position name="hip_z_l" joint="hip_z_l" kp="200.0" kv="10.0" forcerange="-240.0 240.0" ctrlrange="-0.6109 0.6109" />
-    <position name="hip_y_l" joint="hip_y_l" kp="200.0" kv="10.0" forcerange="-240.0 240.0" ctrlrange="-2.0944 0.5236" />
-    <position name="knee_l" joint="knee_l" kp="200.0" kv="10.0" forcerange="-260.0 260.0" ctrlrange="0.0000 2.6180" />
-    <position name="ankle_y_l" joint="ankle_y_l" kp="250.0" kv="10.0" forcerange="-220.0 220.0" ctrlrange="-0.3491 0.8727" />
-    <position name="ankle_x_l" joint="ankle_x_l" kp="80.0" kv="4.0" forcerange="-60.0 60.0" ctrlrange="-0.4363 0.4363" />
-    <position name="hip_x_r" joint="hip_x_r" kp="200.0" kv="10.0" forcerange="-240.0 240.0" ctrlrange="-0.6981 0.6981" />
-    <position name="hip_z_r" joint="hip_z_r" kp="200.0" kv="10.0" forcerange="-240.0 240.0" ctrlrange="-0.6109 0.6109" />
-    <position name="hip_y_r" joint="hip_y_r" kp="200.0" kv="10.0" forcerange="-240.0 240.0" ctrlrange="-2.0944 0.5236" />
-    <position name="knee_r" joint="knee_r" kp="200.0" kv="10.0" forcerange="-260.0 260.0" ctrlrange="0.0000 2.6180" />
-    <position name="ankle_y_r" joint="ankle_y_r" kp="250.0" kv="10.0" forcerange="-220.0 220.0" ctrlrange="-0.3491 0.8727" />
-    <position name="ankle_x_r" joint="ankle_x_r" kp="80.0" kv="4.0" forcerange="-60.0 60.0" ctrlrange="-0.4363 0.4363" />
+    <position name="hip_x_l" joint="hip_x_l" kp="600.0" kv="30.0" forcerange="-240.0 240.0" ctrlrange="-0.6981 0.6981" />
+    <position name="hip_z_l" joint="hip_z_l" kp="600.0" kv="30.0" forcerange="-240.0 240.0" ctrlrange="-0.6109 0.6109" />
+    <position name="hip_y_l" joint="hip_y_l" kp="600.0" kv="30.0" forcerange="-240.0 240.0" ctrlrange="-2.0944 0.5236" />
+    <position name="knee_l" joint="knee_l" kp="600.0" kv="30.0" forcerange="-260.0 260.0" ctrlrange="0.0000 2.6180" />
+    <position name="ankle_y_l" joint="ankle_y_l" kp="750.0" kv="30.0" forcerange="-220.0 220.0" ctrlrange="-0.3491 0.8727" />
+    <position name="ankle_x_l" joint="ankle_x_l" kp="240.0" kv="12.0" forcerange="-60.0 60.0" ctrlrange="-0.4363 0.4363" />
+    <position name="hip_x_r" joint="hip_x_r" kp="600.0" kv="30.0" forcerange="-240.0 240.0" ctrlrange="-0.6981 0.6981" />
+    <position name="hip_z_r" joint="hip_z_r" kp="600.0" kv="30.0" forcerange="-240.0 240.0" ctrlrange="-0.6109 0.6109" />
+    <position name="hip_y_r" joint="hip_y_r" kp="600.0" kv="30.0" forcerange="-240.0 240.0" ctrlrange="-2.0944 0.5236" />
+    <position name="knee_r" joint="knee_r" kp="600.0" kv="30.0" forcerange="-260.0 260.0" ctrlrange="0.0000 2.6180" />
+    <position name="ankle_y_r" joint="ankle_y_r" kp="750.0" kv="30.0" forcerange="-220.0 220.0" ctrlrange="-0.3491 0.8727" />
+    <position name="ankle_x_r" joint="ankle_x_r" kp="240.0" kv="12.0" forcerange="-60.0 60.0" ctrlrange="-0.4363 0.4363" />
   </actuator>
   <keyframe>
-    <key name="stand" qpos="0 0 0.9020 1 0 0 0 0.0000 0.0000 0.0000 -1.3614 0.0000 -0.6109 1.3614 0.0000 0.6109 0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0000" />
+    <key name="stand" qpos="0 0 0.9020 1 0 0 0 0.0000 0.0000 0.0000 -1.3614 0.0000 -0.6109 1.3614 0.0000 0.6109 0.0000 0.0000 0.0524 0.0000 -0.0524 0.0000 0.0000 0.0000 0.0524 0.0000 -0.0524 0.0000" />
   </keyframe>
 </mujoco>

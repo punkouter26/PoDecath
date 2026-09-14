@@ -111,6 +111,12 @@ class PPOConfig:
     # and measurably does: the baseline run swung between 1e-5 and 3.4e-3 from iteration to
     # iteration. A smaller factor makes the same controller converge instead of thrash.
     lr_adapt: float = 1.5
+    # Standard deviation the Gaussian policy starts exploring with. Measured 2026-09-14: at the
+    # shipped 0.8 with action_scale 0.5 the sampled action jitters every joint target by about
+    # +-0.4 rad at 50 Hz, and a body holding nothing but its own stand pose under that noise is on
+    # the floor inside 1.4 s -- 0 of 40 trials survived 5 s. Training therefore opened every run by
+    # shaking the athlete apart, and the policy's first job was to cancel its own exploration.
+    init_std: float = 0.8
 
 
 class PPO:
@@ -118,7 +124,7 @@ class PPO:
         self.cfg = cfg
         self.device = device
         self.num_envs = num_envs
-        self.model = ActorCritic(obs_dim, act_dim).to(device)
+        self.model = ActorCritic(obs_dim, act_dim, init_std=cfg.init_std).to(device)
         self.obs_rms = RunningMeanStd(obs_dim, device)
         self.opt = torch.optim.Adam(self.model.parameters(), lr=cfg.lr)
         T, N = cfg.steps_per_env, num_envs

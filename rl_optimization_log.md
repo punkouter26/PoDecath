@@ -466,3 +466,270 @@ intends. Experiment runs since then export to `training/logs/scratch_policies/`.
 
 Fixed a reset bug that made 44 % of the reward a phantom penalty, raised the fall penalty and cut
 exploration noise: +57 % return, +30 % survival, half the torso roll. Still falls every episode.
+
+---
+
+# SESSION 2 — 2026-09-13 23:40 to 2026-09-14
+
+Resumed against the same goal. The log above ends at 16:33; between then and 23:19 three more runs
+happened (`overnight_3h`, `contactfix_3h`, and a three-way A/B `f0/f1/f2`) and three commits landed,
+none of them written up here. This section starts by grading those, and then follows where they lead.
+
+Tooling added first, because every number below depends on it:
+
+| Tool | Question it answers |
+|---|---|
+| `training/tools/grade.py` | what did a run actually score against the Section 1.7 thresholds, side by side with any other run |
+| `training/tools/tb_read.py` | what was a finished run's target speed / any scalar, recovered from its TensorBoard events |
+| `training/tools/stand_check.py` | can the body hold its own stand pose, and where is its weight over its feet |
+| `training/tools/stand_trace.py` | which joint gives way when it cannot |
+| `training/tools/gain_sweep.py` | how much joint stiffness would it take |
+| `training/tools/pose_sweep.py` | can a better stand pose replace that stiffness |
+| `training/tools/stand_robust.py` | does a candidate survive the noise the trainer actually resets with |
+| `training/tools/noise_robust.py` | does it survive the noise the *policy* injects |
+
+## 2.1 Grading the runs the previous session did not see
+
+### The three-way A/B on the standing-still failure (f0/f1/f2)
+
+220 iterations each, 4096 environments, run concurrently so they are mutually controlled.
+
+| KPI | f0 control | f1 track_var 8 | f2 track_var 8 + fall 5 |
+|---|---:|---:|---:|
+| `ep_return` | 40.1 | 103 | 108 |
+| `surv_ratio` | 0.109 | 0.134 | 0.113 |
+| `fall_rate` | 1.000 | 0.9997 | 1.000 |
+| `v_toward` | 0.495 | 0.440 | 0.810 |
+| `rt_track` | 0.060 | 0.483 | 0.623 |
+
+Widening the tracking kernel did what it was designed to do to the *term* (`rt_track` 0.06 -> 0.48)
+and **nothing to the speed** (`v_toward` 0.495 -> 0.440, slightly worse). The speed gain in f2 comes
+from the other knob in it, the fall penalty dropping 20 -> 5. Since there is no run with the widened
+kernel at the old fall penalty held separately, f1 is the one that isolates it, and it says the
+kernel was not the problem. Worth stating because the commit message that launched these runs
+attributes the standing-still failure to the kernel.
+
+### The two three-hour runs
+
+| KPI | `overnight_3h` (7105 iters) | `contactfix_3h` (1154 iters) |
+|---|---:|---:|
+| `surv_ratio` | 0.703 | 0.654 (peak 0.929 at iter 420) |
+| `v_toward` | 2.01 | 0.028 |
+| `duty_factor` | 0.023 | 0.973 |
+
+`overnight_3h` is the best result this project has produced — 2 m/s with 70 % survival over 1.4
+billion environment steps — and **it is not reproducible or usable**, for two separate reasons.
+
+First, its gait numbers are measured with the pre-fix contact test, so `duty_factor` 0.023 and
+`air_time` 3.2 s are the artefact commit 46062a4 describes, not readings. Second, and worse: the
+contact fix changed two of the policy's 78 *observations*, so `overnight_3h`'s weights are now being
+fed a vector they never trained against. Evaluated in plain MuJoCo through `eval_100m.py` the policy
+**falls after 1.5 s and covers 1.5 m**, against the 2 m/s the training curve claims.
+
+That the harness is not at fault was checked against `contactfix_3h`'s own checkpoint, which trained
+*with* the corrected contact test: it stands for **47 s and travels -0.2 m**, exactly the statue its
+training curve describes. The harness is right; the older policy is out of distribution.
+
+**The contact fix invalidated every policy trained before it, and that was not recorded anywhere.**
+
+### Two things found while grading, both fixed
+
+- **Runs did not record their own arguments.** Two three-hour runs left a CSV, a log and a TensorBoard
+  directory between them and not one command-line argument, so their target speed had to be recovered
+  by reading `env/target_speed` back out of the event files and everything else was unrecoverable.
+  `train_run.py` now writes `logs/<run>.args.json` and echoes the command line.
+- **Checkpoints were not namespaced per run.** Every run wrote `model_<iter>.pt` into one directory
+  shared by the whole task, so short A/Bs overwrote long runs' checkpoints and three concurrent A/Bs
+  interleaved their saves into a sequence belonging to none of them. `overnight_3h`'s weights
+  survived only because no short run ever reached iteration 7106. They are preserved in
+  `training/checkpoints/keep/` and new runs write to `checkpoints/<task>/<run>/`.
+
+## 2.2 The speed curriculum was built to ramp the wrong way
+
+`--speed-adaptive` moves the target between `--target-speed` (the floor) and `--target-speed-final`
+(the ceiling). Every run in this project set `--target-speed 3.5`, so the curriculum's *floor* was a
+sprint and it could only ever ramp upward from one. There has never been a walk-first curriculum;
+the flag to build one already existed and was being handed the wrong argument.
+
+## 2.3 Batch G — the double-support penalty is not the blocker, and low speed buys survival by standing still
+
+Three runs against `f2_trackvar_fall`, 220 iterations, 4096 environments, one knob each.
+
+| KPI | f2 (3.5 m/s) | g1 walk (1.5 m/s) | g2 no alt penalty | g3 both |
+|---|---:|---:|---:|---:|
+| `surv_ratio` | 0.113 | **0.817** | 0.099 | **0.848** |
+| `fall_rate` | 1.000 | **0.256** | 1.000 | **0.204** |
+| `ep_len_s` | 2.26 | **16.4** | 1.99 | **17.0** |
+| `v_toward` | 0.810 | 0.089 | 0.845 | 0.087 |
+| `duty_factor` | 0.611 | 0.966 | 0.664 | 0.978 |
+
+`r_alt`, the penalty for having both feet down while moving, was the suspect: a run has no
+double-support phase but every walk does, and at 0.5 per step it costs two thirds of the whole
+posture income. **Removing it changes nothing** (g2 vs f2: `surv_ratio` 0.099 vs 0.113). Hypothesis
+rejected cleanly; `--alt-w` stays as a knob, defaulted to its original 0.5.
+
+Asking for a walk instead of a run moves survival from 0.11 to 0.82 — and `v_toward` collapses to
+0.09 with `duty_factor` 0.97. It is not walking. It is standing still and collecting the posture
+income, the same statue `contactfix_3h` converged on, reached in 220 iterations instead of 400.
+
+So the athlete has exactly two behaviours available to it: **fall over in two seconds, or stand
+still.** Nothing in between. That is not a reward-weighting problem, and this is where the reward
+tuning stopped being the right place to look.
+
+## 2.4 The body cannot stand up
+
+`tools/stand_check.py` holds the model's own stand keyframe with **zero action** — no policy, no
+noise, the actuators simply asked to hold the pose the rig was built in.
+
+```
+t= 0.0s  pelvis_z 0.902  upright 1.000  CoM at  16.7% heel->toe
+t= 1.0s  pelvis_z 0.897  upright 0.981  CoM at -16.4% heel->toe
+t= 2.0s  pelvis_z 0.135  upright 0.049  CoM at -1177%
+```
+
+**It topples backwards and is on the floor in 1.75 s.** That number is the episode length every run
+in this project has ever reported: baseline 1.56 s, E2 1.55 s, E3 1.89 s, E4 2.03 s, f0 2.18 s,
+f2 2.26 s. Every one of them is the passive topple time of a body that was falling over before the
+policy did anything at all.
+
+Under the noise the trainer actually resets with (joints +-0.05 rad, base +-0.2 m/s, kp x[0.8, 1.25]),
+**0 of 40 trials stayed upright for 5 s.** A perfect policy that output nothing but zeros could not
+have passed the survival threshold on this model.
+
+Two causes, both measured:
+
+1. **The stand pose is out of balance.** The centre of mass sits at **17 % of the heel-to-toe span**
+   where a standing human sits near 45 %, and the foot has 6.4 cm of heel behind the ankle against
+   27 cm of toe in front. The torso capsule leans back (`fromto` x runs 0.02 -> -0.058) and the head
+   sits at x = -0.027, so 44 % of the body mass is behind the pelvis.
+2. **The joints are too soft to hold an inverted pendulum.** `stand_trace.py` shows `abdomen_y`
+   drifting -0.086 -> -0.42 rad and the knees and hips giving way with them — while every actuator
+   involved sits at **10-38 % of its force limit**. Nothing saturates; the gains are simply below the
+   stability floor. For a body of mass M with its centre of mass h above the ankle that floor is
+   M*g*h = 75 * 9.81 * 0.9 = **662 N m/rad**, against the **250** the ankle shipped with.
+
+Raising the ankle alone does not fix it (the lean is spread across hip, knee and ankle, and the ankle
+never exceeds 20 N m). A sweep of both together:
+
+| | shipped | +3 deg lean | 3x stiffness | both |
+|---|---:|---:|---:|---:|
+| held 10 s, zero action | 1.75 s | 3.14 s | 2.45 s | **10 s** |
+| survived 5 s, noisy resets | **0 %** | 0 % | 2 % | **90 %** |
+
+**The fix, applied in the generator rather than by hand** (`rig_to_mjcf.py` regenerates
+`models/athlete.xml` byte-for-byte, verified before changing anything):
+
+- `STAND_DEG`: `ankle_y` -3 deg, `hip_y` +3 deg — a small forward lean with the trunk kept vertical,
+  moving the centre of mass from 17 % to 37 % of the foot.
+- `rigs/matt.json` gains: abdomen, hip, knee and ankle `kp` and `kv` x3 (150/200/200/250 ->
+  450/600/600/750 N m/rad). **Force limits and velocity limits are unchanged**, so peak joint torque
+  stays at the human figures house rule 15 asks for — 240 N m at the hip, 260 at the knee, 220 at the
+  ankle. What changes is how hard the joint corrects *within* those limits, which is the neuromuscular
+  loop rather than passive tissue, and 750 N m/rad at the ankle is close to the M*g*h a standing human
+  holds.
+
+Regenerated model: **92 % of noisy resets hold for 10 s**, centre of mass settling at 37 % of the foot.
+
+## 2.5 And the policy's own exploration noise knocks it over anyway
+
+Batch H trained the regenerated body on the best reward configuration. It fell exactly as before —
+`fall_rate` 1.000, `ep_len_s` around 1.0 s. Fixing the body was necessary and it was not sufficient,
+and `tools/noise_robust.py` says why. This holds the stand pose while injecting the action noise PPO
+actually samples, at the standard deviations these runs actually operate at:
+
+| model | act std 0.0 | 0.15 | 0.30 | 0.45 |
+|---|---:|---:|---:|---:|
+| old body, action_scale 0.5 | 0 % | 0 % | 0 % | 0 % |
+| new body, action_scale 0.5 | 88 % | **0 %** | 0 % | 0 % |
+| new body, action_scale 0.25 | 88 % | 70 % | 0 % | 0 % |
+| new body, action_scale 0.167 | 88 % | **88 %** | 32 % | 0 % |
+
+Every run in this project ends with an action standard deviation between **0.31 and 0.45**, and
+starts at `init_std` **0.8**. At 0.8 with `action_scale` 0.5 the sampled action moves every one of 21
+joint targets by roughly +-0.4 rad at 50 Hz. **Training opens by shaking the athlete apart**, and the
+policy's first task is not to run — it is to cancel its own exploration.
+
+This also explains E4 from the previous session, which lowered `--entropy-coef` 0.005 -> 0.001 and was
+the single best change measured there. It was not buying exploitation over exploration in the usual
+sense. It was turning down the thing that was knocking the body over.
+
+`--action-scale` and `--init-std` are now trainer flags rather than buried defaults.
+
+## 2.6 Batch H — the physics fix alone makes it worse, and the walk-first curriculum works
+
+All against `f2_trackvar_fall` (old body), 220 iterations, 4096 environments.
+
+| KPI | f2 (old body) | h1 new body | h2 new body + curriculum | h3 new body + init speed |
+|---|---:|---:|---:|---:|
+| `surv_ratio` | 0.113 | 0.071 | **0.288** | 0.046 |
+| `ep_len_s` | 2.26 | 1.41 | **5.75** | 0.91 |
+| `v_toward` | 0.810 | 1.134 | 0.751 | 1.017 |
+| `v_err` | 2.69 | 2.37 | **0.408** | 2.48 |
+| `v_hit_frac` | 0.000 | 0.001 | **0.148** | 0.000 |
+| `torque` | 21.7 | 28.9 | 37.2 | 31.7 |
+| `power` | 628 | 1100 | 1522 | 1280 |
+| `roll_dev` | 9.9 | 15.2 | 13.9 | 16.3 |
+
+**h1 — the body fix on its own is a regression.** Survival falls 0.113 -> 0.071 and torque, power,
+jerk and roll all get worse by 30-75 %. This is the noise measurement in Section 2.5 playing out:
+tripling `kp` triples the restoring torque that holds the pose *and* triples the torque the
+exploration noise injects, and at `action_scale` 0.5 the second effect wins. A stiffer body shaken by
+the same noise is shaken harder. Batch I addresses that directly and it is the reason `--action-scale`
+now exists.
+
+**h3 — starting episodes already moving does not help** (`surv_ratio` 0.046, the worst of the four).
+Reference-state initialisation works when the states it seeds are states the final gait passes
+through; a standing pose travelling at 2 m/s is not one of those, it is a shove. The knob stays,
+defaulted off.
+
+**h2 — the walk-first curriculum is the first thing to move the velocity KPIs at all.** Survival more
+than doubles against the control, episodes run 5.7 s instead of 2.3, and `v_hit_frac` is **0.148**
+against 0.000 in every run this project has ever recorded. `v_err` 0.408 is within touching distance
+of the 0.35 threshold. Two caveats stated plainly: the target it is tracking is a 1.0 m/s walk, not
+the 3.5 m/s goal, and the curriculum never ramped, because ramping is gated on `fall_rate < 0.05` and
+`fall_rate` is still 0.999. This is a walk being learned, not a run.
+
+The contrast with g1 is the useful part. g1 (old body, fixed 1.5 m/s target) survives **16.4 s** and
+moves at **0.09 m/s** — a statue. h2 (new body, curriculum from 1.0 m/s) survives **5.7 s** and moves
+at **0.75 m/s**. g1 scores better on survival and has learned nothing; h2 is the one going somewhere.
+This is exactly the trap Section 1.5 of this log was written about, and it is why `v_hit_frac` and
+`v_err` are graded alongside `surv_ratio` rather than after it.
+
+## 2.7 Batch I — turning the exploration noise down, and the survival threshold falls
+
+Same reward as batch H's control, on the regenerated body, 220 iterations, 4096 environments. The
+only changes are `--init-std` 0.8 -> 0.25 and `--action-scale`.
+
+| KPI | threshold | h2 (scale 0.5) | i1 scale 0.167 | i2 scale 0.25 | i3 0.167 + curriculum |
+|---|---|---:|---:|---:|---:|
+| `surv_ratio` | > 0.90 | 0.288 | **0.925 PASS** | 0.905 PASS | 0.707 |
+| `fall_rate` | < 0.10 | 0.999 | **0.124** | 0.127 | 0.411 |
+| `ep_len_s` | | 5.75 | **18.5** | 18.1 | 14.2 |
+| `foot_slip` | < 0.15 | 0.443 | **0.112 PASS** | 0.162 | 0.115 PASS |
+| `pitch_dev` | < 15 | 5.35 | **3.24 PASS** | 5.33 PASS | 2.31 PASS |
+| `roll_dev` | < 10 | 13.9 | **3.32 PASS** | 2.68 PASS | 2.34 PASS |
+| `torque` | | 37.2 | **13.6** | 16.9 | 12.1 |
+| `power` | | 1522 | **97** | 160 | 91 |
+| `jerk` | | 12100 | **2150** | 3042 | 2384 |
+| `v_toward` | | 0.751 | **0.006** | 0.013 | 0.012 |
+| `v_hit_frac` | > 0.50 | 0.148 | **0.000** | 0.000 | 0.001 |
+
+**`surv_ratio` 0.925 against a threshold of 0.90.** Episodes run 18.5 s of a 20 s limit. Five of the
+ten convergence KPIs pass at once, for the first time since this log was started. Torque is down 63 %,
+power down 94 %, jerk down 82 %, and `act_sat` is exactly 0.
+
+Confirmed outside the trainer: `eval_100m.py` drives the saved checkpoint in plain MuJoCo, 6 runs,
+and it stays upright for the full 20 s in **6 of 6** — the training metric is honest.
+
+It also travels **0.2 m** in those 20 seconds, at a peak of 0.24 m/s. `v_toward` 0.006,
+`duty_factor` 0.999. It is a statue, and a very well-behaved one.
+
+So the picture inverts. For the whole of this log the problem was "it falls over"; that problem is
+now solved, and the residue is the one underneath it that the falling was hiding: **standing still
+pays and moving does not.** Section 2.8 is about that.
+
+One note on `i2` against `i1`: halving the action scale rather than cutting it to a third costs
+little in survival (0.905 vs 0.925) and is measurably worse everywhere else (`foot_slip` 0.162 vs
+0.112, `jerk` 3042 vs 2150). `i3` shows the walk-first curriculum *costs* survival on top of the
+noise fix (0.707 vs 0.925) while buying no speed, because at this stage the curriculum never ramps —
+it is gated on `fall_rate < 0.05` and `fall_rate` is 0.41.

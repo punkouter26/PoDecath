@@ -52,7 +52,8 @@ class RunToTargetEnv:
                  domain_rand: bool = True, dr_kwargs: Optional[dict] = None,
                  cuda_graph: bool = True, action_clip: float = 3.0,
                  air_time_cap: float = 0.4, fall_penalty: float = 2.0,
-                 track_var: float = 2.0, prog_w: float = 0.25):
+                 track_var: float = 2.0, prog_w: float = 0.25, alt_w: float = 0.5,
+                 posture_w: float = 1.0, init_speed: float = 0.0):
         wp.init()
         wp.config.verbose_warnings = verbose
         self.device = device
@@ -134,6 +135,28 @@ class RunToTargetEnv:
         # motion is worth against the posture income it has to beat.
         self.track_var = track_var
         self.prog_w = prog_w
+        # Weight on the double-support penalty. A *run* has no phase with both feet down, so the
+        # term is correct for the 3.5 m/s task it was written for -- but it fires on any step above
+        # 0.5 m/s, and every walk has a double-support phase (roughly 20% of the cycle at 1.5 m/s).
+        # At 0.5 it costs two thirds of the whole posture income (alive + upright + heading = 0.79),
+        # so a body that cannot yet run is charged heavily for the one gait it could reach. A knob,
+        # not a literal, so "walking is forbidden" can be measured instead of argued.
+        self.alt_w = alt_w
+        # Multiplier on the three terms an athlete collects for merely existing in good posture:
+        # alive (0.3), upright (0.3) and heading (0.2). Per-term accounting on the 3-hour
+        # contactfix run measured them at 0.300 + 0.297 + 0.192 = 0.789 per step against 0.008 for
+        # progress and tracking combined -- so a body that stands still and faces its target banks
+        # about 790 over a 20 s episode for doing nothing, and any attempt to move risks that
+        # income. Standing still was not a bug in the policy; it was the reward's own answer.
+        # Scaling this down does not change what running is worth, only what refusing to run is.
+        self.posture_w = posture_w
+        # Reset the athlete already moving, at a forward speed drawn from U[0, init_speed].
+        # Every episode otherwise starts from a dead stop, so the policy has to discover the whole
+        # of "accelerate from standing into a gait" before it ever experiences being at speed, and
+        # the value function never sees a state where running is going well. Starting some episodes
+        # in motion is the cheap half of reference-state initialisation: no motion capture, but the
+        # same effect of seeding the buffer with states the final gait actually passes through.
+        self.init_speed = init_speed
         self.swing_clear_h = 0.10          # metres of clearance asked of a swing foot
         self.stance_width = 0.20           # metres between the feet in normal running
         # Paid when the athlete arrives at its target. Tasks whose target is a moving carrot the athlete
@@ -266,6 +289,13 @@ class RunToTargetEnv:
         q[:, 7:] += (torch.rand(N, self.A, generator=self.rng, device=self.device) * 2 - 1) * 0.05
         v = torch.zeros(N, self.qvel.shape[1], device=self.device)
         v[:, :2] = (torch.rand(N, 2, generator=self.rng, device=self.device) * 2 - 1) * 0.2
+        if self.init_speed > 0.0:
+            # World-frame linear velocity along the direction the body is already facing. The free
+            # joint's first three qvel entries are world linear velocity, which is what `_base_state`
+            # reads back as `lin_w`.
+            sp = torch.rand(N, generator=self.rng, device=self.device) * self.init_speed
+            v[:, 0] += torch.cos(yaw) * sp
+            v[:, 1] += torch.sin(yaw) * sp
         return q, v
 
     def _apply_reset(self, mask: torch.Tensor) -> None:
@@ -407,9 +437,9 @@ class RunToTargetEnv:
         # ---- reward ----
         r_track = 1.5 * torch.exp(-((v_toward - self.target_speed) ** 2) / self.track_var)
         r_prog = self.prog_w * v_toward.clamp(-1.0, self.target_speed)
-        r_alive = 0.3
-        r_upright = 0.3 * upright.clamp_min(0.0)
-        r_heading = 0.2 * heading
+        r_alive = 0.3 * self.posture_w
+        r_upright = 0.3 * self.posture_w * upright.clamp_min(0.0)
+        r_heading = 0.2 * self.posture_w * heading
         r_height = -0.5 * (self.stand_height - 0.05 - pos[:, 2]).clamp_min(0.0)
         r_lin_z = -0.5 * lin_b[:, 2] ** 2
         r_ang = -0.03 * (ang_b[:, :2] ** 2).sum(-1)
@@ -455,7 +485,7 @@ class RunToTargetEnv:
         r_width = -0.3 * (foot_sep - self.stance_width).abs()
 
         # Running is alternating. Two feet down at speed is a bunny hop.
-        r_alt = -0.5 * (contact[:, 0] & contact[:, 1]).float() * moving
+        r_alt = -self.alt_w * (contact[:, 0] & contact[:, 1]).float() * moving
 
         # Contralateral arm swing: the shoulder opposite the driving hip. Cheap, and it is most of
         # what reads as "human" to someone watching rather than measuring. Measured as deviation from
