@@ -51,7 +51,8 @@ class RunToTargetEnv:
                  nconmax: int = 48, njmax: int = 192, verbose: bool = False,
                  domain_rand: bool = True, dr_kwargs: Optional[dict] = None,
                  cuda_graph: bool = True, action_clip: float = 3.0,
-                 air_time_cap: float = 0.4, fall_penalty: float = 2.0):
+                 air_time_cap: float = 0.4, fall_penalty: float = 2.0,
+                 track_var: float = 2.0, prog_w: float = 0.25):
         wp.init()
         wp.config.verbose_warnings = verbose
         self.device = device
@@ -122,6 +123,17 @@ class RunToTargetEnv:
         # gives up for the rest of the episode) has to reach the policy through the value
         # function across a 24-step GAE window.
         self.fall_penalty = fall_penalty
+        # Width of the speed-tracking kernel, and the weight on raw forward progress.
+        #
+        # These are knobs because the defaults make standing still the optimal policy. r_track is a
+        # Gaussian of variance `track_var` centred on target_speed, so at a standstill against a
+        # 3.5 m/s target it pays exp(-3.5^2/2/2.0) = 0.0024 out of a possible 1.5 -- and, worse, its
+        # gradient there is just as small, so there is nothing pulling the body toward the pace it is
+        # being asked for. Meanwhile alive + upright + heading pay 0.79 every step for doing nothing.
+        # A wider kernel restores the gradient at low speed; prog_w sets how much plain forward
+        # motion is worth against the posture income it has to beat.
+        self.track_var = track_var
+        self.prog_w = prog_w
         self.swing_clear_h = 0.10          # metres of clearance asked of a swing foot
         self.stance_width = 0.20           # metres between the feet in normal running
         # Paid when the athlete arrives at its target. Tasks whose target is a moving carrot the athlete
@@ -393,8 +405,8 @@ class RunToTargetEnv:
         heading = (fwd_w * dir_w).sum(-1)
 
         # ---- reward ----
-        r_track = 1.5 * torch.exp(-((v_toward - self.target_speed) ** 2) / 2.0)
-        r_prog = 0.25 * v_toward.clamp(-1.0, self.target_speed)
+        r_track = 1.5 * torch.exp(-((v_toward - self.target_speed) ** 2) / self.track_var)
+        r_prog = self.prog_w * v_toward.clamp(-1.0, self.target_speed)
         r_alive = 0.3
         r_upright = 0.3 * upright.clamp_min(0.0)
         r_heading = 0.2 * heading

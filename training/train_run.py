@@ -148,9 +148,26 @@ def main() -> None:
                     help="one-off reward cost of ending an episode fallen. Measured per-term on the "
                          "baseline this is worth -0.025 per step, against -0.324 for the foot-slip term: "
                          "falling was 13x cheaper than sliding a foot.")
+    ap.add_argument("--track-var", type=float, default=2.0,
+                    help="variance of the speed-tracking Gaussian. At the 2.0 default a standing body "
+                         "scores exp(-3.5^2/2/2.0) = 0.0024 of the 1.5 on offer, with a gradient to "
+                         "match, so nothing pulls it toward the commanded pace. Widen to restore it.")
+    ap.add_argument("--prog-w", type=float, default=0.25,
+                    help="weight on raw forward progress. Has to beat the 0.79/step that alive + "
+                         "upright + heading pay for standing still, or standing still wins.")
     ap.add_argument("--keep-old-runs", action="store_true")
     ap.add_argument("--no-tensorboard", action="store_true")
-    ap.add_argument("--unity-policies", default=os.path.join(HERE, "..", "Assets", "Policies"))
+    # Experiments export to scratch, NOT over the game's shipped policies.
+    #
+    # This default used to be Assets/Policies, so every run - including a 20-minute throwaway A/B -
+    # overwrote athlete_run.onnx on every save. A 3-hour run that had learned to stand perfectly
+    # still wrote itself into the shipped reference policy 22 times before anyone noticed, and the
+    # only reason it was caught is that it showed up as a dirty file in git. Shipping a policy is a
+    # decision, so it now takes a flag; the default cannot damage anything that is checked in.
+    ap.add_argument("--unity-policies", default=os.path.join(HERE, "logs", "scratch_policies"))
+    ap.add_argument("--publish", action="store_true",
+                    help="Also copy the exported ONNX over the shipped Assets/Policies file. Only for "
+                         "a run you have graded and actually want the game to use.")
     ap.add_argument("--run-name", default="")
     ap.add_argument("--task", choices=sorted(TASKS.keys()), default="target",
                     help="target = run to random targets; track = laps of the rooftop loop with a carrot "
@@ -183,7 +200,8 @@ def main() -> None:
     } if domain_rand else None
     env = env_cls(args.xml, args.num_envs, device=device, seed=args.seed, target_speed=args.target_speed,
                   domain_rand=domain_rand, dr_kwargs=dr_kwargs, cuda_graph=not args.no_cuda_graph,
-                  air_time_cap=args.air_time_cap, fall_penalty=args.fall_penalty)
+                  air_time_cap=args.air_time_cap, fall_penalty=args.fall_penalty,
+                  track_var=args.track_var, prog_w=args.prog_w)
     if domain_rand:
         ramp = (f"ramping {args.dr_start_strength:g} -> 1 over {args.dr_ramp_iters} iters"
                 if args.dr_ramp_iters > 0 else "no ramp, full from iteration 0")
@@ -316,7 +334,13 @@ def main() -> None:
             export_onnx(ppo, onnx_path, env.obs_dim)
             os.makedirs(args.unity_policies, exist_ok=True)
             shutil.copyfile(onnx_path, os.path.join(args.unity_policies, onnx_name))
-            print(f"saved {ck} and exported ONNX -> Assets/Policies/{onnx_name}", flush=True)
+            dest = args.unity_policies
+            if args.publish:
+                pub = os.path.join(HERE, "..", "Assets", "Policies")
+                os.makedirs(pub, exist_ok=True)
+                shutil.copyfile(onnx_path, os.path.join(pub, onnx_name))
+                dest += f" and Assets/Policies/{onnx_name}"
+            print(f"saved {ck} and exported ONNX -> {dest}", flush=True)
         if out_of_time:
             print(f"[max-hours] reached {args.max_hours:g} h at iteration {it + 1}; stopping cleanly "
                   f"after {(time.time() - t_start) / 3600:.2f} h", flush=True)
