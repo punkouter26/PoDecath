@@ -181,6 +181,9 @@ def main() -> None:
                          "minibatch. 1.5 is the rsl_rl default and thrashes at 40 minibatches "
                          "an iteration; 1.1 tracks the same target without the swing.")
     ap.add_argument("--epochs", type=int, default=5, help="PPO epochs per iteration")
+    ap.add_argument("--gamma", type=float, default=0.99, help="PPO discount")
+    ap.add_argument("--gae-lambda", type=float, default=0.95, help="GAE lambda")
+    ap.add_argument("--clip", type=float, default=0.2, help="PPO clip range")
     ap.add_argument("--max-hours", type=float, default=0.0,
                     help="stop cleanly after this many hours, saving and exporting first. 0 = no "
                          "limit. Throughput moves with how often the bodies are falling, so an "
@@ -304,6 +307,7 @@ def main() -> None:
     # coarser average over a much bigger batch.
     minibatches = args.minibatches or max(1, round(args.steps * args.num_envs / 24576))
     cfg = PPOConfig(steps_per_env=args.steps, lr=args.lr, desired_kl=args.desired_kl,
+                    gamma=args.gamma, lam=args.gae_lambda, clip=args.clip,
                     entropy_coef=args.entropy_coef, minibatches=minibatches,
                     epochs=args.epochs, lr_adapt=args.lr_adapt, init_std=args.init_std)
     print(f"[ppo] batch {args.steps * args.num_envs:,} samples / iteration in {minibatches} minibatches "
