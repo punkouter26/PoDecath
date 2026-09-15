@@ -300,3 +300,55 @@ rule, the loop exits on the plateau clause.
    export, comparing `peak_upright` / `longest_hold_s` against the previous 0.947 / 7.44 s.
 
 **Loop stopped 04:12, 2026-09-15** (plateau clause, ~3 h ahead of the 07:15 budget cap).
+
+## Section 3 — Get-up demonstration attempt finds a regression (2026-09-15, ~10:00)
+
+The owner asked to see the creature fall and stand back up, and for the probe to be run and observed.
+Running it surfaced a **regression that predates last night's training**: in the current build, the
+get-up policy cannot stand the athlete up — *neither the new export nor the previous one*.
+
+### 3.1 Evidence
+
+**Probe matrix** (8 s, deterministic stepped play mode, supine start ~0.026 upright; benchmark from
+2026-09-13 was peak 0.947 with a 7.44 s hold):
+
+| # | model | scene | creature self-collision | peak upright | stood |
+|---|---|---|---|---|---|
+| 1 | new (getup_v80b it 3000) | RooftopLap | ON (current default) | 0.026 | no |
+| 2 | old (extracted from commit 4e71663) | RooftopLap | ON | 0.112 | no |
+| 3 | old | RooftopLap | **OFF** (runtime flag) | 0.112 — identical to #2 | no |
+| 4 | old | RooftopRace | ON | 0.000 | no |
+
+**Live race** (`RooftopRace`, field of 8, fast-forwarded deterministically via an
+`EditorApplication.Step` hook, full log in `training/logs/race_step_progress.txt`): 4 of 8 athletes
+fell naturally between t≈17-25 s (Grandma, Nick, Trump, Zombie Accurig); all 4 entered the
+recovering state; **0 recoveries completed** (`rec=0` on every athlete); the 4 who stayed up
+finished in 29.5-31.2 s. Falling works; getting up does not.
+
+### 3.2 What was ruled out
+
+- **Last night's training.** The old export fails the probe too, and fails it in the same
+  twitch-then-wedge way (both emit large mean actions: 2.9 and 1.6 respectively).
+- **The 09-14 self-collision change.** Runs #2 and #3 are byte-identical (peak 0.1119 to four
+  decimals) with self-collision on and off; the rig is confirmed on the Creature layer, so the
+  runtime `Physics.IgnoreLayerCollision(8, 8, ...)` flag genuinely had no effect on the outcome. The
+  supine athlete appears to have no decisive self-contacts either way.
+- **Scene choice.** RooftopRace (the benchmark's scene) fails harder than RooftopLap, not better.
+
+### 3.3 Open suspects and recommended next steps
+
+1. **The other 09-14 runtime changes.** Commit 4e71663 ("camera overhaul + collisions + crowd
+   curriculum + removed-trainer scrub") touched runtime plumbing after the 0.947 benchmark was taken.
+   `git log -p` on `PolicyRunner.cs`, `RecoveryController.cs`, `AthleteRig.cs`, `ObservationBuilder.cs`
+   and `Assets/Policies/Athlete_PolicyConfig.asset` between 09-13 and 09-14 is the first thing to read.
+2. **The benchmark's exact conditions.** The 0.947 run was "in RooftopRace" — confirm whether it used
+   `use_recovery_controller: true` and which ONNX file was actually published then (the file in
+   4e71663 may postdate the benchmark). The old export is staged at
+   `Assets/Policies/athlete_getup_old.onnx` (untracked) for reproducible A/Bs.
+3. **Do not retrain get-up before this is resolved** — the training-side metrics (stood 1.00, up
+   0.66, hold 0.46) say the policy works in MuJoCo; the failure is in the transfer/runtime side.
+
+Artifacts left in place (all untracked, all deletable once the investigation is done):
+`Assets/Policies/athlete_getup_old.onnx` (+ .meta), `Assets/ProbeShots/*.png` (race frames incl.
+mid-recovery), `training/logs/race_step_hook.cs` + `race_step_progress.txt` (the deterministic race
+stepper — reusable), `training/logs/getup_probe_config.json` (restored to defaults).
