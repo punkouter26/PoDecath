@@ -301,6 +301,94 @@ rule, the loop exits on the plateau clause.
 
 **Loop stopped 04:12, 2026-09-15** (plateau clause, ~3 h ahead of the 07:15 budget cap).
 
+## Section 7 — The shipped Android build: HUD frame verified, two telemetry defects found (2026-09-15, ~20:30)
+
+**What was checked.** `training/deploy_android.ps1` ends by writing three screenshots to
+`Build/Android/shots/`, and they are the only check on the HUD frame that no log can make: *title
+top-left, FPS top-centre, MENU top-right, DEBUG bottom-left, version bottom-right*. They are also the
+only pictures of the UI that exist at all, because neither the scene sweep's camera capture nor the
+bridge's `graphics/game-capture` renders UI Toolkit. All three were read — `01-menu.png`,
+`02-running.png`, `03-debug.png` — and **all five anchors are present and correctly placed on all
+three screens**, at v0.1.9. The APK builds, installs, launches, renders the menu, runs a full race and
+lays out the results card and the telemetry panel without clipping.
+
+### 7.1 The DEBUG sheet is the payload, and it works
+
+`03-debug.png` shows the F3 telemetry over 8 athletes and a 90 s window: per-athlete cards
+(`obs 80 / act 21`, inference 0.61 / 0.43 ms, `get-up: athlete_getup`), the twelve KPI tiles, the
+sparkline with its legend, and a per-athlete verdict sentence. It renders legibly with every field
+populated — the panel is doing its job on device.
+
+**Defect A — `WATTS` reads 0 on every athlete while effort is non-zero.** Both cards show
+`STRAIN 1%`, `PEAK JOINT 8%`, `WATTS 0`. All three numbers come out of one loop in
+`EffortMeter.Sample()`: the first two are functions of `Mathf.Abs(ab.driveForce[0])`, and `power` is
+`torque * omega` with `omega = Mathf.Abs(ab.jointVelocity[0])`. Torque is provably non-zero — it is
+what saturation is made of — so the zero must come from the velocity half:
+**`jointVelocity[0]` is reading as zero.**
+
+This is not cosmetic-only, even though `EffortMeter` is a strictly read-only component. With `power`
+pinned at 0 it never clears `restingWatts` (40), so `Fatigue` can only ever take the *decay* branch and
+sits at 0 for an entire race. That silently disables both things built on it: the watts readout in
+`BroadcastView` (which prints "620 W" to the viewer) and the ragged breathing in `FootstepAudio`.
+Not yet isolated — the first thing to check is the sampling point (`[DefaultExecutionOrder(-40)]`
+reads the previous physics step's values), then whether `jointVelocity` is populated on this joint
+type at all. Physics is untouched either way, so it is safe to fix on its own schedule.
+
+**Defect B — 12.5 % of joint targets are being clamped, and the policy cannot say whether that is
+expected.** `CLAMPED` is graded **red** on both cards, at 12.5 % and 12.1 %, against the 10 % fallback
+bar, while `OBS CLIP 0.0 %` and `JITTER 0.26` are green. The panel is explicit that it cannot do
+better than a fallback here: the shipped `athlete_track` manifest carries no `train_target_clamp`, so
+`PolicyConfig.trainedTargetClamping` is 0 and there is nothing to compare against. The verdict line
+says exactly that and asks for a re-export.
+
+This is the *same class of mismatch* §3.4 diagnosed on the get-up policy, now visible on the lap
+policy that actually ships: **roughly every eighth joint command is truncated by the rig before the
+drive ever sees it.** It is also a plausible contributor to the 3.44 m/s ceiling in §2.7 — a policy
+planning targets it is not allowed to reach is not executing the gait it trained for. The test is
+cheap and direct: re-export with `train_target_clamp` written into the manifest so the number can be
+graded instead of guessed, then see whether `CLAMPED` moves toward zero and `SPEED` moves up.
+
+### 7.2 The race on the device confirms §3.1 — and it ships
+
+The results card on `02-running.png`:
+
+| # | Athlete | Result |
+|---|---|---|
+| 1 | Matt Avaturn 2 | 29.49 s |
+| 2 | Matt RL 1 | 31.05 s |
+| 3 | Nick Doggy 3 | 31.24 s |
+| 4 | Grandma 4 | DNF — fell at 39 m |
+| 5 | Nick 6 | DNF — fell at 41 m |
+| 6 | Trump 7 | DNF — fell at 41 m |
+| 7 | Grandpa 5 | DNF — fell at 43 m |
+| 8 | Zombie Accurig 8 | DNF — fell at 43 m |
+
+**3 of 8 finish; 5 fall between 39 m and 43 m; none of the five gets up.** §3.1 measured 4 falls and
+0 recoveries in `RooftopRace` under editor stepping. This is the same result on a phone from a release
+APK, one athlete worse — so the get-up failure is neither an editor artifact nor a stepped-play-mode
+artifact. **It is in the build.** That moves §3.5 option A (retrain get-up with an action envelope it
+can actually use) from "next investigation" to "the reason two thirds of a field cannot finish a
+race". The fall distances also cluster tightly at 39-43 m rather than scattering, which reads as a
+consistent stability wall at a consistent speed, not as random breakage — and that is the same wall
+the warm-start diagnostic found for the lap policy in §2.3.
+
+### 7.3 What this means
+
+1. **The HUD mandate is met and evidenced.** Three on-device screenshots, all five anchors placed, at
+   v0.1.9. Nothing further is needed to close the HUD item; re-run `deploy_android.ps1` after any HUD
+   change to re-shoot.
+2. **Two defects are now recorded with enough detail to act on**, and both are bounded: Defect A is a
+   single read in `EffortMeter` and only affects presentation; Defect B is a manifest field plus a
+   judgement call about whether 12.5 % clamping is acceptable on the shipped lap policy.
+3. **The get-up regression is the highest-value item in this log.** It fails on device, it costs 5 of
+   8 athletes their race, and §3.4 already located the cause in the training env's own ±3 action
+   clamp. The retrain in §3.5 option A is the fix, and this is now its justification rather than a
+   hypothesis.
+4. **The clamp finding may be the same root cause twice.** If the lap policy is also envelope-starved
+   the way get-up is, then Defect B and the get-up failure are one problem — a training-time action
+   clamp that never got removed — which would make a single env change address both. Worth resolving
+   Defect B first, because it is the cheaper experiment and it discriminates between the two.
+
 ## Section 6 — Android blocker FIXED, and the performance gate passes (2026-09-15, 19:00-20:00)
 
 **The plugin now runs MuJoCo on the phone.** Section 5's blocker was real but fixable, and the
@@ -529,15 +617,28 @@ Rolling the same checkpoint in the MuJoCo get-up env from forced flat-supine res
 | Unity/PhysX, clamp ±3 | pinned at ±3 by config | never rises (peak = start value) |
 | Unity/PhysX, clip raised to 30 mid-run | (change applied near run start; result ambiguous — still flat at final) | never rises |
 
-Read together with the training code: the get-up env (`run_to_target.py:53`) clamps actions to ±3
-during training, and with `action_scale` 0.167 that caps every joint target at default ±0.5 rad —
-the policy is trained into a torque envelope that can rise from supine but **cannot hold the
-stand** (even in MuJoCo it collapses by 4 s; the env's own `hold` metric was only 0.46). The training
-rollout clamp was verified absent from `ppo.py` and present in `run_to_target.py:460`; the Unity
-`actionClip=3` in the per-athlete config (`Matt RL_config`, written from the manifest's
-`action_clip: 3.0` in `Assets/Models/athlete_policy_config.json`, authored by `rig_to_mjcf.py`) is
-therefore *faithful* to training — **the training env's own clamp is the limitation**, and PhysX adds
-a further rise failure on top.
+**CORRECTED 2026-09-15 21:15 — this blamed the trainer, and the trainer is not at fault.** The
+paragraph that stood here said the get-up env clamps actions to ±3 and that the training clamp was the
+limitation. That is wrong, and the correction changes the fix.
+
+`GetUpEnv.step()` overrides the parent outright: it clamps to **±5.0** (`get_up.py:207`) and runs its
+own decimation loop, so `RunToTargetEnv.action_clip` (3.0) never applies to this task. The get-up
+policy was therefore trained with ±5 × `action_scale` 0.167 = **±0.835 rad** of joint travel. Unity
+drives it with `actionClip` 3.0 × 0.167 = **±0.5 rad**, because `PolicyRunner` reads a single
+`PolicyConfig` for both the running model and `recoveryModel`, and that config comes from the *run*
+task's manifest (`Assets/Models/athlete_policy_config.json`, `action_clip: 3.0`, authored by
+`rig_to_mjcf.py`).
+
+**So the game clips the get-up policy to 60 % of the movement it was trained with** — and ±3 is
+exactly the condition `check_getup_mj.py` measured to collapse the stand (rises to 0.991 by 2 s, then
+−0.16 by 4 s), while unclamped it holds 0.995. Two tasks with different envelopes are sharing one
+config, and the get-up policy is the one that loses. This also explains the panel's silence: the
+manifest carries no `train_target_clamp`, so `trainedTargetClamping` is 0 and the telemetry falls back
+to a 10 % bar instead of grading against the real envelope (see §7.1, Defect B — same root cause, and
+the shipped *lap* policy shows 12.1-12.5 % clamping for the same reason).
+
+PhysX may still add a rise failure of its own on top; the ±3 experiment used the MuJoCo env, not
+PhysX, so that part remains open.
 
 Secondary bug found and fixed on the way: `PolicyRunner.Step()` ticked a *disabled*
 `VelocityCommandSource` (it only checked `commandSource != null`), so the probe's lying athlete was
@@ -551,10 +652,12 @@ early iter-~50 export of the *new* 80-obs lineage (835,863 bytes), which is why 
 
 ### 3.5 Paths forward (owner decision)
 
-- **A. Retrain get-up with a sane action envelope** (raise the env clamp from ±3 to ≥ ±10, or drop
-  it and rely on actuator ctrlrange): direct fix for the marginal-hold problem; ~2-4 h of training.
-  The 09-13 evidence (0.947 in PhysX) says transfer itself is achievable once the policy is not
-  envelope-starved.
+- **A. Give the get-up policy its own action clip (5, matching `get_up.py`) instead of letting it
+  inherit the running policy's 3.** This is now the first thing to try because §3.4 was corrected: the
+  envelope is lost in the Unity config, not in the trainer, so this is a manifest/config change that
+  needs **no retraining** — minutes of work rather than hours. If the stand is still marginal after
+  that, *then* retrain with a wider envelope (raise `get_up.py`'s clamp above ±5). The 09-13 evidence
+  (0.947 in PhysX) says transfer itself is achievable once the policy gets the range it learned.
 - **B. Adopt the DeepMind MuJoCo Unity plugin** (google-deepmind/mujoco/tree/main/unity — official,
   actively maintained, MuJoCo 3.13.1, imports `athlete.xml` directly): the game would step the
   athlete with the *same engine it trains in*, eliminating this transfer-bug class by construction.
