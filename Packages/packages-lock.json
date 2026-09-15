@@ -1,12 +1,5 @@
 {
   "dependencies": {
-    "bin.mujoco": {
-      "version": "https://github.com/joanllobera/mujoco-bin.git#0821e115ba748cf4c7518822b627f039cdbd857c",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {},
-      "hash": "0821e115ba748cf4c7518822b627f039cdbd857c"
-    },
     "com.anklebreaker.unity-mcp": {
       "version": "https://github.com/AnkleBreaker-Studio/unity-mcp-plugin.git",
       "depth": 0,

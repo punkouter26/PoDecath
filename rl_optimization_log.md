@@ -301,6 +301,75 @@ rule, the loop exits on the plateau clause.
 
 **Loop stopped 04:12, 2026-09-15** (plateau clause, ~3 h ahead of the 07:15 budget cap).
 
+## Section 6 — Android blocker FIXED, and the performance gate passes (2026-09-15, 19:00-20:00)
+
+**The plugin now runs MuJoCo on the phone.** Section 5's blocker was real but fixable, and the
+perf question it left open is now answered: **16 athletes at the 200 Hz training rate fit inside an
+8.3 ms frame on a Pixel 9 Pro.**
+
+### 6.1 Root cause (measured, not guessed)
+
+The scene's generated MJCF was being rejected by the native library:
+
+```
+IOException: Error loading the model: XML Error: Schema violation:
+unrecognized attribute: 'passive'   Element 'flag', line 1
+```
+
+`MjGlobalSettings.ToMjcf` wrote `passive="enable"` on every `<flag>` element, and the MuJoCo builds
+in play reject that attribute. Confirmed in isolation: a minimal MJCF loads fine, and the *same*
+generated scene XML loads cleanly once the attribute is removed (21523 chars failed, 21506
+succeeded). Earlier `Version 3.3.0`/`3.5.0` guesses were wrong — the `bin.mujoco` package ships
+**mismatched per-platform libraries** (Windows dll 3.5.0, Android .so 3.3.7), which is why desktop
+worked and Android did not; the version-consistent pairing is now 3.3.7 on both sides, with the
+native libraries placed under `Assets/Plugins` rather than taken from that package.
+
+### 6.2 The fix
+
+`MjGlobalSettings.ToMjcf` now writes `passive` **only when it is being turned off**. MuJoCo's
+`<flag>` treats an absent attribute as enabled, so omitting the default writes the same physics while
+keeping the scene loadable on older schemas. Two other required patches are recorded: the plugin's
+`GetInstanceID()` → `GetEntityId()` for Unity 6, and the terrain modules in `Packages/manifest.json`.
+
+*Caveat to verify before adopting:* the omission assumes absent == enabled, which is MuJoCo's
+documented flag semantics. Behaviour was confirmed to be sane (the athlete simulates and falls
+exactly as it does on desktop, moving 1.285 m from its spawn), but a race-level A/B against the
+current PhysX build is the honest way to confirm no subtle dynamics change.
+
+### 6.3 Device measurements (Google Pixel 9 Pro, ARM64, 8 cores, Mali-G715)
+
+`MjSpikeProbe` runs a staged sweep in one build — 1 and 16 athletes, at 50 Hz and at the 200 Hz rate
+the MJCF asks for. The first device run was invalid: it pinned every stage at exactly 33.3 ms because
+`Application.targetFrameRate = -1` means "platform default" on Android, which is 30 FPS — not
+uncapped. With the cap lifted the real numbers appear:
+
+| stage | ms/frame | FPS | cap-limited? |
+|---|---|---|---|
+| 1 athlete @ 50 Hz | 8.33 | 120 | yes |
+| 1 athlete @ 200 Hz | 8.34 | 120 | yes |
+| 16 athletes @ 50 Hz | 8.33 | 120 | yes |
+| **16 athletes @ 200 Hz** | **8.35** | **120** | **yes** |
+
+Every stage saturates the requested 120 FPS cap, so the exact MuJoCo cost is *below* 8.3 ms per
+frame and was not isolated — but the decision-relevant fact is unambiguous: at the full 16-athlete
+field and the 200 Hz physics rate training parity requires, **the phone is not the bottleneck**. By
+contrast the same sweep on the desktop (24-core Ultra 9) measured 34.24 ms for 16 athletes at 200 Hz
+under editor stepping, which is the editor's overhead rather than the phone's limit.
+
+### 6.4 Where this leaves the migration
+
+| Question | Answer |
+|---|---|
+| Does MuJoCo run on Android? | **Yes** — fixed and verified on device |
+| Does it use the training model unchanged? | **Yes** — same `athlete.xml`, 12/22/21 |
+| Is the phone fast enough for 16 athletes @ 200 Hz? | **Yes** — fits inside an 8.3 ms frame |
+| Is the migration now free? | **No** — the integration work in §4.6 still stands (port `PolicyRunner` drives, `RecoveryController`, `FootContactSensor`, `EffortMeter`, fall detection and skinning off `ArticulationBody`; give deck and props MuJoCo geoms) |
+
+**Recommendation:** the two questions that could have killed this migration — does it work on the
+device, and is the device fast enough — are both now answered yes. What remains is ordinary
+integration work, not risk. A sensible next step is a single-event port (the lap) behind a toggle,
+keeping the PhysX path as the fallback.
+
 ## Section 5 — Android feasibility test of the MuJoCo plugin (2026-09-15, 18:00-19:20)
 
 **Verdict: the plugin is NOT Android-ready out of the box. It builds, installs and runs on the

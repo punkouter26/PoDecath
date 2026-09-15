@@ -65,8 +65,21 @@ public static class MjEngineTool {
   public static unsafe MujocoLib.mjModel_* LoadModelFromString(string contents) {
     using (var vfs = new MjVfs()) {
       var filename = "filename";
-      vfs.AddFile(filename, contents);
-      return vfs.LoadXML(filename);
+      try {
+        vfs.AddFile(filename, contents);
+        UnityEngine.Debug.Log($"[MjDiag] VFS add ok, {contents.Length} chars");
+      } catch (System.Exception e) {
+        UnityEngine.Debug.LogError($"[MjDiag] VFS AddFile threw: {e.GetType().Name}: {e.Message}");
+        throw;
+      }
+      try {
+        var m = vfs.LoadXML(filename);
+        UnityEngine.Debug.Log($"[MjDiag] LoadXML returned {(m == null ? "NULL" : "model")}");
+        return m;
+      } catch (System.Exception e) {
+        UnityEngine.Debug.LogError($"[MjDiag] LoadXML threw: {e.GetType().Name}: {e.Message}");
+        throw;
+      }
     }
   }
 

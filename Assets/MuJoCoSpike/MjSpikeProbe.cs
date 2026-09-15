@@ -17,8 +17,8 @@ namespace PoDecath.Spike
     /// </summary>
     public class MjSpikeProbe : MonoBehaviour
     {
-        [Tooltip("Athlete root GameObject to watch.")]
-        public string athleteRoot = "athlete556";
+        [Tooltip("Athlete root GameObject to watch. Empty = auto-detect from the first MjBody found.")]
+        public string athleteRoot = "";
 
         [Tooltip("Clone count for the multi-athlete stages.")]
         public int multiCount = 16;
@@ -38,22 +38,47 @@ namespace PoDecath.Spike
 
         void Start()
         {
-            _root = GameObject.Find(athleteRoot);
+            _root = FindAthleteRoot();
             if (_root == null)
             {
-                Debug.LogError($"[MjSpike] athlete root '{athleteRoot}' not found");
+                Debug.LogError("[MjSpike] no athlete root found (looked for an MjBody)");
                 return;
             }
             var pelvis = _root.transform.Find("pelvis");
             _watched = pelvis != null ? pelvis : _root.transform;
 
-            Application.targetFrameRate = -1;
+            // -1 is NOT "uncapped" on Android -- it means "platform default", which the device resolves
+            // to 30 FPS. That pinned every stage of the first device sweep at exactly 33.3 ms and hid
+            // whatever MuJoCo actually cost. Ask for a rate above the display's so the number measured
+            // is the machine's, not the cap's.
+            Application.targetFrameRate = 120;
             QualitySettings.vSyncCount = 0;
 
-            Debug.Log($"[MjSpike] start | unity={Application.unityVersion} | device={SystemInfo.deviceModel} "
-                      + $"| cpu={SystemInfo.processorType} | cores={SystemInfo.processorCount} "
-                      + $"| gpu={SystemInfo.graphicsDeviceName} | screen={Screen.width}x{Screen.height}");
+            Debug.Log($"[MjSpike] start | athlete={_root.name} | unity={Application.unityVersion} "
+                      + $"| device={SystemInfo.deviceModel} | cpu={SystemInfo.processorType} "
+                      + $"| cores={SystemInfo.processorCount} | gpu={SystemInfo.graphicsDeviceName} "
+                      + $"| screen={Screen.width}x{Screen.height}");
             StartCoroutine(Sweep());
+        }
+
+        /// <summary>
+        /// Finds the imported model's root whatever the importer happened to name it (it numbers the
+        /// node, so the name changes on every re-import). The MjScene object owns the model; the bodies
+        /// live under the athlete root, so the first MjBody's topmost ancestor that is not the scene
+        /// itself is the model root.
+        /// </summary>
+        GameObject FindAthleteRoot()
+        {
+            if (!string.IsNullOrEmpty(athleteRoot))
+            {
+                var byName = GameObject.Find(athleteRoot);
+                if (byName != null) return byName;
+            }
+            var body = UnityEngine.Object.FindAnyObjectByType<Mujoco.MjBody>();
+            if (body == null) return null;
+            var t = body.transform;
+            while (t.parent != null && t.parent.GetComponent<Mujoco.MjScene>() == null) t = t.parent;
+            return t.gameObject;
         }
 
         IEnumerator MeasureStage(string label, int athletes, float fixedDt)

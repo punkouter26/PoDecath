@@ -121,7 +121,15 @@ public struct MjcfOptionFlag {
     mjcf.SetAttribute("frictionloss", FrictionLoss.ToString());
     mjcf.SetAttribute("limit", Limit.ToString());
     mjcf.SetAttribute("contact", Contact.ToString());
-    mjcf.SetAttribute("passive", Passive.ToString());
+    // `passive` is written only when it is being turned OFF. MuJoCo's `<flag>` element treats an
+    // absent attribute as enabled, so omitting the default writes the same physics -- and it keeps
+    // the generated scene loadable by MuJoCo builds whose `<flag>` schema predates the attribute.
+    // Writing it unconditionally made every scene fail to compile on such a build with
+    // "Schema violation: unrecognized attribute: 'passive'", which is what blocked the Android
+    // porting test on 2026-09-15 (the shipped arm64 build is older than the editor's Windows dll).
+    if (Passive != EnableDisableFlag.enable) {
+      mjcf.SetAttribute("passive", Passive.ToString());
+    }
     mjcf.SetAttribute("gravity", Gravity.ToString());
     mjcf.SetAttribute("clampctrl", ClampCtrl.ToString());
     mjcf.SetAttribute("warmstart", WarmStart.ToString());
