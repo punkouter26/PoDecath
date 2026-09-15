@@ -246,7 +246,12 @@ namespace PoDecath.Sim
             // against. Ticking the command source anyway would leave it steering toward a finish line the
             // body cannot currently walk to, and the first thing it did on standing up would be to lurch.
             Vector3 cmd = Vector3.zero;
-            if (commandSource != null && !UseRecovery)
+            // A source whose component is disabled is treated as absent: the get-up probe silences the
+            // lap event by disabling its command source, and Tick() below runs whether or not the
+            // component is enabled -- without this check a lying-down athlete was still being steered
+            // toward a stale carrot at the command clamp (measured 2026-09-15: the get-up probe pinned
+            // every policy, old and new, flat on its back with a saturated (1.9, -3, 3) command).
+            if (commandSource != null && commandSource.isActiveAndEnabled && !UseRecovery)
             {
                 commandSource.Tick(rig);
                 cmd = commandSource.Command;

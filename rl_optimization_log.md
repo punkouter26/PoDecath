@@ -301,6 +301,56 @@ rule, the loop exits on the plateau clause.
 
 **Loop stopped 04:12, 2026-09-15** (plateau clause, ~3 h ahead of the 07:15 budget cap).
 
+### 3.4 Root cause chain closed with MuJoCo-side controls (11:30)
+
+Rolling the same checkpoint in the MuJoCo get-up env from forced flat-supine resets
+(`training/check_getup_mj.py`), with and without Unity's action clip:
+
+| rollout | actions | result over 6 s |
+|---|---|---|
+| MuJoCo, unclamped | mean \|a\| 8.6, peaks ±23 | **stands and holds**: upright −0.26 → **0.991** (2 s) → 0.958 (4 s) → 0.995 (6 s) |
+| MuJoCo, clamped ±3 (Unity-faithful) | mean \|a\| 2.8, max 3.0 | **rises, then collapses**: −0.32 → 0.991 (2 s) → −0.16 (4 s) → −0.19 (6 s) |
+| Unity/PhysX, clamp ±3 | pinned at ±3 by config | never rises (peak = start value) |
+| Unity/PhysX, clip raised to 30 mid-run | (change applied near run start; result ambiguous — still flat at final) | never rises |
+
+Read together with the training code: the get-up env (`run_to_target.py:53`) clamps actions to ±3
+during training, and with `action_scale` 0.167 that caps every joint target at default ±0.5 rad —
+the policy is trained into a torque envelope that can rise from supine but **cannot hold the
+stand** (even in MuJoCo it collapses by 4 s; the env's own `hold` metric was only 0.46). The training
+rollout clamp was verified absent from `ppo.py` and present in `run_to_target.py:460`; the Unity
+`actionClip=3` in the per-athlete config (`Matt RL_config`, written from the manifest's
+`action_clip: 3.0` in `Assets/Models/athlete_policy_config.json`, authored by `rig_to_mjcf.py`) is
+therefore *faithful* to training — **the training env's own clamp is the limitation**, and PhysX adds
+a further rise failure on top.
+
+Secondary bug found and fixed on the way: `PolicyRunner.Step()` ticked a *disabled*
+`VelocityCommandSource` (it only checked `commandSource != null`), so the probe's lying athlete was
+being steered by a stale saturated command (measured `(1.9, −3, 3)`); the fix adds an
+`isActiveAndEnabled` check. Real bug, but not the stand-breaker.
+
+**Why the 0.947 benchmark worked on 09-13:** that was the **09-05-era 75-observation policy**
+(`9d3d422`, 825,583 bytes) on pre-gait-migration code — a different policy and contract from
+everything tested above. The control model I first extracted from `4e71663` turned out to be an
+early iter-~50 export of the *new* 80-obs lineage (835,863 bytes), which is why it failed too.
+
+### 3.5 Paths forward (owner decision)
+
+- **A. Retrain get-up with a sane action envelope** (raise the env clamp from ±3 to ≥ ±10, or drop
+  it and rely on actuator ctrlrange): direct fix for the marginal-hold problem; ~2-4 h of training.
+  The 09-13 evidence (0.947 in PhysX) says transfer itself is achievable once the policy is not
+  envelope-starved.
+- **B. Adopt the DeepMind MuJoCo Unity plugin** (google-deepmind/mujoco/tree/main/unity — official,
+  actively maintained, MuJoCo 3.13.1, imports `athlete.xml` directly): the game would step the
+  athlete with the *same engine it trains in*, eliminating this transfer-bug class by construction.
+  Cost: every athlete-runtime system is PhysX-coupled (`PolicyRunner` drives, `RecoveryController`,
+  `FootContactSensor` collision callbacks, `EffortMeter` driveForce, fall detection, skinning
+  binding) and would need porting to MjBody/MjActuator/touch-sensor components; environment colliders
+  need MuJoCo geoms; mobile (Android) performance is unproven; Unity 6 compatibility needs a spike.
+  Docs recommend stable tags, not `main`.
+- Recommendation: **A now** (hours, unblocks the demo), **B as a time-boxed spike later** (import
+  `athlete.xml` in a scratch scene, stand the athlete, benchmark Android) if transfer bugs keep
+  recurring after A.
+
 ## Section 3 — Get-up demonstration attempt finds a regression (2026-09-15, ~10:00)
 
 The owner asked to see the creature fall and stand back up, and for the probe to be run and observed.
