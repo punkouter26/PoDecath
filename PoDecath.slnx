@@ -1,4 +1,8 @@
 ﻿<Solution>
   <Project Path="Assembly-CSharp-Editor.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="Mujoco.Editor.Tests.csproj" />
+  <Project Path="Mujoco.Runtime.csproj" />
+  <Project Path="Mujoco.Editor.csproj" />
+  <Project Path="Tests.Runtime.csproj" />
 </Solution>

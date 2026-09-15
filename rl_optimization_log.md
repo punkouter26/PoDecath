@@ -301,6 +301,84 @@ rule, the loop exits on the plateau clause.
 
 **Loop stopped 04:12, 2026-09-15** (plateau clause, ~3 h ahead of the 07:15 budget cap).
 
+## Section 4 — MuJoCo Unity plugin spike (2026-09-15, 15:30-17:00)
+
+**Verdict: the plugin works in this project.** It compiles under Unity 6000.6, imports `athlete.xml`
+into a live scene, and MuJoCo genuinely simulates the athlete inside Unity. The migration is
+technically feasible. Three caveats below decide whether it is worth it.
+
+### 4.1 What was done
+
+- Plugin `org.mujoco` 3.13.0 embedded at `Packages/org.mujoco` (the DeepMind repo's `unity/` folder,
+  pinned to commit `b65cb9e` — the state that matches the published 3.13.0 native binary, since no
+  3.13.1 release asset exists yet).
+- Native library `mujoco.dll` (Windows x86-64, from the 3.13.0 release) placed in `Packages/org.mujoco/`
+  and `Assets/Plugins/`.
+- **Two Unity 6 breaks fixed**, both required:
+  1. `MjMeshFilter.cs`: `Object.GetInstanceID()` is a hard *error* in Unity 6 → `GetEntityId()`.
+  2. `Packages/manifest.json` was missing `com.unity.modules.terrain` / `terrainphysics`; the plugin's
+     height-field code needs `UnityEngine.Terrain` (CS1069). Both modules added.
+- Scene `Assets/MuJoCoSpike/MuJoCoSpike.unity`, athlete imported via
+  `Mujoco.MjImporterWithAssets.ImportFile()` (called through `eval_file` + reflection).
+
+### 4.2 The import is a 1:1 match with the training model
+
+| | MJCF (`athlete.xml`) | Imported into Unity |
+|---|---|---|
+| bodies | 12 | **12** |
+| joints | 22 (21 actuated + root) | **22** |
+| actuators | 21 | **21** |
+| contact excludes | 11 pairs | present (`excludes` node) |
+
+Hierarchy came across intact: `pelvis → torso → upper_arm_l/r`, `pelvis → thigh_l/r → shin_l/r`.
+This matters: the platform's own contract is that `athlete.xml` is the single source of truth for the
+rig, and the plugin consumes that exact file.
+
+### 4.3 MuJoCo really is driving the body
+
+Played the scene with no policy attached. The athlete **stood in its default pose and fell over** —
+it ended lying on the deck (pelvis Y 0.09 m, body flat along X). That is MuJoCo integrating under
+gravity, not a static import. Screenshot: `Assets/MuJoCoSpike/spike_athletes.png` (magenta = missing
+URP material on the generated geoms; cosmetic, needs one URP material assigned).
+
+### 4.4 Performance (this PC, editor-stepped, 50 Hz fixed step)
+
+| athletes | ms per physics step |
+|---|---|
+| 1 | 4.49 (dominated by `EditorApplication.Step` overhead, not physics) |
+| 9 | 5.44 |
+| **marginal per extra athlete** | **0.119** |
+| projected 16 | 6.28 |
+
+**Caveat that matters more than the numbers:** the MJCF timestep is **0.005 s (200 Hz)**, and training
+parity needs Unity's `fixedDeltaTime` at 0.005 — 4x the step rate measured here. At 200 Hz, 16
+athletes cost ≈ 1.9 ms per physics step, i.e. **≈6.3 ms per rendered frame at 60 FPS on this desktop**,
+≈38 % of the frame budget. Plausible on desktop; **on a phone (several times slower CPU) this is
+marginal-to-failing**, and the editor-stepped figure is pessimistic in one way (no player-loop
+optimisation) and optimistic in another (no rendering).
+
+### 4.5 The blocking caveat for mobile
+
+The native library is **Windows x86-64 only**. The plugin cannot ship on Android until an Android
+`libmujoco.so` (arm64) is supplied — which is precisely the artefact `AGENTS.md` already points at
+(`joanllobera/mujoco-bin`). So "spike passes" here means *desktop* passes; the mobile question is
+untouched by this test and needs a real device build.
+
+### 4.6 Recommendation
+
+| Question | Answer from this spike |
+|---|---|
+| Does it work in Unity 6 / this project? | **Yes** — two small patches, then clean. |
+| Does it use the training model directly? | **Yes** — same MJCF, 12/22/21 exact. |
+| Is it cheap on desktop? | **Yes** — 0.12 ms marginal per athlete per step. |
+| Is it proven on Android? | **No** — needs an arm64 lib and a device measurement. |
+| How much integration work remains? | Large: port `PolicyRunner` drives, `RecoveryController`, `FootContactSensor`, `EffortMeter`, fall detection, skinning from `ArticulationBody` to MjActuator/MjBody; give the deck and props MuJoCo geoms; assign URP materials to generated geoms. |
+
+**Recommended next step: a time-boxed Android feasibility test before any migration** — build the
+spike scene for Android with an arm64 MuJoCo lib and measure 16 athletes at 200 Hz on the actual
+device. That single number decides whether the strategic migration is worth starting. Desktop-only
+simulation is already proven.
+
 ### 3.4 Root cause chain closed with MuJoCo-side controls (11:30)
 
 Rolling the same checkpoint in the MuJoCo get-up env from forced flat-supine resets
