@@ -301,6 +301,75 @@ rule, the loop exits on the plateau clause.
 
 **Loop stopped 04:12, 2026-09-15** (plateau clause, ~3 h ahead of the 07:15 budget cap).
 
+## Section 5 — Android feasibility test of the MuJoCo plugin (2026-09-15, 18:00-19:20)
+
+**Verdict: the plugin is NOT Android-ready out of the box. It builds, installs and runs on the
+device, but MuJoCo never initialises — so no performance number exists yet.** The blocker is
+specific and identifiable, which is the useful part of this result.
+
+### 5.1 Setup (version-matched pair, deliberately)
+
+The plugin and its native binaries must match. `bin.mujoco` (joanllobera) supplies Windows, macOS
+**and Android** libraries but is built against an older MuJoCo, so the 3.13.0 plugin used in §4 was
+swapped for **3.5.0 on both sides**:
+
+- `Packages/org.mujoco` → plugin source at tag **3.5.0** (re-patched for Unity 6: `GetEntityId()`).
+- `bin.mujoco` added to `Packages/manifest.json`, pinned to commit `0821e115ba74` (README: MuJoCo 3.5.0).
+- Resolved binaries: `Runtime/Plugins/Android/libmujoco.so` **34 MB**, `x86_64/mujoco.dll` 4 MB.
+- Stale 3.13.0 `mujoco.dll` removed from `Assets/Plugins` (a mismatched ABI is a crash, not a warning).
+
+### 5.2 What passed
+
+- Plugin compiles clean under Unity 6000.6.0f1 with the 3.5.0 binaries.
+- **Android build succeeded**: `Spike.apk`, 51 MB, from `Assets/MuJoCoSpike/MuJoCoSpike.unity`.
+- **Installed and launched on a real device** (`com.podecath.game`, monkey-launched).
+- The app runs at a **locked 30 FPS** (avg 33.32 ms, best 33.24 ms — that flatness is a frame-rate
+  cap, not CPU saturation), on a **Google Pixel 9 Pro** (ARM64, 8 cores, Mali-G715, 960x2142).
+
+### 5.3 What failed — MuJoCo never ran
+
+```
+E Unity : NullReferenceException: Failed to create Mujoco runtime.
+E Unity :   at Mujoco.MjScene.StepScene ()
+E Unity :   at Mujoco.MjScene.FixedUpdate ()
+```
+preceded by the real cause:
+```
+at Mujoco.MjVfs.LoadXML (System.String filename)
+at Mujoco.MjEngineTool.LoadModelFromString (System.String contents)
+at Mujoco.MjScene.CompileScene (...)
+```
+The athlete never moved: `pelvisY=0.900` and `pelvisMoved=0.000m` in both measured stages (on desktop
+the same scene had the body standing then falling to the floor). Cloning the athlete at runtime also
+threw, for the same reason — the scene cannot be recreated on device.
+
+**Diagnosis:** the plugin compiles the scene by handing MJCF text to `mj_loadXML`, which resolves the
+file through MuJoCo's VFS. On Android that path is unavailable (the plugin's temp-file route does not
+survive Android's filesystem restrictions), so the model never loads and every physics step after
+that throws. This is a plugin-side porting gap, not a project error — and note it is not what the
+`bin.mujoco` README promises to solve: that package ships the *native library*, not an Android-safe
+*loading path*.
+
+### 5.4 What this means for the decision
+
+| Question | Status |
+|---|---|
+| Does the plugin work on desktop? | **Yes** (§4: imports 12/22/21, simulates, 0.12 ms/athlete/step) |
+| Does it build and run on Android? | **Yes** — APK builds, installs, launches |
+| Does MuJoCo simulate on Android? | **No** — `MjVfs.LoadXML` fails, runtime never created |
+| Is the Android performance question answered? | **No** — nothing to measure while the model will not load |
+| Is it fixable? | Probably, and it is a bounded job: make the MJCF load path Android-safe (write the compiled model to `Application.temporaryCachePath` and load from there, or bypass the VFS for a model supplied as a Unity `TextAsset`), then re-run this sweep |
+
+**Recommendation: do not start the migration on this evidence.** The next step is cheap and specific —
+one focused change to the plugin's model-loading path plus this same sweep script (already committed,
+one build, ~40 s on device) — and it produces the number that actually decides the question. If that
+number comes back marginal on a Pixel 9 Pro, the migration is not worth starting at all; if it comes
+back comfortable, §4 shows the desktop path is already proven.
+
+**Spike artifacts** (all committed): `Assets/MuJoCoSpike/MuJoCoSpike.unity` (athlete + camera + light +
+`MjSpikeProbe`), `Assets/MuJoCoSpike/MjSpikeProbe.cs` (the staged 1/16-athlete × 50/200 Hz sweep),
+`training/logs/android_mj_log.txt` (the device log).
+
 ## Section 4 — MuJoCo Unity plugin spike (2026-09-15, 15:30-17:00)
 
 **Verdict: the plugin works in this project.** It compiles under Unity 6000.6, imports `athlete.xml`

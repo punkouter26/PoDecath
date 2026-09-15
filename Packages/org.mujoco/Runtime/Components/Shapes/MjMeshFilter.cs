@@ -58,6 +58,7 @@ public class MjMeshFilter : MonoBehaviour {
 
     var mesh = new Mesh();
     // Name this mesh to easily track resources in Unity analysis tools.
+    // Name this mesh to easily track resources in Unity analysis tools.
     // (Unity 6: Object.GetInstanceID is an error; GetEntityId replaces it.)
     mesh.name = $"Mujoco mesh for {gameObject.name}, id:{mesh.GetEntityId()}";
     _meshFilter.sharedMesh = mesh;
