@@ -25,7 +25,6 @@ namespace PoDecath.Fx
     {
         [Header("Wiring")]
         public AthleteRig rig;
-        public HeuristicRunner heuristic;
         public Material material;
 
         [Header("Look")]
@@ -126,9 +125,7 @@ namespace PoDecath.Fx
 
         Vector3 Origin()
         {
-            if (rig != null) return rig.BasePosition;
-            if (heuristic != null) return heuristic.transform.position;
-            return transform.position;
+            return rig != null ? rig.BasePosition : transform.position;
         }
     }
 }

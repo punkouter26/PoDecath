@@ -8,9 +8,8 @@ using PoDecath.Sim;
 namespace PoDecath.UI
 {
     /// <summary>
-    /// The event setup menu: a row of event chips, then one tile per athlete definition including the
-    /// RED heuristic bot, capped at <see cref="RaceRoster.MaxRunners"/> in total and at least one athlete
-    /// overall.
+    /// The event setup menu: a row of event chips, then one tile per athlete definition, capped at
+    /// <see cref="RaceRoster.MaxRunners"/> in total and at least one athlete overall.
     ///
     /// The field is a grid of tiles rather than a list, and the grid is sized to the screen rather than
     /// the screen to the grid: <see cref="FitTiles"/> reads the height left between the events and START

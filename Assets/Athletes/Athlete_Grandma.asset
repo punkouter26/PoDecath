@@ -17,8 +17,6 @@ MonoBehaviour:
   model: {fileID: 5022602860645237092, guid: a8269c2479fa3ae4aa1406384be837e1, type: 3}
   mjcfOverride: {fileID: 0}
   actionScale: 0
-  topSpeed: 9
-  accelSeconds: 3
   skinOverride: {fileID: 8771091787928289351, guid: 767135c7cd0e00f46aebe14a52f4582d, type: 3}
   skinOverrideMobile: {fileID: 0}
   boneMap:

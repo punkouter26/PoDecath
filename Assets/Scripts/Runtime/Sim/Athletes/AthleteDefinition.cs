@@ -5,15 +5,16 @@ namespace PoDecath.Sim
 {
     public enum AthleteKind
     {
-        /// <summary>Heuristic-coded bot. Always RED.</summary>
-        Heuristic,
-        /// <summary>Standard RL policy on the reference rig. Always GREEN.</summary>
-        ReferenceRL,
+        // Explicit values, because the assets on disk store the kind as a number. Heuristic (0) was
+        // removed on 2026-09-14 (owner decision: the coded sprinter left the game); the two that remain
+        // keep the numbers they always had, so no AthleteDefinition asset changes kind by accident.
+        /// <summary>Standard RL policy on the reference rig.</summary>
+        ReferenceRL = 1,
         /// <summary>RL variation with an owner-supplied texture and/or skinned mesh.</summary>
-        CustomRL,
+        CustomRL = 2,
     }
 
-    /// <summary>One roster entry. House rules: heuristic = red, reference RL = green, custom = own texture.</summary>
+    /// <summary>One roster entry: the reference RL athlete, or a custom one with its own skinned mesh.</summary>
     [CreateAssetMenu(menuName = "PoDecath/Athlete Definition", fileName = "Athlete")]
     public class AthleteDefinition : ScriptableObject
     {
@@ -29,10 +30,6 @@ namespace PoDecath.Sim
                  "this for a policy whose manifest is missing or wrong: a policy trained at 0.167 driven at " +
                  "0.5 is driven three times too strong, and the symptom is an athlete that will not run.")]
         public float actionScale = 0f;
-
-        [Header("Heuristic")]
-        public float topSpeed = 9.0f;
-        public float accelSeconds = 3.0f;
 
         [Header("Look")]
         [Tooltip("Rigged glb for this athlete (drop the .glb in Assets/Models and drag it here). Leave empty to use the spawner default (Matt).")]
@@ -50,15 +47,13 @@ namespace PoDecath.Sim
         public float skinScale = 0f;
         [Tooltip("Custom texture for CustomRL athletes.")]
         public Texture2D customTexture;
-        [Tooltip("Tint override. Ignored for Heuristic (red) and ReferenceRL (green).")]
+        [Tooltip("Tint override for the UI. Ignored for ReferenceRL (green).")]
         public Color customTint = Color.white;
 
-        public static readonly Color HeuristicRed = new Color(0.9f, 0.12f, 0.1f, 1f);
         public static readonly Color ReferenceGreen = new Color(0.1f, 0.85f, 0.25f, 1f);
 
         public Color Tint => kind switch
         {
-            AthleteKind.Heuristic => HeuristicRed,
             AthleteKind.ReferenceRL => ReferenceGreen,
             _ => customTint,
         };

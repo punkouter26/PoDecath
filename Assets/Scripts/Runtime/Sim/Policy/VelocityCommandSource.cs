@@ -8,7 +8,7 @@ namespace PoDecath.Sim
         TowardTarget,
         /// <summary>Fixed (vx, vy, yaw_rate) command.</summary>
         Constant,
-        /// <summary>Uniformly resampled command every N seconds (Isaac Lab style).</summary>
+        /// <summary>Uniformly resampled command every N seconds.</summary>
         RandomResample,
         /// <summary>Run-to-target policies: (unit dir x, unit dir y) in the base-yaw frame plus min(dist, 10) / 10.</summary>
         TargetVector,

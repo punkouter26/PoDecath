@@ -6,9 +6,10 @@ namespace PoDecath.Cam
 {
     /// <summary>
     /// Cuts the race like an athletics broadcast. Seven fixed jobs, the way a real gallery is rigged:
-    /// a low shot on the grid for the countdown, a tight one off the gun, a rail camera running the field
-    /// down the straights, a high camera outside each bend, a stadium wide for the settled middle, a head-on
-    /// from in front of the leader up the home straight, and a side-on at the line.
+    /// a low shot on the grid for the countdown, a tight one off the gun, a lead dolly running backwards
+    /// in front of the leader down the straights — the default shot, chosen so the pack trails into
+    /// frame behind whoever is winning — a high camera outside each bend, a stadium wide for incidents,
+    /// a head-on from in front of the leader up the home straight, and a side-on at the line.
     ///
     /// The director owns the camera positions (Cinemachine only aims them), so the moving shots can be
     /// parked on the arc length of the track rather than hand-placed. Shots are held for
@@ -27,7 +28,7 @@ namespace PoDecath.Cam
     [DefaultExecutionOrder(100)]
     public class BroadcastDirector : MonoBehaviour
     {
-        public enum Shot { StartLine, OffTheGun, Rail, Bend, Wide, HeadOn, Finish }
+        public enum Shot { StartLine, OffTheGun, Rail, Bend, Wide, HeadOn, Finish, Hero, Cable, Reverse }
 
         [Header("Wiring")]
         public RaceEvent race;
@@ -41,11 +42,23 @@ namespace PoDecath.Cam
         [Header("Shots")]
         public CinemachineCamera startLineCam;
         public CinemachineCamera offTheGunCam;
+        [Tooltip("The default mid-race job: a dolly on the deck running ahead of the leader, looking back "
+               + "at them, so whoever is chasing trails into frame behind. Despite the name it no longer "
+               + "sits on the rail — the rail shot spent the whole race side-on to the leader, which on a "
+               + "portrait screen framed one athlete and dropped the rest of the field out of shot.")]
         public CinemachineCamera railCam;
         public CinemachineCamera bendCam;
         public CinemachineCamera wideCam;
         public CinemachineCamera headOnCam;
         public CinemachineCamera finishCam;
+        [Tooltip("Deck-level hero shot: ankle height, just off the leader's shoulder, for a second or two "
+               + "at a time. Feet filling a portrait frame is the fastest-looking picture in athletics.")]
+        public CinemachineCamera heroCam;
+        [Tooltip("Cable cam: high above the centre line ahead of the leader, looking back down the race. "
+               + "The deep shot a portrait screen wants — the field strung out below the lens.")]
+        public CinemachineCamera cableCam;
+        [Tooltip("Reverse angle: behind the line, looking back at the field once the race is decided.")]
+        public CinemachineCamera reverseCam;
 
         [Header("Cutting")]
         [Tooltip("Shortest time a shot is held before the director is allowed to cut again.")]
@@ -68,10 +81,15 @@ namespace PoDecath.Cam
         [Tooltip("How far outside the deck edge the trackside cameras sit. The deck is ringed by a 1 m "
                + "barrier, so a camera parked close and low just films the barrier.")]
         public float trackside = 11f;
-        [Tooltip("The rail camera's height above the deck. The deck is ringed by a 0.8 m barrier and a "
-               + "second one on the far side; a camera at chest height frames both of them and very little "
-               + "athlete, so it sits high enough to shoot over the near rail and down onto the runner.")]
-        public float railHeight = 4.6f;
+        [Tooltip("The lead dolly's height above the deck. It now runs on the deck ahead of the leader, "
+               + "so there is no barrier between it and the subject and low is what makes speed read — the "
+               + "old 4.6 m was sized for shooting over the rail from outside, which this shot no longer "
+               + "does. The long-jump run-up still uses it trackside, where the height still matters.")]
+        public float railHeight = 2.6f;
+        [Tooltip("How far ahead of the leader the lead dolly runs, in metres of track. Far enough that the "
+               + "leader sits in the lower frame and everyone chasing trails into shot behind them — the "
+               + "whole point of the shot on a portrait screen.")]
+        public float railLead = 12f;
         public float bendHeight = 9.0f;
         public float headOnLead = 14f;
         public float wideHeight = 30f;
@@ -90,11 +108,63 @@ namespace PoDecath.Cam
                + "purpose: running at a low camera is what makes a sprint look fast.")]
         public float headOnHeight = 2.4f;
 
+        [Header("Movement smoothing")]
+        [Tooltip("How fast the moving dollies glide along the track, per second. Without it a lead change "
+               + "teleports both cameras to the new leader — the jerkiest thing in the old gallery.")]
+        public float dollyGlide = 2.5f;
+        [Tooltip("How fast the aim swings to a new subject, per second. A third-of-a-second swing makes a "
+               + "lead change legible instead of violent.")]
+        public float aimGlide = 6f;
+        [Tooltip("Seconds of the leader's own speed added ahead of the dollies, so the runner sits still "
+               + "in frame instead of drifting through it.")]
+        public float leadLookahead = 0.3f;
+        [Tooltip("Extra metres the dollies pull back while the framing nudge is active.")]
+        public float widenMetres = 6f;
+
+        [Header("Framing nudge")]
+        [Tooltip("When the framing metric reports fewer than this many runners on an individual shot, the "
+               + "shot pulls itself wider until the field is legible again. The metric already existed; "
+               + "this is what makes it a control rather than a number nobody reads.")]
+        public int minInFrame = 2;
+        public bool framingNudge = true;
+
+        [Header("Special shots")]
+        [Tooltip("Seconds between hero-shot visits, on straights only. 0 disables the hero shot.")]
+        public float heroEvery = 14f;
+        [Tooltip("How long the hero shot stays on air once cut to.")]
+        public float heroSeconds = 1.8f;
+        [Tooltip("Distance ahead of the leader the hero camera sits.")]
+        public float heroLead = 3.2f;
+        [Tooltip("Lateral offset of the hero camera off the centre line.")]
+        public float heroLateral = 1.4f;
+        [Tooltip("Height of the hero camera. Ankle height on purpose.")]
+        public float heroHeight = 0.5f;
+        [Tooltip("Fraction of the race over which the cable cam owns the picture, before the home "
+               + "straight hands over to the low head-on.")]
+        public Vector2 cableWindow = new Vector2(0.58f, 0.86f);
+        [Tooltip("Distance ahead of the leader the cable cam sits.")]
+        public float cableLead = 12f;
+        [Tooltip("Height of the cable cam above the deck.")]
+        public float cableHeight = 7f;
+        [Tooltip("Seconds of finish shot before the reverse angle takes over, once the race is decided.")]
+        public float finishReverseAfter = 2.6f;
+        [Tooltip("Degrees per second the grid shot drifts round the field during the countdown. A still "
+               + "opening on a screen that is otherwise all motion reads as stuck.")]
+        public float startDriftDegPerSec = 7f;
+
         [Header("Framing check")]
         [Tooltip("Layers that count as blocking the view of an athlete. Leave the athletes' own layer out "
                + "of it or every subject blocks itself. Read by SubjectVisible, which is a measurement "
                + "rather than a rule: nothing here changes a shot on its own.")]
         public LayerMask occlusionMask = ~0;
+
+        // Gliding state. Both snap on a new attempt, when there is nothing on screen to swing from.
+        float _focusS;                                   // smoothed arc position of the moving dollies
+        Vector3 _aimSmooth;                              // smoothed position of the aim subject
+        bool _snapDolly = true, _snapAim = true;
+        bool _wasInBend;                                 // bend-exit cue: the rising edge schedules a cut
+        float _heroTimer, _heroLeft, _finishedAge;       // special-shot clocks
+        float _narrow, _widen;                           // framing nudge: seconds narrow, 0..1 pull-back
 
         public Shot Current { get; private set; } = Shot.StartLine;
         public string CurrentName => Current.ToString();
@@ -137,6 +207,7 @@ namespace PoDecath.Cam
             Aim(startLineCam, _fieldSubject); Aim(wideCam, _fieldSubject);
             Aim(offTheGunCam, _leaderSubject); Aim(railCam, _leaderSubject); Aim(bendCam, _leaderSubject);
             Aim(headOnCam, _leaderSubject); Aim(finishCam, _leaderSubject);
+            Aim(heroCam, _leaderSubject); Aim(cableCam, _leaderSubject); Aim(reverseCam, _leaderSubject);
         }
 
         static void Aim(CinemachineCamera cam, Transform subject)
@@ -160,6 +231,12 @@ namespace PoDecath.Cam
                 _anticipateLeft = 0f;
                 _watching = null;
                 _shotAge = minShotSeconds;   // a new race may open on its own shot straight away
+                _snapDolly = _snapAim = true;          // nothing on screen yet: snap instead of swing
+                _heroTimer = heroEvery * 0.6f;         // first hero visit part-way into the race
+                _heroLeft = 0f;
+                _finishedAge = 0f;
+                _narrow = _widen = 0f;
+                _wasInBend = false;
             }
 
             RaceEvent.Athlete leader = Leader(out RaceEvent.Athlete faller, out int fallen, out int finished);
@@ -184,20 +261,86 @@ namespace PoDecath.Cam
             // Who the moving cameras follow. Normally the leader; while an anticipated incident is running,
             // whoever is about to be in it.
             RaceEvent.Athlete focus = Anticipate(leader, ref cutNow) ?? leader;
-            if (focus != null) _leaderSubject.position = Subject(focus);
+
+            // The aim glides to whoever is on camera rather than teleporting: a lead change swings the
+            // aimed cameras through a fraction of a second instead of yanking all of them at once.
+            if (focus != null)
+            {
+                Vector3 aimTarget = Subject(focus);
+                _aimSmooth = _snapAim ? aimTarget : Vector3.Lerp(_aimSmooth, aimTarget, 1f - Mathf.Exp(-aimGlide * Time.deltaTime));
+                _snapAim = false;
+                _leaderSubject.position = _aimSmooth;
+            }
             Featured = _incidentLeft > 0f && faller != null ? faller : focus;
 
-            float focusS = focus != null ? ArcOf(focus) : _startS;
-            PlaceCameras(focusS);
+            // The dolly's arc position glides the same way, with wrap handling at the lap line: a raw read
+            // of the leader's arc would teleport both moving cameras across the loop the moment one
+            // runner overtook another.
+            float rawS = focus != null ? ArcOf(focus) : _startS;
+            if (_snapDolly) { _focusS = rawS; _snapDolly = false; }
+            else
+            {
+                float lap = path.LapLength;
+                float d = Mathf.Repeat(rawS - _focusS + lap * 0.5f, lap) - lap * 0.5f;
+                _focusS += d * (1f - Mathf.Exp(-dollyGlide * Time.deltaTime));
+            }
+            float focusS = _focusS;
+
+            // Leaving a bend is the director's cue: the high outside shot has done its job, so hand off
+            // to the lead dolly on the beat instead of waiting out the hold.
+            bool inBendNow = InBend(focusS);
+            if (_wasInBend && !inBendNow) cutNow = true;
+            _wasInBend = inBendNow;
+
+            // The hero shot visits on a timer, on straights only: a deck-level camera at ankle height
+            // once or twice a lap, never through the fights in the bends.
+            if (heroCam != null && heroEvery > 0f && race.Current == RaceEvent.Phase.Running)
+            {
+                _heroTimer -= Time.deltaTime;
+                if (_heroTimer <= 0f && !inBendNow && focus != null)
+                {
+                    _heroLeft = heroSeconds;
+                    _heroTimer = heroEvery;
+                    cutNow = true;
+                }
+            }
+            if (_heroLeft > 0f) _heroLeft -= Time.deltaTime;
+
+            if (race.Current == RaceEvent.Phase.Finished) _finishedAge += Time.deltaTime;
+            else _finishedAge = 0f;
+
+            PlaceCameras(focusS, focus);
 
             Shot want = Choose(focus, finished, focusS);
             _shotAge += Time.deltaTime;
             if (want != Current && (cutNow || _shotAge >= HoldSeconds))
             {
-                Current = want;
-                _shotAge = 0f;
+                // Planned cuts land on a footstrike — the stride clock the policy already runs — so the
+                // picture changes when the eye expects it. Incidents cut immediately: a fall does not wait
+                // for a stride. A missed window pins the hold just under the threshold so the cut retries
+                // the next frame rather than slipping a full hold later.
+                bool onFootstrike = true;
+                if (!cutNow && focus != null && focus.runner != null)
+                {
+                    float half = focus.runner.StridePhase % 0.5f;
+                    onFootstrike = half < 0.05f || half > 0.45f;
+                    if (!onFootstrike) _shotAge = HoldSeconds - 0.05f;
+                }
+                if (onFootstrike)
+                {
+                    Current = want;
+                    _shotAge = 0f;
+                }
             }
             Apply();
+
+            // The framing metric becomes a control: an individual shot that has held fewer than
+            // minInFrame runners for over a second pulls itself back until the field is legible again.
+            if (framingNudge && OnIndividual)
+                _narrow = AthletesInFrame() < minInFrame ? _narrow + Time.deltaTime : Mathf.Max(0f, _narrow - Time.deltaTime * 2f);
+            else
+                _narrow = 0f;
+            _widen = Mathf.MoveTowards(_widen, _narrow > 1f ? 1f : 0f, Time.deltaTime * 1.5f);
         }
 
         /// <summary>
@@ -254,35 +397,47 @@ namespace PoDecath.Cam
         Shot Choose(RaceEvent.Athlete leader, int finished, float leaderS)
         {
             if (race.Current == RaceEvent.Phase.Countdown || race.Current == RaceEvent.Phase.Idle) return Shot.StartLine;
-            if (race.Current == RaceEvent.Phase.Finished) return Shot.Finish;
+            if (race.Current == RaceEvent.Phase.Finished)
+                return reverseCam != null && _finishedAge > finishReverseAfter ? Shot.Reverse : Shot.Finish;
             if (_incidentLeft > 0f) return Shot.Wide;
             if (leader == null) return Shot.Finish;
 
             float f = race.raceDistance > 0f ? leader.distance / race.raceDistance : 0f;
             if (f < 0.07f) return Shot.OffTheGun;            // away from the line
             if (finished > 0 || f > 0.94f) return Shot.Finish;
-            if (f > 0.86f) return Shot.HeadOn;               // home straight, running at camera
+            if (_heroLeft > 0f && heroCam != null) return Shot.Hero;
+            if (f > cableWindow.y) return Shot.HeadOn;       // home straight: low, tight, at the leader
+            if (f >= cableWindow.x && cableCam != null) return Shot.Cable;
             if (InBend(leaderS)) return Shot.Bend;
-            if (f > 0.35f && f < 0.55f) return Shot.Wide;     // settled middle: show the whole field
-            return Shot.Rail;
+            return Shot.Rail;                                // the default job: in front of the leader, pack behind in shot
         }
 
-        void PlaceCameras(float leaderS)
+        void PlaceCameras(float leaderS, RaceEvent.Athlete focus)
         {
             float outward = Outward;
             Vector3 up = Vector3.up;
+            // Lookahead: the dollies sit a fraction of a second of the leader's own speed further ahead,
+            // so the runner holds their place in frame instead of drifting through it.
+            float look = focus != null ? Mathf.Max(0f, focus.speed) * leadLookahead : 0f;
+            float extra = _widen * widenMetres;   // the framing nudge pulling the shot wider
 
-            // Every trackside height is a named field now rather than a literal. The rail camera always
-            // had the right idea and said so in its own tooltip -- sit high enough to shoot over the near
-            // barrier and down onto the runner -- and the other four were left at chest height, where the
-            // rail and the bunting on it cross the picture. The finish shot was the worst of them, because
-            // it is the one shot the race exists to deliver.
-            Place(startLineCam, path.Position(_startS - 6f, outward * 0.75f) + up * startLineHeight);
+            // The grid shot drifts slowly round the field through the countdown instead of sitting
+            // locked-off: a still opening on a screen that is otherwise all motion reads as stuck.
+            float a = Time.time * startDriftDegPerSec * Mathf.Deg2Rad;
+            Vector3 grid = path.Position(_startS, 0f);
+            Place(startLineCam, grid + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (path.deckWidth * 1.15f) + up * startLineHeight);
             Place(offTheGunCam, path.Position(_startS + 7f, outward * 0.7f) + up * offTheGunHeight);
-            Place(railCam, path.Position(leaderS, outward) + up * railHeight);
+            // The lead dolly: on the deck, ahead of the leader, looking back down the race. Centre line so
+            // nobody's lane puts them out of frame; ahead so the field chases into shot behind the leader.
+            Place(railCam, path.Position(leaderS + railLead + look + extra, 0f) + up * (railHeight + extra * 0.2f));
             Place(bendCam, path.Position(NearestBendApex(leaderS), outward + 3f) + up * bendHeight);
-            Place(headOnCam, path.Position(leaderS + headOnLead, 0f) + up * headOnHeight);
+            Place(headOnCam, path.Position(leaderS + headOnLead + look, 0f) + up * headOnHeight);
             Place(finishCam, path.Position(_finishS, outward * 0.8f) + up * finishHeight);
+            // Hero: ankle height just off the shoulder. Cable: high above the centre line ahead of the
+            // race, the deep shot. Reverse: behind the line, looking back once it is decided.
+            Place(heroCam, path.Position(leaderS + heroLead, heroLateral) + up * heroHeight);
+            Place(cableCam, path.Position(leaderS + cableLead, 0f) + up * cableHeight);
+            Place(reverseCam, path.Position(_finishS + 4.5f, 0f) + up * 1.7f);
 
             // Stadium wide: high, set back off the finish straight, framing the whole loop.
             Vector3 loopCentre = path.transform.position;
@@ -353,6 +508,9 @@ namespace PoDecath.Cam
             SetPriority(wideCam, Shot.Wide);
             SetPriority(headOnCam, Shot.HeadOn);
             SetPriority(finishCam, Shot.Finish);
+            SetPriority(heroCam, Shot.Hero);
+            SetPriority(cableCam, Shot.Cable);
+            SetPriority(reverseCam, Shot.Reverse);
         }
 
         void SetPriority(CinemachineCamera cam, Shot shot)
@@ -465,16 +623,15 @@ namespace PoDecath.Cam
         }
 
         /// <summary>
-        /// Arc length along the loop. Every athlete on the track already keeps one — an RL runner in its
-        /// TrackFollower, the heuristic bot in the arc it integrates itself — so read it rather than
-        /// searching for it. Only an athlete on neither falls through to a projection, and that one gets
+        /// Arc length along the loop. Every athlete on the track already keeps one in its TrackFollower,
+        /// so read it rather than searching for it. Only an athlete without one falls through to a
+        /// projection, and that one gets
         /// the global scan: <see cref="TrackPath.Project"/> searches a few metres around the value handed
         /// to it, so seeding it from the start line would park the moving cameras on the grid all race.
         /// </summary>
         float ArcOf(RaceEvent.Athlete a)
         {
             if (a.follower != null) return a.follower.S;
-            if (a.heuristic != null && a.heuristic.path == path) return a.heuristic.S;
             Vector3 p = a.IsRL ? a.rig.BasePosition : (a.go != null ? a.go.transform.position : Vector3.zero);
             return path.ProjectGlobal(p);
         }

@@ -3,7 +3,7 @@ using UnityEngine;
 namespace PoDecath.Sim
 {
     /// <summary>
-    /// Fills a pre-allocated observation buffer in the Isaac Lab velocity-task layout:
+    /// Fills a pre-allocated observation buffer in the external velocity-task layout:
     ///   [base_lin_vel(3), base_ang_vel(3), projected_gravity(3), velocity_command(3),
     ///    joint_pos - default(N), joint_vel(N), last_action(N), height_scan(H)]
     /// All vectors are expressed in the external right-handed Z-up body frame.
@@ -29,7 +29,7 @@ namespace PoDecath.Sim
             _scanOffsetsExt = new Vector2[nx * ny];
             if (nx > 0 && ny > 0)
             {
-                // Isaac Lab grid_pattern: meshgrid(x, y, indexing="xy") flattened -> x varies fastest.
+                // Scan grid: meshgrid(x, y, indexing="xy") flattened -> x varies fastest.
                 int k = 0;
                 for (int j = 0; j < ny; j++)
                 {

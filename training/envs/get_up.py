@@ -168,6 +168,11 @@ class GetUpEnv(RunToTargetEnv):
         v[:, :3] = (torch.rand(N, 3, generator=self.rng, device=dev) * 2 - 1) * 0.4
         v[:, 3:6] = (torch.rand(N, 3, generator=self.rng, device=dev) * 2 - 1) * 0.8
         v[:, 6:] = (torch.rand(N, self.A, generator=self.rng, device=dev) * 2 - 1) * 0.5
+        # The base _apply_reset reads self.reset_yaw after calling this (it feeds spawn facing for the
+        # running tasks). This override replaced the base _reset_states, which is where the base sets
+        # it — so set it here or the first reset dies on a missing attribute. None is right: the
+        # get-up task has no target to face.
+        self.reset_yaw = None
         return q, v
 
     def _apply_reset(self, mask: torch.Tensor) -> None:

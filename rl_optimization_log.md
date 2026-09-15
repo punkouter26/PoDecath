@@ -112,7 +112,7 @@ r_air = 1.0 * ((self.prev_air - 0.25) * first_contact.float()).sum(-1) * moving
 ```
 
 The cheapest way to be off the ground for a long time is not to run. It is to fall over. The policy
-found that, and the rising return is very largely this one term. Isaac Lab's equivalent
+found that, and the rising return is very largely this one term. The reference implementation of
 `feet_air_time` clamps for exactly this reason; this copy dropped the clamp.
 
 This is worth stating plainly because it is the trap the whole exercise exists to catch: **the run

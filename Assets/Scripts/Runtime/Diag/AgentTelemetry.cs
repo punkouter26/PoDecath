@@ -202,12 +202,9 @@ namespace PoDecath.Diag
                 {
                     Agent a = Resolve(ath.runner, ath.name);
                     a.athlete = ath;
-                    // IsPolicyDriven, not IsRL. IsRL means "has a physics rig", and the heuristic bot has
-                    // had one since it stopped being kinematic -- so it answered yes here, skipped the
-                    // "nothing to train" branch in Diagnose, and was graded Bad for having no ONNX, which
-                    // is the whole point of it. It sorts first, so it became the headline, and DEBUG in the
-                    // corner of every screen has been red on every race since. A red light that is always
-                    // on is not a diagnostic.
+                    // IsPolicyDriven, not IsRL. IsRL means "has a physics rig"; a body with no runner must
+                    // take the "nothing to grade" branch in Diagnose rather than be marked Bad for having
+                    // no ONNX. A red light that is always on is not a diagnostic.
                     a.isRL = ath.IsPolicyDriven;
                     a.seen = true;
                 }
@@ -238,7 +235,7 @@ namespace PoDecath.Diag
                 found.name = name;
                 return found;
             }
-            // A heuristic bot has no runner at all, so it cannot be keyed by one; match it by name.
+            // A body without a runner cannot be keyed by one; match it by name.
             if (runner == null)
                 foreach (Agent a in _agents)
                     if (a.runner == null && a.name == name) return a;
@@ -276,8 +273,8 @@ namespace PoDecath.Diag
             PolicyRunner r = a.runner;
             if (r == null)
             {
-                a.activeModel = "heuristic (no ONNX)";
-                a.runModel = "heuristic";
+                a.activeModel = "(no runner)";
+                a.runModel = "(no runner)";
                 return;
             }
 
@@ -332,7 +329,7 @@ namespace PoDecath.Diag
             if (!a.isRL)
             {
                 a.grade = Grade.Neutral;
-                a.verdict = "Heuristic bot. Scripted gait, nothing to train — it is the yardstick the RL athletes are read against.";
+                a.verdict = "No policy runner on this body, so there is nothing to grade.";
                 return;
             }
 

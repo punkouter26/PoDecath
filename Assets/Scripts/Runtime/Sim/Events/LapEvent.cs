@@ -3,8 +3,8 @@ using UnityEngine;
 namespace PoDecath.Sim
 {
     /// <summary>
-    /// Lap race around the rooftop TrackPath. RL athletes chase a carrot placed by TrackFollower; the
-    /// heuristic bot follows the path kinematically. Distance is progress along the track, so
+    /// Lap race around the rooftop TrackPath. Every athlete chases a carrot placed by TrackFollower.
+    /// Distance is progress along the track, so
     /// raceDistance = laps x lap length. Everything else (countdown, falls, results, restart) is RaceEvent.
     ///
     /// The field lines up on RaceEvent's staggered grid — <see cref="RaceEvent.maxLanes"/> abreast, further
@@ -20,7 +20,7 @@ namespace PoDecath.Sim
         public float startS = 0f;
         [Tooltip("Carrot distance for RL athletes. Training used 6 m, but 9 m smooths the bend entry: 5/5 clean laps vs 1/4 at 6 m.")]
         public float lookahead = 9f;
-        [Tooltip("Clock allowed per lap. A lap-trained policy runs about 25 s and the RED bot about 11 s, "
+        [Tooltip("Clock allowed per lap. A lap-trained policy runs about 25 s, "
                + "so 60 s is generous without letting a stalled field sit there for ever. maxRaceSeconds "
                + "is recomputed from this and the lap count, because a 1500 m cannot share a 400 m's clock.")]
         public float secondsPerLap = 60f;
@@ -77,17 +77,10 @@ namespace PoDecath.Sim
         protected override float MeasureDistance(Athlete a, Vector3 pos)
         {
             if (a.follower != null) return a.follower.Progress;
-            if (a.heuristic != null) return a.heuristic.Distance;
             return base.MeasureDistance(a, pos);
         }
 
         protected override float FloorY(Athlete a) => path != null ? path.deckTopY : base.FloorY(a);
-
-        protected override void ResetHeuristic(Athlete a, Vector3 p)
-        {
-            if (path != null) a.heuristic.ResetOnTrack(path, StartArc(a), TrackLateral(a));
-            else base.ResetHeuristic(a, p);
-        }
 
         // ---- results wording ----
 

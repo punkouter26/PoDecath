@@ -20,10 +20,8 @@ namespace PoDecath.Fx
     public class AthleteTrail : MonoBehaviour
     {
         [Header("Wiring")]
-        [Tooltip("Set for a physics athlete; the ribbon hangs off the articulation root.")]
+        [Tooltip("The ribbon hangs off this rig's articulation root.")]
         public AthleteRig rig;
-        [Tooltip("Set for the kinematic bot instead.")]
-        public HeuristicRunner heuristic;
         public Material material;
 
         [Header("Look")]
@@ -89,9 +87,7 @@ namespace PoDecath.Fx
 
         float Speed()
         {
-            if (rig != null) return rig.BaseLinearVelocityWorld.magnitude;
-            if (heuristic != null) return heuristic.Speed;
-            return 0f;
+            return rig != null ? rig.BaseLinearVelocityWorld.magnitude : 0f;
         }
 
         /// <summary>Drops the ribbon immediately, for a restart that teleports the athlete back to the grid.</summary>

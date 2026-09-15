@@ -72,7 +72,7 @@ namespace PoDecath.UI
             int count = _library != null ? _library.entries.Count : 0;
             _info.text = count > 0
                 ? $"{count} checkpoint(s) in Assets/Policies. Inference: Unity Inference Engine, CPU backend."
-                : "Drop Isaac Lab / MuJoCo .onnx files into Assets/Policies. The rig will hold its default pose until then.";
+                : "Drop trained .onnx files into Assets/Policies. The rig will hold its default pose until then.";
         }
 
         public void StartSimulation()

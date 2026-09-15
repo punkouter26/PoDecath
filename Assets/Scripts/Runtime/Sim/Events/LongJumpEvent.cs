@@ -173,7 +173,6 @@ namespace PoDecath.Sim
                 for (int i = 0; i < n; i++)
                     _footWasDown[i] = Competitor.rig.feet[i] != null && Competitor.rig.feet[i].InContact;
             }
-            Competitor.heuristic?.Go();
         }
 
         void TickAttempt(float dt)
@@ -197,7 +196,7 @@ namespace PoDecath.Sim
             float x = pit.Along(pos);
             a.speed = a.IsRL
                 ? new Vector3(a.rig.BaseLinearVelocityWorld.x, 0f, a.rig.BaseLinearVelocityWorld.z).magnitude
-                : (a.heuristic != null ? a.heuristic.Speed : 0f);
+                : 0f;
             a.time = _stageTimer;
 
             if (a.IsRL)
@@ -243,10 +242,6 @@ namespace PoDecath.Sim
         {
             _tookOff = true;
             _takeoffX = _hasPlant ? _plantX : bodyX + footLead;
-            // The kinematic bot has no stride to get wrong, so it hits the board every time. (It also
-            // moves per frame, not per physics step, so the raw position here overshoots the line by up
-            // to a frame's travel — without this clamp that read as a foul on every attempt.)
-            if (!a.IsRL) _takeoffX = Mathf.Min(_takeoffX, pit.takeoffX);
             if (_takeoffX > pit.takeoffX) _foul = true;
 
             Vector3 dir = pit.Direction;
@@ -261,11 +256,6 @@ namespace PoDecath.Sim
                 v += dir * takeoffDrive;
                 a.rig.root.linearVelocity = v;
             }
-            else if (a.heuristic != null)
-            {
-                _takeoffSpeed = a.heuristic.Speed;
-                a.heuristic.Launch(dir * (_takeoffSpeed + takeoffDrive) + Vector3.up * takeoffRise, pit.sandY);
-            }
             CurrentStage = Stage.Flight;
             _stageTimer = 0f;
         }
@@ -275,22 +265,13 @@ namespace PoDecath.Sim
             Vector3 pos = BodyPosition(a);
             a.speed = a.IsRL
                 ? new Vector3(a.rig.BaseLinearVelocityWorld.x, 0f, a.rig.BaseLinearVelocityWorld.z).magnitude
-                : (a.heuristic != null ? a.heuristic.Speed : 0f);
+                : 0f;
 
-            bool landed;
-            if (a.IsRL)
-            {
-                // Ignore the first fraction of a second, or the foot still on the board reads as a landing.
-                landed = _stageTimer > 0.12f && (AnyFootDown(a) || pos.y <= pit.sandY + a.spawnHeight * 0.55f);
-            }
-            else
-            {
-                landed = a.heuristic == null || !a.heuristic.Airborne;
-            }
+            // Ignore the first fraction of a second, or the foot still on the board reads as a landing.
+            bool landed = !a.IsRL || (_stageTimer > 0.12f && (AnyFootDown(a) || pos.y <= pit.sandY + a.spawnHeight * 0.55f));
             if (!landed && _stageTimer < 4f) return;
 
             if (a.IsRL && a.runner != null) a.runner.enabled = false;   // no stand-up policy; it settles in the sand
-            a.heuristic?.Stop();
             CurrentStage = Stage.Settle;
             _stageTimer = 0f;
             _markX = float.MaxValue;
@@ -414,8 +395,6 @@ namespace PoDecath.Sim
 
         protected override float FloorY(Athlete a) => pit.surfaceY;
 
-        protected override void ResetHeuristic(Athlete a, Vector3 p) => a.heuristic.ResetTo(p, pit.Direction);
-
         /// <summary>
         /// The mark each competitor stands on while somebody else jumps: two rows beside the runway on the
         /// north side, so the cameras on the south side always have a clear line to the jumper.
@@ -443,10 +422,6 @@ namespace PoDecath.Sim
                 else a.rig.ResetPose(p + Vector3.up * a.spawnHeight, rot);
                 SetCourseTarget(a);
             }
-            else if (a.heuristic != null)
-            {
-                a.heuristic.ResetTo(p, pit.Direction);
-            }
         }
 
         /// <summary>
@@ -458,7 +433,6 @@ namespace PoDecath.Sim
         {
             a.stopping = true;
             if (a.IsRL && a.runner != null) a.runner.enabled = false;
-            a.heuristic?.Stop();
             Vector3 p = WaitPosition(a);
             Quaternion rot = SpawnRotation(a);
             if (a.IsRL && a.rig != null)

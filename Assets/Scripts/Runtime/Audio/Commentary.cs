@@ -379,7 +379,6 @@ namespace PoDecath.Audio
             foreach (RaceEvent.Athlete a in race.Athletes)
             {
                 if (h.ByRig != null && a.rig == h.ByRig) return a;
-                if (h.ByBot != null && a.heuristic == h.ByBot) return a;
             }
             return null;
         }

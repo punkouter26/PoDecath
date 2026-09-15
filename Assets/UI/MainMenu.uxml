@@ -14,7 +14,7 @@
                 <ui:Label class="label-micro" text="PODECATH" />
                 <ui:Label class="label-display" text="EVALUATION" />
                 <ui:Label class="label-small muted"
-                          text="Physics creature evaluation. Isaac Lab and MuJoCo policies on Unity ArticulationBody."
+                          text="Physics creature evaluation. MuJoCo-trained policies on Unity ArticulationBody."
                           style="margin-bottom: 48px; white-space: normal;" />
 
                 <ui:Label class="label-micro" text="POLICY CHECKPOINT" style="margin-bottom: 8px;" />

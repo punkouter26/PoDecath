@@ -8,7 +8,7 @@ namespace PoDecath.Sim
     {
         [Tooltip("Name of the ArticulationBody GameObject in the rig hierarchy (must match exactly).")]
         public string name;
-        [Tooltip("Default joint angle in radians, external convention (Isaac Lab default_joint_pos).")]
+        [Tooltip("Default joint angle in radians, external convention (the trainer's default_joint_pos).")]
         public float defaultPos;
         [Tooltip("Lower limit, radians, external convention.")]
         public float lower;
@@ -27,7 +27,7 @@ namespace PoDecath.Sim
 
     /// <summary>
     /// Describes the tensor contract and the physics parameters of one policy family.
-    /// Defaults follow an Isaac Lab velocity-tracking task exported through rsl_rl.
+    /// Defaults follow an external velocity-tracking task exported through rsl_rl.
     /// </summary>
     [CreateAssetMenu(menuName = "PoDecath/Policy Config", fileName = "PolicyConfig")]
     public class PolicyConfig : ScriptableObject
@@ -35,7 +35,7 @@ namespace PoDecath.Sim
         [Header("Joints (policy order)")]
         public JointSpec[] joints = Array.Empty<JointSpec>();
 
-        [Header("Observation layout (Isaac Lab velocity task)")]
+        [Header("Observation layout (external velocity task)")]
         public bool includeBaseLinearVelocity = true;
         public bool includeBaseAngularVelocity = true;
         public bool includeProjectedGravity = true;
@@ -68,7 +68,7 @@ namespace PoDecath.Sim
         [Tooltip("Grid extent along the external Y axis in metres.")]
         public float heightScanSizeY = 0f;
         public float heightScanResolution = 0.1f;
-        [Tooltip("Isaac Lab: base_z - hit_z - heightScanOffset, clipped to +-1.")]
+        [Tooltip("Height scan: base_z - hit_z - heightScanOffset, clipped to +-1.")]
         public float heightScanOffset = 0.5f;
         public float heightScanMaxDistance = 2f;
 
@@ -97,7 +97,7 @@ namespace PoDecath.Sim
         public int solverIterations = 8;
         public int solverVelocityIterations = 2;
 
-        [Header("PD drive (Isaac Lab ImplicitActuator)")]
+        [Header("PD drive (position targets)")]
         public float stiffness = 25f;
         public float damping = 0.5f;
         public float forceLimit = 23.7f;
@@ -146,10 +146,10 @@ namespace PoDecath.Sim
         public float FixedDeltaTime => 1f / Mathf.Max(1, physicsHz);
         public float ControlHz => physicsHz / (float)Mathf.Max(1, controlDecimation);
 
-        /// <summary>Fills the asset with the Unitree Go2 / Isaac Lab flat-terrain defaults (12 DoF).</summary>
+        /// <summary>Fills the asset with the Unitree Go2 flat-terrain defaults (12 DoF).</summary>
         public void ApplyGo2Defaults()
         {
-            // Isaac Lab joint order for Go2 (USD breadth-first): all hips, all thighs, all calves.
+            // Joint order for Go2 (USD breadth-first): all hips, all thighs, all calves.
             joints = new[]
             {
                 J("FL_hip_joint",    0.1f, -1.0472f,  1.0472f),

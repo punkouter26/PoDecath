@@ -468,7 +468,6 @@ namespace PoDecath.UI
         static float ArcOf(RaceEvent.Athlete a, TrackPath path)
         {
             if (a.follower != null) return a.follower.S;
-            if (a.heuristic != null && a.heuristic.path == path) return a.heuristic.S;
             Vector3 p = a.IsRL ? a.rig.BasePosition : (a.go != null ? a.go.transform.position : Vector3.zero);
             return path.ProjectGlobal(p);
         }

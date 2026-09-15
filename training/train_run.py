@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from envs.get_up import GetUpEnv  # noqa: E402
 from envs.run_to_target import RunToTargetEnv  # noqa: E402
 from envs.run_track import RunTrackEnv  # noqa: E402
+from envs.crowd import CrowdEnv  # noqa: E402
 from ppo import PPO, PPOConfig, export_onnx  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -33,6 +34,7 @@ TASKS = {  # name -> (env class, exported ONNX file name in Assets/Policies)
     "target": ("run_to_target", RunToTargetEnv, "athlete_run.onnx"),
     "track": ("run_track", RunTrackEnv, "athlete_track.onnx"),
     "getup": ("get_up", GetUpEnv, "athlete_getup.onnx"),
+    "crowd": ("crowd", CrowdEnv, "athlete_crowd.onnx"),
 }
 TASK = "run_to_target"
 
@@ -359,6 +361,9 @@ def main() -> None:
             frac = 1.0 if args.dr_ramp_iters <= 0 else min(1.0, run_it / float(args.dr_ramp_iters))
             env.dr.set_strength(args.dr_strength *
                                 (args.dr_start_strength + (1.0 - args.dr_start_strength) * frac))
+            # The crowd task rides the same ramp: a soft pacemaker early, full contact later.
+            if hasattr(env, "set_threat"):
+                env.set_threat(args.dr_start_strength + (1.0 - args.dr_start_strength) * frac)
         with torch.no_grad():
             for _ in range(args.steps):
                 act = ppo.act(obs)

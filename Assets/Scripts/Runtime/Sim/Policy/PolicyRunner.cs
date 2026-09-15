@@ -40,6 +40,11 @@ namespace PoDecath.Sim
         // Walking-stride phase in [0, 1), advanced once per control step. The trainer randomises it
         // per episode and the policy only ever sees a steadily advancing clock, so the starting
         // offset does not matter -- the *rate* does, and it is controlDeltaTime / gaitPeriod.
+        /// <summary>Walking-stride phase in [0, 1). The broadcast director times its planned cuts to
+        /// footstrikes with this — phase 0 and 0.5 are the contacts — so the picture changes when the eye
+        /// expects it rather than mid-air.</summary>
+        public float StridePhase => _gaitPhase;
+
         float _gaitPhase;
         float[] _action = new float[0];
         float[] _lastAction = new float[0];

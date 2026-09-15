@@ -476,7 +476,6 @@ namespace PoDecath.EditorTools
             Transform t = r.transform;
             for (int i = 0; i < 6 && t != null; i++)
             {
-                if (t.GetComponent<HeuristicRunner>() != null) return t.name + " [coded]";
                 if (t.GetComponent<PolicyRunner>() != null) return t.name + " [policy]";
                 t = t.parent;
             }

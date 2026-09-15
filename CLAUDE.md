@@ -17,7 +17,7 @@ Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the te
 ### Training
 
 6. All training runs on **MuJoCo / Newton** (`mujoco_warp` today, Newton as it lands). No Unity
-   ML-Agents, and no second trainer: the Isaac Lab twin, its athlete and its comparison tool were
+   ML-Agents, and no second trainer: a second trainer, its twin athlete and its comparison tool were
    deleted on 2026-09-14 (owner decision). MuJoCo/Newton is the only training path.
 7. **Ask the owner for a skinned mesh before attempting to train.** Read the rig (bone hierarchy,
    pivots, limits) out of that model and import it into MuJoCo/Newton
@@ -46,8 +46,9 @@ Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the te
     variations owner-supplied colours (owner decision, 2026-09-05). Tell athletes apart by name;
     `AthleteSpawner.skinTintStrength` dials a house colour back in if it is ever wanted (0 = model
     textures, the default; 1 = flat colour).
-17. RL learning apps always have a heuristic-coded bot, a reference RL bot, and zero-to-many custom
-    bots, often with custom skinned meshes.
+17. RL learning apps have a reference RL bot and zero-to-many custom bots, often with custom skinned
+    meshes. The heuristic-coded bot this rule used to require was removed on 2026-09-14 (owner
+    decision); do not add one back without asking.
 
 ### Unity scene authoring
 

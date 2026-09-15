@@ -8,9 +8,9 @@ using PoDecath.Fx;
 namespace PoDecath.Sim
 {
     /// <summary>
-    /// Spawns the roster (house rules: RED heuristic bot, GREEN reference RL bot, custom bots with their
-    /// own textures) and registers everyone with the RaceEvent. RL athletes are built from the MJCF used
-    /// for training, skinned with the glTF character, and driven by PolicyRunner in TargetVector mode.
+    /// Spawns the roster (the reference RL athlete and the custom athletes with their own skinned meshes)
+    /// and registers everyone with the RaceEvent. Athletes are built from the MJCF used for training,
+    /// skinned with the glTF character, and driven by PolicyRunner in TargetVector mode.
     /// </summary>
     [DefaultExecutionOrder(-60)]
     public class AthleteSpawner : MonoBehaviour
@@ -18,6 +18,10 @@ namespace PoDecath.Sim
         public TextAsset defaultMjcf;
         public TextAsset defaultPolicyJson;
         public GameObject defaultSkin;
+        [Tooltip("When true (default, owner decision 2026-09-14) athletes collide with each other and "
+               + "with their own body parts, matching the MJCF the policies were trained against. When "
+               + "false, athletes pass through one another as they did before contact training existed.")]
+        public bool collideWithOtherAthletes = true;
         public List<AthleteDefinition> roster = new List<AthleteDefinition>();
         public RaceEvent dash;
         public CameraRig cameraRig;
@@ -26,8 +30,6 @@ namespace PoDecath.Sim
         public string creatureLayerName = "Creature";
         public bool debugVisuals = false;
         public int controlDecimation = 4;
-        [Tooltip("Show the RED heuristic pacer bot. Off = only the RL athletes run.")]
-        public bool includeHeuristic = true;
         [Tooltip("Suffix every athlete with a unique 1-based number, so a field of eight copies of two policies still has eight distinct names.")]
         public bool numberRunners = false;
         [Range(0f, 1f)]
@@ -102,9 +104,7 @@ namespace PoDecath.Sim
             foreach (AthleteDefinition def in BuildSpawnList())
             {
                 if (def == null) continue;
-                RaceEvent.Athlete a = def.kind == AthleteKind.Heuristic
-                    ? SpawnHeuristic(def, layer, pj)
-                    : SpawnRL(def, layer, pj);
+                RaceEvent.Athlete a = SpawnRL(def, layer, pj);
                 if (a == null) continue;
                 a.number = ++number;
                 if (numberRunners)
@@ -147,22 +147,14 @@ namespace PoDecath.Sim
             foreach (AthleteDefinition def in roster)
             {
                 if (def == null) continue;
-                if (def.kind == AthleteKind.Heuristic && !includeHeuristic) continue;
                 list.Add(def);
             }
             return list;
         }
 
         /// <summary>
-        /// Gives one athlete a reading of how hard it is working.
-        ///
-        /// Both kinds of athlete get one, and that is the point: the coded bot and the policy athletes run
-        /// the same body with the same drive limits, so their torque traces are directly comparable and the
-        /// strain bar means the same thing on both. (The <c>IsRL</c> test below reads as if it excludes the
-        /// coded bot and does not: <c>IsRL</c> is <c>rig != null</c>, and the bot has had a real rig since
-        /// it stopped being a kinematic capsule. Here that is the correct answer — what this needs is a
-        /// body with joints, not a network.) It goes on the articulation root so the joints it reads are
-        /// the ones underneath it.
+        /// Gives one athlete a reading of how hard it is working. It goes on the articulation root so the
+        /// joints it reads are the ones underneath it.
         ///
         /// It measures and nothing else. Nothing downstream of this is allowed to feed back into a drive —
         /// see the note on <see cref="EffortMeter"/> for why a fatigue system that quietly lowers torque
@@ -178,8 +170,7 @@ namespace PoDecath.Sim
         }
 
         /// <summary>
-        /// Gives one athlete its own feet, on the body that actually moves — the articulation root for a
-        /// physics athlete, the runner object for the kinematic bot — so a step is heard from where the
+        /// Gives one athlete its own feet, on the articulation root, so a step is heard from where the
         /// runner is on the deck rather than from the middle of the stadium.
         ///
         /// The dust comes off the same detection: <see cref="FootstepAudio"/> raises an event per step and
@@ -195,7 +186,6 @@ namespace PoDecath.Sim
             var steps = host.AddComponent<FootstepAudio>();
             steps.bank = haveSound ? audioBank : null;
             steps.rig = a.rig;
-            steps.heuristic = a.heuristic;
             if (footDust) host.AddComponent<FootstepDust>().steps = steps;
         }
 
@@ -221,7 +211,6 @@ namespace PoDecath.Sim
             {
                 var trail = host.AddComponent<AthleteTrail>();
                 trail.rig = a.rig;
-                trail.heuristic = a.heuristic;
                 trail.material = vfxBank.trail;
                 trail.color = a.color;
             }
@@ -229,7 +218,6 @@ namespace PoDecath.Sim
             {
                 var blob = host.AddComponent<BlobShadow>();
                 blob.rig = a.rig;
-                blob.heuristic = a.heuristic;
                 blob.material = vfxBank.blobShadow;
             }
             // The strain overlay needs a meter to read, so it only ever exists on an athlete that got one.
@@ -280,11 +268,9 @@ namespace PoDecath.Sim
         /// <summary>
         /// Builds one athlete's body: the MJCF rig, its colliders, its PD gains and its skin.
         ///
-        /// Shared by the policy athletes and the hand-coded one so that "the same rig" is a fact about
-        /// the code rather than a claim in a comment. Everything that decides how the body behaves --
-        /// the articulation chain, the collider shapes, the per-joint stiffness and damping read from
-        /// the MJCF actuators, the spawn height -- is settled here, before either kind of controller is
-        /// attached.
+        /// Everything that decides how the body behaves -- the articulation chain, the collider shapes,
+        /// the per-joint stiffness and damping read from the MJCF actuators, the spawn height -- is
+        /// settled here, before the controller is attached.
         /// </summary>
         readonly List<Collider[]> _spawnedColliders = new List<Collider[]>();
 
@@ -324,7 +310,10 @@ namespace PoDecath.Sim
             MjcfImporter.Result res = MjcfImporter.Build(xml.text, opt);
             res.root.name = def.displayName;
             res.root.transform.SetParent(transform, false);
-            IgnoreBetweenAthletes(res.colliders);
+            // Owner decision 2026-09-14: athletes collide. Until the contact-trained policies land, an
+            // athlete bumped by a neighbour may stumble — that is the documented cost of the switch, and
+            // the reason training is running a crowding task alongside it.
+            if (!collideWithOtherAthletes) IgnoreBetweenAthletes(res.colliders);
 
             cfg = ScriptableObject.CreateInstance<PolicyConfig>();
             cfg.name = def.displayName + "_config";
@@ -404,37 +393,6 @@ namespace PoDecath.Sim
             {
                 name = def.displayName, kind = def.kind, color = def.Tint, go = res.root, rig = res.rig,
                 runner = runner, command = cmd, follower = follower, spawnHeight = cfg.spawnHeight,
-            };
-        }
-
-        /// <summary>
-        /// The hand-coded athlete, built on exactly the same body as the policy athletes.
-        ///
-        /// It used to be a bare GameObject with a skin on it and a pace profile driving the transform,
-        /// which is why it never fell and could not be raced against honestly. It now shares SpawnBody
-        /// with SpawnRL -- same MJCF, same colliders, same per-joint PD gains, same gravity -- and the
-        /// only difference from a policy athlete is that HeuristicGait computes the joint targets
-        /// instead of a network. It gets no PolicyRunner and no get-up policy: borrowing a trained
-        /// network to stand back up would defeat the point of having a coded opponent.
-        /// </summary>
-        RaceEvent.Athlete SpawnHeuristic(AthleteDefinition def, int layer, PolicyJson pj)
-        {
-            MjcfImporter.Result res = SpawnBody(def, layer, pj, out PolicyConfig cfg);
-            if (res == null) return null;
-
-            var gait = res.root.AddComponent<HeuristicGait>();
-            gait.rig = res.rig;
-
-            var hr = res.root.AddComponent<HeuristicRunner>();
-            hr.rig = res.rig;
-            hr.gait = gait;
-            hr.topSpeed = def.topSpeed;
-            hr.accelSeconds = def.accelSeconds;
-
-            return new RaceEvent.Athlete
-            {
-                name = def.displayName, kind = def.kind, color = def.Tint, go = res.root, rig = res.rig,
-                heuristic = hr, spawnHeight = cfg.spawnHeight,
             };
         }
 

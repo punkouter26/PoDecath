@@ -6,8 +6,8 @@ Every policy here is trained in MuJoCo and executed in Unity on PhysX, and until
 the training side had no randomisation at all: one friction value, one mass set, one pair of PD gains,
 noiseless observations and a control loop with zero latency. That is worth fixing on its own terms. A
 policy that has only ever felt one set of dynamics treats its actuators as exact rather than closing
-the loop on feedback, and the Isaac Lab twin of this same body has always randomised friction, mass,
-pushes and observation noise (see AGENTS.md) while the MuJoCo run had none.
+the loop on feedback, and established humanoid trainers randomise friction, mass, pushes and
+observation noise as a matter of course, while this MuJoCo run had none.
 
 This module was originally written to fix something else, and that reason was wrong. The project's
 headline open item was that `athlete_getup.onnx` "does not transfer" to PhysX, and this looked like
@@ -194,8 +194,8 @@ class DomainRandomizer:
     def noisy(self, obs: torch.Tensor, A: int) -> torch.Tensor:
         """Additive sensor noise, scaled per observation group.
 
-        The scales follow the Isaac Lab defaults for a position-controlled humanoid, which is the same
-        sensing model Unity presents: angular velocity and joint velocity are the noisy channels,
+        The scales follow common practice for a position-controlled humanoid and match the sensing
+        model Unity presents: angular velocity and joint velocity are the noisy channels,
         joint position and the gravity projection are comparatively clean.
         """
         if self.obs_noise <= 0.0:

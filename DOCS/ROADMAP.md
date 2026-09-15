@@ -30,9 +30,11 @@ Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
 
 ## Bots roster (house rules)
 
-- Heuristic bot: RED, `HeuristicRunner` (kinematic pace profile).
-- Reference RL bot: GREEN, `athlete_run.onnx`.
+- Reference RL bot: `Matt RL`, the lap policy on the reference skin.
 - Custom RL bots: owner-supplied textures and skinned meshes via `AthleteDefinition` assets.
+- No heuristic-coded bot. The RED sprinter was removed on 2026-09-14 (owner decision), together with
+  `HeuristicRunner`, `HeuristicGait`, the `Heuristic_Sprinter` asset and the `Probe Heuristic Gait` tool.
+  The plain `Matt` character (`RIGGED_Matt.glb`) went the same day.
 
 ## Next steps (agreed order)
 
@@ -55,34 +57,10 @@ Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
   a DNF anyway. One layer mask; before/after reads **recoveries 0 -> 3**. See `DOCS/README.md` and
   `AGENTS.md` for the full account. The lesson is the general one: before blaming a policy for a behaviour,
   confirm the thing measuring it can see what it claims to measure.
-- **The RED bot falls on the Rooftop dash, and four plausible causes have been ruled out.** Measured by
-  `PoDecath/Sweep All Scenes`: in `Rooftop.unity` the heuristic athlete ends every 6 s run on its back —
-  upright ≈ **-0.035**, **1.31 m** travelled, **0.22 m/s** — while the two RL athletes in the same scene
-  are fine (upright 0.97+, 8.5–11 m). The same `Heuristic_Sprinter` definition runs clean in
-  `RooftopLongJump` (upright 1.0, 15.38 m at 2.56 m/s), so it is specific to `Rooftop.unity` /
-  `RaceEvent`, not to the bot.
-
-  What it is **not**, each disproved by measurement rather than argument — and note the distance and
-  speed came back *identical to two decimals* every time, which is the tell that the change never
-  reached the running code:
-  1. *Not the countdown hold.* `RaceEvent` pins only `a.IsRL` during the countdown; pinning the
-     heuristic too changed nothing.
-  2. *Not the speed ask.* Dropping `topSpeed` from 9.2 to 4.0 changed nothing.
-  3. *Not the spawn height.* The heuristic branch placed the base at deck level with no `spawnHeight`
-     lift, unlike the RL branch. Fixed; changed nothing.
-  4. *Not the dead reset branch.* `Athlete.IsRL` is `rig != null`, which became true for the heuristic
-     bot when it gained a body, so `ResetHeuristic` had been unreachable. Fixed (the branch is now
-     ordered heuristic-first, verified no regression in the long jump); changed nothing.
-
-  Fixes 3 and 4 are real bugs and are committed on their own merits. The fall is still open, and it is
-  upstream of `ResetAthlete`. Two things worth knowing before the next attempt. `PoDecath/Probe
-  Heuristic Gait` **cannot currently be trusted in this scene**: run there with `driver: "none"` — no
-  controller at all, drives holding defaults — the body still goes over at 2.09 s, and with
-  `driver: "policy"` at 0.74 s, even though the policy athletes are upright in the real scene. By the
-  probe's own documented criterion that means it is setting the body down badly, so fix the probe's
-  placement before believing any gait number it reports. And the fall looks insensitive to controller
-  input entirely, which points at the body's state at spawn — `AthleteSpawner`/`SpawnBody`/`MjcfImporter`
-  — rather than at `HeuristicGait`.
+- ~~The RED bot falls on the Rooftop dash~~ — **closed 2026-09-14 by removing the bot** (owner decision).
+  It fell at the gun in every race; the countdown hold, the speed ask, the spawn height and the dead reset
+  branch had each been ruled out by measurement, and the fault sat upstream of `ResetAthlete`. The code,
+  the asset and the gait probe are gone rather than fixed.
 - **No athlete can clear a hurdle.** The hurdles event is playable and physical — 0.762 m bars on 9 kg
   frames that topple when hit, knocks counted per runner and shown on the results board — but every
   policy runs straight into them. Measured over a 3-strong RL field before the get-up policy existed: all

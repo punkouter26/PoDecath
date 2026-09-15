@@ -5,7 +5,7 @@ namespace PoDecath.Sim
 {
     /// <summary>
     /// Thin adapter over an ArticulationBody hierarchy. Exposes joint state in the
-    /// external (Isaac Lab / MuJoCo) sign convention and applies PD position targets.
+    /// external (MuJoCo) sign convention and applies PD position targets.
     /// The athlete's forward axis is Unity +X (external +X), up is Unity +Y.
     /// </summary>
     public class AthleteRig : MonoBehaviour

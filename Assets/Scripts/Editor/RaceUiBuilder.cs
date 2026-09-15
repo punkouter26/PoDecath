@@ -82,6 +82,9 @@ namespace PoDecath.EditorTools
             dir.wideCam = ShotCam("CM Shot Wide", 65f);
             dir.headOnCam = ShotCam("CM Shot HeadOn", 42f);
             dir.finishCam = ShotCam("CM Shot Finish", 46f);
+            dir.heroCam = ShotCam("CM Shot Hero", 55f);
+            dir.cableCam = ShotCam("CM Shot Cable", 40f);
+            dir.reverseCam = ShotCam("CM Shot Reverse", 46f);
 
             // The director's line-of-sight check must not count an athlete's own body as the thing
             // blocking the view of it.
@@ -236,8 +239,8 @@ namespace PoDecath.EditorTools
         };
 
         /// <summary>
-        /// Builds the menu that picks the event and the field. Every roster entry is offered, the RED
-        /// heuristic bot included (house rule: every event has one), each with its own counter. Only events
+        /// Builds the menu that picks the event and the field. Every roster entry is offered, each with
+        /// its own counter. Only events
         /// whose scene exists are offered, so building the race scenes alone still gives a menu without the
         /// long jump on it.
         /// </summary>

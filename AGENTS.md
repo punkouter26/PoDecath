@@ -1,7 +1,8 @@
 # PoDecath — agent and contributor guide
 
 Physics-driven creature evaluation runtime for **mobile portrait (9:16)**. Policies are trained
-**externally** (MuJoCo Warp / Newton — the only trainer; the Isaac Lab twin was deleted 2026-09-14)
+**externally** (MuJoCo Warp / Newton — the only trainer; a former second trainer was removed
+2026-09-14 by owner decision)
 and executed in Unity
 through **Unity Inference Engine**
 (package `com.unity.ai.inference`, the Unity 6.2+ name for Sentis; namespace `Unity.InferenceEngine`).
@@ -120,7 +121,7 @@ start depending on which mirror replied first.
 
 ## Coordinate conversion
 
-External frame (Isaac Lab, MuJoCo): right-handed, Z-up, X forward, Y left.
+External frame (MuJoCo training frame): right-handed, Z-up, X forward, Y left.
 Unity: left-handed, Y-up. The creature's forward axis in Unity is **+X**, up is **+Y**, left is **+Z**.
 
 | Quantity | External -> Unity | Notes |
@@ -143,7 +144,7 @@ Implementation: `CoordinateTransform.cs`, `ObservationBuilder.cs` (angular veloc
 Input: one float tensor of shape `(1, N_obs)`. Output: float tensor whose first `N_act` values are
 the actions. Only the first input and first output are used.
 
-Default layout (Isaac Lab velocity-tracking task, `Athlete_PolicyConfig`, **N_obs = 48**,
+Default layout (velocity-tracking task, `Athlete_PolicyConfig`, **N_obs = 48**,
 **N_act = 12**), in order:
 
 | Slice | Size | Content (external body frame) | Scale field |
@@ -158,9 +159,9 @@ Default layout (Isaac Lab velocity-tracking task, `Athlete_PolicyConfig`, **N_ob
 | 48.. | H | optional height scan, `base_z - hit_z - heightScanOffset`, clipped to [-1, 1] | `heightScanSize*` |
 
 All observations are clipped to `+-observationClip` (100). NaN/Inf become 0.
-Height scan ordering follows Isaac Lab `grid_pattern` (x varies fastest).
+Height scan ordering follows the training grid pattern (x varies fastest).
 
-Action mapping (Isaac Lab `JointPositionAction`):
+Action mapping (joint-position action):
 
 ```
 action  = clip(net_output, -actionClip, actionClip)
@@ -174,7 +175,7 @@ Every field lives on the `PolicyConfig` ScriptableObject. Each `PolicyLibrary` e
 rsl_rl exports typically bake the observation normaliser into the ONNX graph; if yours does not,
 put the empirical scales into the `*Scale` fields.
 
-Joint order (Go2, Isaac Lab / USD breadth-first): `FL_hip, FR_hip, RL_hip, RR_hip, FL_thigh,
+Joint order (Go2, USD breadth-first): `FL_hip, FR_hip, RL_hip, RR_hip, FL_thigh,
 FR_thigh, RL_thigh, RR_thigh, FL_calf, FR_calf, RL_calf, RR_calf`. `AthleteRig.Bind` resolves
 joints by GameObject name, so a Blender-skinned rig only has to keep these names.
 
@@ -453,15 +454,15 @@ named so nobody has to rediscover it.
 
 5. **MuJoCo / Newton only — there is no second trainer.** Training is `mujoco_warp` PPO
    (`training/train_run.py`, envs in `training/envs/`), moving to Newton as it matures. Unity
-   ML-Agents is not used and must not be added. The Isaac Lab twin, its athlete and its comparison
-   tool were **deleted on 2026-09-14** (owner decision). Do not reintroduce them, and do not add a
-   second trainer "for cross-checking": that call has been made and reversed once already.
+   ML-Agents is not used and must not be added. A second trainer, its twin athlete and its
+   comparison tool were **deleted on 2026-09-14** (owner decision). Do not reintroduce them, and
+   do not add a second trainer "for cross-checking": that call has been made and reversed once
+   already.
 6. **Ask for the skinned mesh first.** Do not start training until the owner has supplied the model.
    The rig comes *out of that model*: `training/rig_to_mjcf.py` reads the glb bone hierarchy into
    `training/models/athlete.xml` (21 DoF). Rig descriptions live in `training/rigs/*.json`. Unity
    binds the same skeleton by bone name via `SkinBinder` + `AthleteDefinition.boneMap`, so the names
-   must survive the round trip. (`rig_to_mjcf.py --chain` still emits `athlete_chain.xml`; nothing
-   consumes it now that the Isaac importer is gone.)
+   must survive the round trip.
 7. **One model, all behaviours, first.** More creature/human models will arrive later; until then,
    train the initial athlete through every behaviour it needs (run-to-target, track lap, get-up, the
    `DOCS/ROADMAP.md` events) rather than adding skeletons.
@@ -492,8 +493,12 @@ named so nobody has to rediscover it.
     2026-09-05). `AthleteSpawner.skinTintStrength` is the dial: 0 (default) leaves the model textures
     alone, 1 applies a flat house colour, and values between multiply the base map so it stays readable.
     `AthleteDefinition.Tint` still feeds the UI, so results and menu rows stay colour-coded.
-16. **Roster:** every RL learning app has a heuristic-coded bot, a reference RL bot, and zero or more
-    custom bots, often with custom skinned meshes (`AthleteDefinition` assets).
+16. **Roster:** a reference RL bot and zero or more custom bots, often with custom skinned meshes
+    (`AthleteDefinition` assets). The heuristic-coded bot this rule used to require was removed on
+    2026-09-14 (owner decision), along with `HeuristicRunner`, `HeuristicGait`, `GaitProbe` and the
+    `Heuristic_Sprinter` asset; the plain `Matt` character (`RIGGED_Matt.glb`) went the same day.
+    `AthleteKind` keeps explicit values (ReferenceRL = 1, CustomRL = 2) so the assets on disk did not
+    change kind when Heuristic (0) was dropped.
 
 ### Scene authoring and Unity MCP
 
@@ -556,8 +561,8 @@ named so nobody has to rediscover it.
   `track.dashLength` and `track.laneSpacing` into it.
 - **Agreed product (2026-09-04 interview):** first event = one lap of the rooftop track, one humanoid,
   hands-off (Restart only), HUD = timer/finish, speed, distance, stability (red on fall), auto reset
-  (3 s after a fall, 4 s after a finish). `RooftopLap.unity` is built with `handsOff: true` and the RED
-  pacer hidden (`AthleteSpawner.includeHeuristic = false`). New humanoids = new `AthleteDefinition`
+  (3 s after a fall, 4 s after a finish). `RooftopLap.unity` is built with `handsOff: true`. New
+  humanoids = new `AthleteDefinition`
   assets pointing at their rigged glb (`skinOverride`), with `boneMap`/`skinRootEuler` per skeleton.
 - **Adding a humanoid is now two steps, neither of them typing:** drop the `.glb`/`.fbx` into
   `Assets/Models/Characters/`, run `PoDecath/Rebuild Athlete Roster`, then rebuild the race and long jump
@@ -585,12 +590,10 @@ named so nobody has to rediscover it.
   `AthleteRosterBuilder.DressFbx` extracts them to `<model>_Textures/`, binds them to a real material in
   `<model>_Materials/` and remaps the importer onto it. glTF needs none of this; glTFast unpacks images
   as a matter of course.
-- **The Isaac Lab twin is gone (removed 2026-09-14).** `training/isaac/`, `training/compare.py`, the
-  `athlete_isaac.onnx` policy and the "Matt Isaac" athlete were deleted by owner decision: one trainer,
-  MuJoCo Warp, and no second path to keep in step. One of its findings is still load-bearing and is
-  kept here: PhysX's MJCF importer maps a multi-joint body onto a single D6 joint in a fixed X/Y/Z axis
-  order, which swapped the abdomen axes and bent the shoulder sideways — which is why the rig is
-  chained. Its numbers are in `DOCS/COMPARISON.md`, which is now a historical record.
+- **One trainer (a second was removed 2026-09-14, owner decision).** One finding from that second
+  trainer's work is still load-bearing and is kept here: PhysX's MJCF importer maps a multi-joint body
+  onto a single D6 joint in a fixed X/Y/Z axis order, which swapped the abdomen axes and bent the
+  shoulder sideways — which is why the rig is chained.
 - **Lap running:** `TrackPath` (Unity) and `training/envs/run_track.py` share one centre-line parametrisation
   (straights at +-R along x, clockwise ends, arc length s from the start of the dash straight). Policies
   keep the run-to-target observation; `TrackFollower` places the target 6 m ahead on the centre line

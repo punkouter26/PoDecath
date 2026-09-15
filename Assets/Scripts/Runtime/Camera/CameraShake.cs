@@ -30,15 +30,18 @@ namespace PoDecath.Cam
         public float range = 34f;
 
         [Tooltip("How long one shake lasts. Short: this is a knock, not an earthquake.")]
-        public float duration = 0.28f;
+        public float duration = 0.22f;
 
         [Tooltip("Metres per second of camera velocity per unit of strength. Strength is normalised 0..1 by "
-               + "the caller, so this is the amplitude of the biggest shake the game can produce.")]
-        public float metresPerSecond = 0.55f;
+               + "the caller, so this is the amplitude of the biggest shake the game can produce. Watched "
+               + "in a full race on 2026-09-14 the old 0.55 read as a faulty camera on some angles; the "
+               + "shakes that survive the higher floor below are real wrecks and can be this small.")]
+        public float metresPerSecond = 0.4f;
 
         [Tooltip("Shakes weaker than this are dropped rather than played, so a field of sixteen scuffing "
-               + "hurdles does not leave the camera permanently trembling.")]
-        public float minStrength = 0.08f;
+               + "hurdles does not leave the camera permanently trembling. Raised from 0.08 after the same "
+               + "race watch: routine contacts were firing constantly.")]
+        public float minStrength = 0.18f;
 
         [Tooltip("Shortest gap between two shakes. Without it a single fall — which is a dozen contacts "
                + "over a few frames — fires a dozen overlapping impulses and reads as a camera fault.")]
@@ -114,8 +117,10 @@ namespace PoDecath.Cam
             listener.ApplyAfter = CinemachineCore.Stage.Noise;
             listener.ChannelMask = 1;
             // The mobile tier is running at 0.8 render scale on a scene already well over its triangle
-            // budget; a softer shake there costs nothing and keeps a small screen readable.
-            listener.Gain = RenderTier.IsMobile ? 0.6f : 1f;
+            // budget; a softer shake there costs nothing and keeps a small screen readable. The desktop
+            // gain came down from 1.0 after the same race watch — the flinch was the loudest thing on
+            // screen whenever anything touched anything.
+            listener.Gain = RenderTier.IsMobile ? 0.5f : 0.6f;
             listener.Use2DDistance = false;
             listener.UseCameraSpace = true;
             return listener;

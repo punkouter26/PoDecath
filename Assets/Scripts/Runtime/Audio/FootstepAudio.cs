@@ -5,24 +5,19 @@ using PoDecath.Sim;
 namespace PoDecath.Audio
 {
     /// <summary>
-    /// One athlete's feet. Attached to the body that actually moves — the articulation root for an RL
-    /// athlete, the runner object for the heuristic bot — so the sound comes from the right place in the
-    /// stadium and pans and falls off with the broadcast camera.
+    /// One athlete's feet. Attached to the articulation root, so the sound comes from the right place in
+    /// the stadium and pans and falls off with the broadcast camera.
     ///
-    /// A physics athlete needs nothing invented: <see cref="FootContactSensor"/> is already on every foot
-    /// for the policy's observations, so a step is the rising edge of a contact and its weight is the
-    /// normal force that came with it. The heuristic bot has no physics at all, so its steps are counted
-    /// off the distance it has covered instead — one every <see cref="strideMetres"/>, which is what keeps
-    /// the RED pacer from running in silence next to a field that does not.
+    /// Nothing is invented: <see cref="FootContactSensor"/> is already on every foot for the policy's
+    /// observations, so a step is the rising edge of a contact and its weight is the normal force that
+    /// came with it.
     /// </summary>
     [DefaultExecutionOrder(60)]
     public class FootstepAudio : MonoBehaviour
     {
         public AudioBank bank;
-        [Tooltip("Set for a physics athlete: steps come from the foot contact sensors.")]
+        [Tooltip("Steps come from this rig's foot contact sensors.")]
         public AthleteRig rig;
-        [Tooltip("Set for the kinematic bot: steps are counted off distance covered.")]
-        public HeuristicRunner heuristic;
 
         [Header("Mix")]
         [Range(0f, 1f)] public float volume = 0.55f;
@@ -40,10 +35,6 @@ namespace PoDecath.Audio
         [Tooltip("Shortest gap between two steps from the same foot; below it, contact chatter is one step.")]
         public float refractorySeconds = 0.12f;
 
-        [Header("Kinematic bot")]
-        [Tooltip("Distance covered per footfall. A sprinter's stride is about 2.1 m and lands twice in it.")]
-        public float strideMetres = 1.05f;
-
         [Header("Breathing")]
         [Tooltip("Working hard is audible from a few metres. Off for a field of sixteen on a phone.")]
         public bool breathe = true;
@@ -59,9 +50,8 @@ namespace PoDecath.Audio
         /// <summary>
         /// Raised on every step this component detects, with the world point the foot came down at and how
         /// hard it landed (0..1). The detection here is the only place in the project that knows what a
-        /// step is — the rising edge of a real contact for a physics athlete, distance covered for the
-        /// kinematic bot — so anything else that wants to react to a footfall listens rather than working
-        /// it out a second time. <c>FootstepDust</c> is the one that does.
+        /// step is — the rising edge of a real foot contact — so anything else that wants to react to a
+        /// footfall listens rather than working it out a second time. <c>FootstepDust</c> is the one that does.
         /// </summary>
         public event Action<Vector3, float> Stepped;
 
@@ -70,7 +60,6 @@ namespace PoDecath.Audio
         bool[] _down;
         float[] _lastStep;
         int _cycle;
-        float _sinceStride;
         AudioBank.Surface _surface = AudioBank.Surface.Asphalt;
         float _nextSurfaceCheck;
 
@@ -110,8 +99,7 @@ namespace PoDecath.Audio
         {
             if (_src != null) _src.dopplerLevel = doppler * AudioMix.DopplerScale;
             if (_breath == null) return;
-            float speed = rig != null ? rig.BaseLinearVelocityWorld.magnitude
-                        : heuristic != null ? heuristic.Speed : 0f;
+            float speed = rig != null ? rig.BaseLinearVelocityWorld.magnitude : 0f;
             float work = Mathf.Clamp01(speed / Mathf.Max(1f, breathReferenceSpeed));
 
             // Speed alone gets this wrong in both directions: an athlete fighting to hold a line through a
@@ -160,7 +148,6 @@ namespace PoDecath.Audio
             if (_src == null) return;
             if (bank == null || !bank.HasFootfalls) { if (Stepped == null) return; }   // still detect steps for the dust
             if (rig != null) PhysicsSteps();
-            else if (heuristic != null) KinematicSteps();
         }
 
         void PhysicsSteps()
@@ -179,16 +166,6 @@ namespace PoDecath.Audio
                 }
                 _down[i] = now;
             }
-        }
-
-        void KinematicSteps()
-        {
-            if (!heuristic.Running) { _sinceStride = 0f; return; }
-            _sinceStride += heuristic.Speed * Time.fixedDeltaTime;
-            if (_sinceStride < strideMetres) return;
-            _sinceStride -= strideMetres;
-            float top = Mathf.Max(1f, heuristic.topSpeed);
-            Step(Mathf.Clamp01(0.4f + 0.6f * heuristic.Speed / top), heuristic.transform.position);
         }
 
         /// <summary>

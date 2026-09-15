@@ -94,7 +94,6 @@ namespace PoDecath.Sim
             }
 
             Build();
-            GiveBotsSomethingToHitWith();
             race.RaceStarted += StandThemAllUp;
             if (race is LapEvent lap) lap.hurdles = this;   // so the results can say what each runner did to them
         }
@@ -194,24 +193,6 @@ namespace PoDecath.Sim
             if (mat != null) go.GetComponent<MeshRenderer>().sharedMaterial = mat;
         }
 
-        /// <summary>
-        /// The RED bot has no physics at all — it is a transform on a pace profile — so without a body of
-        /// its own it would run straight through every hurdle while the RL field piles into them. A
-        /// kinematic capsule gives it something to knock things over with. It goes on the Creature layer,
-        /// where self-collision is already off, so the bot bowls hurdles over without ever barging an
-        /// athlete: it cannot be pushed off its line, and it should not be able to push anyone off theirs.
-        /// </summary>
-        void GiveBotsSomethingToHitWith()
-        {
-            // Nothing to do any more, and that is the point.
-            //
-            // This used to give the heuristic bot a capsule and a kinematic Rigidbody so that a body
-            // with no physics at all had something to knock a hurdle over with, swept rather than
-            // teleported so PhysX did not shove the hurdle metres down the track. The bot is a real
-            // articulated athlete now, with the same colliders as everyone else, so it hits a hurdle
-            // with its actual shins.
-        }
-
         // ---------------------------------------------------------------- the book
 
         void OnKnockedOver(Hurdle h)
@@ -227,7 +208,6 @@ namespace PoDecath.Sim
             foreach (RaceEvent.Athlete a in race.Athletes)
             {
                 if (h.ByRig != null && a.rig == h.ByRig) return a;
-                if (h.ByBot != null && a.heuristic == h.ByBot) return a;
             }
             return null;
         }

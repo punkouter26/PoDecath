@@ -4,7 +4,7 @@ namespace PoDecath.Sim
 {
     /// <summary>
     /// Strict transform layer between the external right-handed Z-up frame
-    /// (Isaac Lab / MuJoCo) and the Unity left-handed Y-up frame.
+    /// (the external trainer's MuJoCo frame) and the Unity left-handed Y-up frame.
     ///
     ///   Position / vector : (x, y, z)        -> (x, z, y)
     ///   Quaternion        : (qx, qy, qz, qw) -> (-qx, -qz, -qy, qw)

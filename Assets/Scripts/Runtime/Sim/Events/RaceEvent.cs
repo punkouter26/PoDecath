@@ -14,8 +14,8 @@ namespace PoDecath.Sim
     /// On its own it runs the straight-line dash on the rooftop straight, which is the development
     /// scene rather than a listed event.
     ///
-    /// RL athletes are driven by their policy toward a point past the finish line; heuristic athletes
-    /// run a kinematic pace profile. A fall is no longer automatically a DNF: where the scene has a
+    /// Every athlete is driven by its policy toward a point past the finish line. A fall is no longer
+    /// automatically a DNF: where the scene has a
     /// get-up policy, <see cref="RecoveryController"/> takes the body, and the DNF is booked only if
     /// the recovery gives up.
     /// </summary>
@@ -34,7 +34,6 @@ namespace PoDecath.Sim
             public AthleteRig rig;
             public PolicyRunner runner;
             public VelocityCommandSource command;
-            public HeuristicRunner heuristic;
             public TrackFollower follower;
             [Tooltip("Set when a get-up policy was loaded. Without one a fall is a DNF, as it always was.")]
             public RecoveryController recovery;
@@ -67,10 +66,9 @@ namespace PoDecath.Sim
             public float MeanUpright => uprightSamples > 0 ? uprightSum / uprightSamples : 0f;
             public bool IsRL => rig != null;
             /// <summary>
-            /// Driven by a network, as opposed to merely having a body. Since the heuristic bot got a
-            /// physics rig, <see cref="IsRL"/> answers yes for it too, which is right for the forty-odd
-            /// places that mean "has a rig" and wrong for the two that mean "is a policy". This is the
-            /// test for the second sense, and picking the reference athlete is what it exists for.
+            /// Driven by a network, as opposed to merely having a body. <see cref="IsRL"/> means "has a
+            /// rig"; this is the test for "a policy is running it", and picking the reference athlete is
+            /// what it exists for.
             /// </summary>
             public bool IsPolicyDriven => runner != null;
         }
@@ -190,16 +188,8 @@ namespace PoDecath.Sim
         }
 
         /// <summary>
-        /// How good a subject this athlete is for the HUD, the chase camera and the stability read.
-        ///
-        /// It used to be "the first one with a rig, else the first to register". That was a correct test
-        /// of "is a policy running this" until the heuristic bot was given a physics rig of its own, at
-        /// which point the RED bot registered first, answered yes, and took the slot. The measured cost:
-        /// on an eleven-strong field the RED bot falls at 0 m, so the HUD showed 0.00 m/s, 0 % stability
-        /// and 0 of 100 m for the whole race while ten RL athletes ran a clean lap behind it, and the
-        /// shorter fallRestartDelay was chosen every single time because the reference had "fallen".
-        /// Score the roster instead and keep the best: the house reference policy first, any other
-        /// policy second, a body without a policy last.
+        /// How good a subject this athlete is for the HUD, the chase camera and the stability read: the
+        /// house reference policy first, any other policy second, a body without a policy last.
         /// </summary>
         static int ReferenceScore(Athlete a)
         {
@@ -285,32 +275,7 @@ namespace PoDecath.Sim
             if (a.IsRL && a.rig != null && a.rig.root != null) a.rig.root.immovable = false;
             Vector3 p = SpawnPosition(a);
             Quaternion rot = SpawnRotation(a);
-            // Ask "is this one hand-coded?" before "does it have a rig?", because since the heuristic
-            // bot became a physics body the answer to the second is yes for both kinds. IsRL is
-            // `rig != null`, and that was an accurate test of "driven by a policy" for exactly as long
-            // as the coded bot had no rig to speak of. The day it got one, this branch started catching
-            // it first and the heuristic branch became unreachable -- so HeuristicRunner.ResetTo was
-            // never called, and the gait reached the line with none of its setup: no start position to
-            // measure distance from, no halt, and desiredDirection left at its Vector3.right default
-            // instead of the course direction.
-            //
-            // Honest about what this does and does not fix: it makes the heuristic reset path run at
-            // all, which it demonstrably did not. It does NOT fix the RED bot falling on the Rooftop
-            // dash -- that survives this change, and survived changing the countdown hold, dropping
-            // topSpeed from 9.2 to 4, and correcting the spawn height. Whatever puts it down is
-            // upstream of everything in this method. See DOCS/ROADMAP.md.
-            //
-            // Left as IsRL elsewhere on purpose. Most of the other ~45 uses -- BodyPosition, the camera
-            // and audio and VFX anchors, DetectFall -- really do mean "has a rig", and for those the
-            // heuristic bot answering yes is now the correct answer.
-            if (a.heuristic != null)
-            {
-                // Stand it on the line rather than in it: SpawnPosition is a point on the deck -- FloorY(a)
-                // is literally LanePosition(a.lane).y -- so the base needs the same spawnHeight lift the
-                // RL branch has always given it, or the body starts buried and PhysX ejects it.
-                ResetHeuristic(a, p + Vector3.up * a.spawnHeight);
-            }
-            else if (a.IsRL)
+            if (a.IsRL)
             {
                 if (a.runner != null) a.runner.enabled = false;
                 if (a.runner != null) a.runner.ResetEpisode(p + Vector3.up * a.spawnHeight, rot);
@@ -318,8 +283,6 @@ namespace PoDecath.Sim
                 SetCourseTarget(a);
             }
         }
-
-        protected virtual void ResetHeuristic(Athlete a, Vector3 p) => a.heuristic.ResetTo(p, direction);
 
         protected virtual void FixedUpdate()
         {
@@ -390,7 +353,6 @@ namespace PoDecath.Sim
             foreach (var a in Athletes)
             {
                 if (a.IsRL && a.runner != null) a.runner.enabled = true;
-                a.heuristic?.Go();
             }
         }
 
@@ -399,7 +361,7 @@ namespace PoDecath.Sim
             if (a.finished || a.fell) return;
             Vector3 pos = a.IsRL ? a.rig.BasePosition : a.go.transform.position;
             a.distance = MeasureDistance(a, pos);
-            a.speed = a.IsRL ? new Vector3(a.rig.BaseLinearVelocityWorld.x, 0f, a.rig.BaseLinearVelocityWorld.z).magnitude : (a.heuristic != null ? a.heuristic.Speed : 0f);
+            a.speed = a.IsRL ? new Vector3(a.rig.BaseLinearVelocityWorld.x, 0f, a.rig.BaseLinearVelocityWorld.z).magnitude : 0f;
             a.time = RaceTime;
             if (a.IsRL && DetectFall(a, pos)) return;
             if (a.distance >= raceDistance)
@@ -486,7 +448,6 @@ namespace PoDecath.Sim
             a.stopping = true;
             a.stopTime = Time.fixedTime;
             if (a.follower != null) a.follower.enabled = false;
-            a.heuristic?.Stop();
             if (!a.IsRL || a.rig == null) return;
             if (a.runner != null) a.runner.enabled = false;   // the pull-up drives the rig from here
 
@@ -529,9 +490,8 @@ namespace PoDecath.Sim
 
         // ---- presentation hooks (the HUD and the results modal read the event through these) ----
 
-        /// <summary>House tag for the log line: which of the three roster kinds this athlete is.</summary>
-        protected static string Tag(Athlete a) =>
-            a.kind == AthleteKind.Heuristic ? "RED" : a.kind == AthleteKind.ReferenceRL ? "GREEN" : "CUSTOM";
+        /// <summary>House tag for the log line: which of the two roster kinds this athlete is.</summary>
+        protected static string Tag(Athlete a) => a.kind == AthleteKind.ReferenceRL ? "GREEN" : "CUSTOM";
 
         /// <summary>Board order. Finishers first, fastest first; then whoever got furthest.</summary>
         protected virtual int Rank(Athlete x, Athlete y)

@@ -20,13 +20,11 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
   long jump, high jump, hurdles.
 - Hands-off: watch the race, one Restart button. HUD = lap timer / finish time, speed, distance along the
   lap, stability (turns red on a fall). Falls reset after 3 s, finishes after 4 s.
-- Lap scene: `Assets/Scenes/RooftopLap.unity` from menu `PoDecath/Build Rooftop Lap Scene`. The RED pacer
-  is hidden there by default (`AthleteSpawner.includeHeuristic`).
+- Lap scene: `Assets/Scenes/RooftopLap.unity` from menu `PoDecath/Build Rooftop Lap Scene`.
 - Verified: final lap policy (`athlete_track.onnx`, 2300 iterations) laps in 24.2 s, within 1 m of the
   centre line, no falls.
-- Trainer comparison (historical): the same body was once also trained in **Isaac Lab**. That trainer,
-  its athlete and `training/compare.py` were removed on 2026-09-14, so MuJoCo Warp is now the only
-  trainer. The results and the lessons are kept in `DOCS/COMPARISON.md`.
+- Trainer policy (2026-09-14): MuJoCo Warp is the only trainer. A second trainer, its twin athlete and
+  its comparison tool were removed by owner decision; do not reintroduce a second training path.
 - Mobile performance (Task 8): measured 2026-09-12 by `PoDecath/Sweep All Scenes`, the rooftop scenes
   render **2.0-2.4M triangles** at 183-363 draw calls (Rooftop 2,389,352 / 363; RooftopLap 2,152,268 / 248;
   RooftopRace 2,040,756 / 183; RooftopLongJump 953,898 / 147). The older figure here, ~837k triangles and
@@ -54,7 +52,7 @@ kept from the original runtime scaffold. Re-export the glb from Blender whenever
 | 100 m evaluation in MuJoCo | `training/eval_100m.py` | done |
 | MJCF -> ArticulationBody importer + skin binding | `MjcfImporter.cs`, `SkinBinder.cs` | done |
 | Rooftop kart track (ProBuilder) | `KartTrackBuilder.cs` via menu `PoDecath/Build Rooftop Scene` | done |
-| 100 m dash event with RED heuristic bot and GREEN RL bot | `RaceEvent.cs`, `AthleteSpawner.cs`, `HeuristicRunner.cs` | done |
+| 100 m dash event with the RL athletes (the heuristic-coded sprinter was removed on 2026-09-14, owner decision) | `RaceEvent.cs`, `AthleteSpawner.cs` | done |
 | Lap race around the roof loop (carrot follower + lap policy) | `TrackPath.cs`, `TrackFollower.cs`, `LapEvent.cs`, `training/envs/run_track.py`, menu `PoDecath/Build Rooftop Lap Scene` | done: 100 m lap in 25 s, no falls |
 | Balance / get-up policy: fallen-pose resets on a widening tilt curriculum, reward on uprightness then height then a one-second hold, timeout-only termination | `training/envs/get_up.py`, `train_run.py --task getup` | trains well **in MuJoCo**: 2400 iterations gives stood 1.00, standing 78% of steps, a held second 59% of steps, at full difficulty (flat on the back). Exports `Assets/Policies/athlete_getup.onnx` |
 | Recovery at runtime: a fallen athlete switches to the get-up policy and rejoins the race instead of taking a DNF; gives up after a timeout so a wedged body cannot stall the event | `RecoveryController.cs`, `PolicyRunner.recoveryModel`, `RaceEvent.DetectFall` | plumbing verified end to end in play mode (fall -> get-up policy drives -> give-up -> DNF -> race continues). **Resolved 2026-09-06: the policy transfers and always did.** Measured with `PoDecath/Probe Get-Up Transfer`, which drops the athlete flat on its back and records every physics step: from upright 0.051 it reaches **peak uprightness 0.947 and holds the stand 7.44 s of 8**. The bug was in the watcher, not the policy -- `RecoveryController.FloorY` raycast with mask `~0` hit the athlete's own chest collider, so `heightFrac` went negative and `standing`, the only exit from `Recovering`, could never be true. Every athlete that stood up was driven to `giveUpSeconds` and booked a DNF anyway. One layer mask; before/after reads **recoveries 0 -> 3** |
@@ -259,7 +257,7 @@ DOCS/                           this summary and the roadmap
 - Long jump: menu `PoDecath/Build Long Jump Scene` (also rebuilds `MAIN.unity`), then play
   `Assets/Scenes/RooftopLongJump.unity` or go through the setup menu.
 - Setup menu (`MAIN.unity`, build index 0 -- the scene to press Play on): a 100 M / 400 M / 1500 M / HURDLES / LONG JUMP picker, then a counter per athlete definition
-  including the RED heuristic bot, up to 16 in total. The lap is 100.1 m, so it is the game's 100 m; the 20 m dash
+  up to 16 in total. The lap is 100.1 m, so it is the game's 100 m; the 20 m dash
   on the straight (`Rooftop.unity`) is a development scene and is not offered on the menu. Every loop event
   is the same `RooftopRace.unity` and the same `LapEvent`: the picker writes the lap count and the hurdles
   flag into `SessionSettings` on its way out, and `LapEvent.Awake` turns the lap count into the race
@@ -297,7 +295,8 @@ sprint speed is usable. It is not a matter of training the current task harder.
 
 ## Bot roster rules
 
-Every event has a heuristic-coded bot, a reference RL bot, and zero or more custom bots. Roster entries
+Every event has a reference RL bot and zero or more custom bots; the heuristic-coded sprinter that used
+to be required was removed on 2026-09-14 (owner decision), code, asset and probe alike. Roster entries
 are `AthleteDefinition` assets under `Assets/Athletes/`. Athletes keep the textures their model was
 imported with and are **not** tinted (house rule, owner decision 2026-09-05, replacing the earlier
 RED/GREEN/custom colour scheme); the colour on a definition survives only in the UI, where it is the
@@ -328,9 +327,9 @@ and leaves the embedded textures inside the file, so the roster builder extracts
 `<model>_Textures/`, binds them to a real material in `<model>_Materials/` and remaps the importer onto
 it. Without that step the athlete races as flat grey and nothing in the import log says why.
 
-The eight models on the roster today are Matt Avaturn, Grandma, Grandpa, Matt, Nick, Nick Doggy, Trump
-and Zombie Accurig, all twelve bodies bound on each, alongside the heuristic sprinter and the reference
-Matt RL. They all run the same lap policy — the skeleton and the skin are what differ, not the brain —
+The seven models on the roster today are Matt Avaturn, Grandma, Grandpa, Nick, Nick Doggy, Trump and
+Zombie Accurig, all twelve bodies bound on each, alongside the reference Matt RL. (The plain Matt character
+and the heuristic sprinter were removed on 2026-09-14, owner decision.) They all run the same lap policy — the skeleton and the skin are what differ, not the brain —
 so a race between them is a beauty contest, not a comparison of policies. Three of them are heavy:
 Trump, the zombie and the doggy are around 50k triangles apiece against roughly 10k for the rest, so a
 full field of sixteen is worth re-checking with `PoDecath/Sweep All Scenes` rather than assuming the

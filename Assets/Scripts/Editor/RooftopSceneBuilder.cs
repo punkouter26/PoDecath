@@ -18,7 +18,8 @@ namespace PoDecath.EditorTools
 {
     /// <summary>
     /// Builds Assets/Scenes/Rooftop.unity: the owner's White House (glTF), a ProBuilder kart deck above it,
-    /// the 100 m dash event with the roster (RED heuristic, GREEN reference RL), cameras and the portrait HUD.
+    /// the 100 m dash event with the roster (the reference RL athlete, plus the character models where the
+    /// scene races a picked field), cameras and the portrait HUD.
     /// </summary>
     public static class RooftopSceneBuilder
     {
@@ -80,7 +81,14 @@ namespace PoDecath.EditorTools
             // MjcfImporter.ApplyContactExcludes has nothing left to exclude. Left as it is because
             // re-enabling self-collision changes contact dynamics on every trained policy and is an owner
             // decision, not a silent fix -- see the file's own note when that decision is made.
-            if (creatureLayer > 0) Physics.IgnoreLayerCollision(creatureLayer, creatureLayer, true);
+            // Owner decision 2026-09-14: the layer-wide Creature/Creature ignore is GONE. Athletes now
+            // collide with each other and with their own body parts, exactly as the training MJCF says
+            // (contype/conaffinity 1 with the eleven named excludes mirrored by MjcfImporter). The old
+            // ignore made that exclude list inert and let runners pass through one another. This call
+            // also clears the bit baked into DynamicsManager, since it runs in the editor over a saved
+            // project. Contact-trained policies are training alongside this change; older policies may
+            // stumble when crowded, which is the documented cost of the switch.
+            if (creatureLayer > 0) Physics.IgnoreLayerCollision(creatureLayer, creatureLayer, false);
             PolicyLibraryTools.EnsureFolder("Assets/Materials");
             Material asphalt = PoDecathSceneBuilder.Mat("Track_Asphalt", new Color(0.16f, 0.16f, 0.18f));
             Material barrier = PoDecathSceneBuilder.Mat("Track_Barrier", new Color(0.85f, 0.12f, 0.12f));
@@ -348,8 +356,7 @@ namespace PoDecath.EditorTools
             spawner.footMaterial = footPm;
             spawner.debugVisualMaterial = debugMat;
             spawner.creatureLayerName = CreatureLayer;
-            spawner.includeHeuristic = !lapMode;   // lap scene starts with only the RL athlete; flip the checkbox to add the RED pacer
-            spawner.numberRunners = fieldMode;      // "Matt RL 1", "Matt Isaac 2", ... so a full field has distinct names
+            spawner.numberRunners = fieldMode;      // "Matt RL 1", "Grandma 2", ... so a full field has distinct names
             spawner.audioBank = audio;              // every athlete gets its own footsteps
             spawner.vfxBank = vfx;                  // and its trail, blob shadow and foot dust
             // The get-up policy, if one has been trained. Absent, every athlete behaves exactly as before:
@@ -538,17 +545,7 @@ namespace PoDecath.EditorTools
         {
             PolicyLibraryTools.EnsureFolder(AthletesDir);
             var list = new List<AthleteDefinition>();
-            list.Add(Def("Heuristic Sprinter", AthleteKind.Heuristic, null));
             list.Add(Def("Matt RL", AthleteKind.ReferenceRL, onnx));
-            // Isaac Lab twin of the same body: YELLOW, only appears once training has exported it.
-            var isaacOnnx = AssetDatabase.LoadAssetAtPath<ModelAsset>("Assets/Policies/athlete_isaac.onnx");
-            if (isaacOnnx != null)
-            {
-                var isaac = Def("Matt Isaac", AthleteKind.CustomRL, isaacOnnx);
-                isaac.customTint = new Color(1f, 0.85f, 0.1f, 1f);
-                EditorUtility.SetDirty(isaac);
-                list.Add(isaac);
-            }
             // Everyone in Assets/Models/Characters. Same rig, same policy, their own skin and skeleton;
             // the setup menu offers one counter per entry, so this is what the owner picks a field from.
             //
@@ -576,7 +573,6 @@ namespace PoDecath.EditorTools
                 AssetDatabase.CreateAsset(def, path);
             }
             if (model != null) def.model = model;
-            if (kind == AthleteKind.Heuristic) { def.topSpeed = 9.2f; def.accelSeconds = 3.2f; }
             EditorUtility.SetDirty(def);
             return def;
         }

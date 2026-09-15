@@ -366,68 +366,11 @@ class Builder:
         }
 
 
-def chain_multi_joint_bodies(xml: str) -> str:
-    """Split every body with several hinge joints into a chain of one-hinge bodies (tiny massless links).
-
-    MuJoCo semantics are unchanged (sequential hinges), but importers that map a multi-joint body onto a
-    single D6 joint (Isaac Sim's MJCF importer) get exact per-axis joints instead of PhysX's fixed X/Y/Z order.
-    """
-    import xml.etree.ElementTree as ET
-
-    root = ET.fromstring(xml)
-    compiler = root.find("compiler")
-    if compiler is not None:
-        compiler.set("inertiafromgeom", "auto")   # explicit <inertial> on the dummy links, geoms elsewhere
-
-    def split(body: ET.Element) -> None:
-        for child in list(body.findall("body")):
-            split(child)
-        joints = [j for j in body.findall("joint") if j.get("type", "hinge") == "hinge"]
-        if len(joints) <= 1:
-            return
-        name = body.get("name", "body")
-        # keep the last joint on the real body; earlier joints get their own links, nested in order
-        for j in joints[:-1]:
-            body.remove(j)
-        # rebuild: outer link holds joint[0], nested link holds joint[1], ..., real body holds joint[-1]
-        outer = None
-        parent_holder = None
-        for k, j in enumerate(joints[:-1]):
-            link = ET.Element("body", {"name": f"{name}__link{k}", "pos": body.get("pos", "0 0 0") if k == 0 else "0 0 0"})
-            if body.get("quat") and k == 0:
-                link.set("quat", body.get("quat"))
-            inertial = ET.SubElement(link, "inertial", {"pos": "0 0 0", "mass": "0.02", "diaginertia": "1e-4 1e-4 1e-4"})
-            link.append(j)
-            if outer is None:
-                outer = link
-            else:
-                parent_holder.append(link)
-            parent_holder = link
-        body.set("pos", "0 0 0")
-        if body.get("quat"):
-            del body.attrib["quat"]
-        parent_holder.append(body)
-        # swap the original body for the outer link in its parent
-        for parent in root.iter():
-            for idx, ch in enumerate(list(parent)):
-                if ch is body:
-                    parent.remove(body)
-                    parent.insert(idx, outer)
-                    return
-
-    world = root.find("worldbody")
-    for b in list(world.findall("body")):
-        split(b)
-    ET.indent(root, space="  ")
-    return ET.tostring(root, encoding="unicode")
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rig", default=os.path.join(os.path.dirname(__file__), "rigs", "matt.json"))
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "models", "athlete.xml"))
     ap.add_argument("--name", default="athlete")
-    ap.add_argument("--chain", action="store_true", help="also write <out>_chain.xml with one hinge per body (for Isaac Sim)")
     args = ap.parse_args()
 
     with open(args.rig, "r", encoding="utf-8") as f:
@@ -438,11 +381,6 @@ def main() -> None:
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(xml)
-    if args.chain:
-        chain_path = os.path.splitext(args.out)[0] + "_chain.xml"
-        with open(chain_path, "w", encoding="utf-8") as f:
-            f.write(chain_multi_joint_bodies(xml))
-        print(f"wrote {chain_path}")
     cfg_path = os.path.splitext(args.out)[0] + "_policy_config.json"
     with open(cfg_path, "w", encoding="utf-8") as f:
         json.dump(b.policy_config(os.path.basename(args.out)), f, indent=2)
