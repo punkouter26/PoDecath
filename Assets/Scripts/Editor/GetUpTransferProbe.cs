@@ -360,7 +360,7 @@ namespace PoDecath.EditorTools
             _cfg ??= LoadConfig();
             if (_runner != null && _rig != null) return true;
 
-            var runners = UnityEngine.Object.FindObjectsByType<PolicyRunner>(FindObjectsSortMode.None);
+            var runners = UnityEngine.Object.FindObjectsByType<PolicyRunner>();
             var bound = runners.Where(r => r.rig != null && r.rig.IsBound).ToList();
             // In controller mode the athlete under test is specifically one that has a
             // RecoveryController on it. A lap scene holds more than one rig and the first bound runner
@@ -444,7 +444,7 @@ namespace PoDecath.EditorTools
             int n = 0;
             string[] list = (_cfg != null && _cfg.use_recovery_controller)
                 ? InterferingWithController : InterferingComponents;
-            foreach (var mb in UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None))
+            foreach (var mb in UnityEngine.Object.FindObjectsByType<MonoBehaviour>())
             {
                 if (mb == null || !mb.enabled) continue;
                 if (Array.IndexOf(list, mb.GetType().Name) < 0) continue;
@@ -546,7 +546,7 @@ namespace PoDecath.EditorTools
                 sb.AppendFormat(CultureInfo.InvariantCulture, "\"recoveries\":{0},",
                     _recovery != null ? _recovery.Recoveries : -1);
                 sb.AppendFormat(CultureInfo.InvariantCulture, "\"controllers_in_scene\":{0},",
-                    UnityEngine.Object.FindObjectsByType<RecoveryController>(FindObjectsSortMode.None).Length);
+                    UnityEngine.Object.FindObjectsByType<RecoveryController>().Length);
             }
             sb.AppendFormat(CultureInfo.InvariantCulture, "\"mean_abs_action\":{0:0.####},",
                 actN > 0 ? SessionState.GetFloat(KeyActSum, 0f) / actN : 0f);

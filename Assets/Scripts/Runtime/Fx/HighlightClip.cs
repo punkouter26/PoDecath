@@ -65,6 +65,7 @@ namespace PoDecath.Fx
         float _stopAt = -1f;
         int _lastAttempt = -1;
         int _pending;
+        int _generation;   // bumped whenever the ring is reset or reallocated; a readback from before it is dropped
         Task<string> _encoding;
         bool _supported;
 
@@ -102,6 +103,7 @@ namespace PoDecath.Fx
                 _lastAttempt = race.Attempt;
                 _recording = true;
                 LastFrames = null;   // the ring is about to be written over
+                _generation++;
                 _triggered = false;
                 _stopAt = -1f;
                 _count = 0;
@@ -171,8 +173,13 @@ namespace PoDecath.Fx
             int sw = Mathf.Max(1, Screen.width), sh = Mathf.Max(1, Screen.height);
             float scale = longSide / (float)Mathf.Max(sw, sh);
             // Even sizes: some GPUs are fussy about odd readback widths, and nobody will miss the pixel.
+            // Only the picture between the frame's top row and the race controls: the replay behind the results
+            // card, and the shared GIF, used to show CHAOS, RESTART, STATS, MENU and DEBUG, which could not be
+            // pressed there. The race graphics (clock, running order, the card) sit inside the band and stay.
+            Crop(out _cropTop, out _cropBottom);
+            float keep = 1f - _cropTop - _cropBottom;
             _w = Mathf.Max(2, Mathf.RoundToInt(sw * scale) & ~1);
-            _h = Mathf.Max(2, Mathf.RoundToInt(sh * scale) & ~1);
+            _h = Mathf.Max(2, Mathf.RoundToInt(sh * keep * scale) & ~1);
             _screen = new RenderTexture(sw, sh, 0, RenderTextureFormat.ARGB32) { name = "HighlightScreen" };
             _small = new RenderTexture(_w, _h, 0, RenderTextureFormat.ARGB32) { name = "HighlightSmall" };
             _screen.Create();
@@ -183,6 +190,27 @@ namespace PoDecath.Fx
             return true;
         }
 
+        float _cropTop, _cropBottom;   // fractions of the screen height left out of the clip, top and bottom
+
+        /// <summary>
+        /// How much of the screen to leave off the top (the frame's title / frame-rate / MENU row) and the
+        /// bottom (the HUD's controls and the frame's DEBUG row), as fractions of its height. Nothing when
+        /// either is missing, and never more than half the picture.
+        /// </summary>
+        static void Crop(out float top, out float bottom)
+        {
+            top = bottom = 0f;
+            var frame = FindAnyObjectByType<UI.AppFrameView>();
+            if (frame == null || !frame.FrameRows(out float topRowBottom, out float bottomRowTop, out float height) || height < 1f) return;
+            float cut = bottomRowTop;
+            var hud = FindAnyObjectByType<UI.HudView>();
+            float controls = hud != null ? hud.ControlsTop : float.NaN;
+            if (!float.IsNaN(controls) && controls > topRowBottom) cut = Mathf.Min(cut, controls);
+            top = Mathf.Clamp01(topRowBottom / height);
+            bottom = Mathf.Clamp01((height - cut) / height);
+            if (top + bottom > 0.5f) top = bottom = 0f;
+        }
+
         void Grab()
         {
             // The screen changed shape (rotation, a resized editor window): start the ring again at the new size.
@@ -190,24 +218,33 @@ namespace PoDecath.Fx
             {
                 _screen.Release(); _small.Release();
                 _ring = null;
+                _generation++;
                 _count = 0; _head = 0;
                 if (!Allocate()) return;
             }
             ScreenCapture.CaptureScreenshotIntoRenderTexture(_screen);
             // On APIs whose texture origin is the top (D3D, Metal, Vulkan) the capture arrives upside down;
             // flip it in the same blit that shrinks it.
-            if (SystemInfo.graphicsUVStartsAtTop) Graphics.Blit(_screen, _small, new Vector2(1f, -1f), new Vector2(0f, 1f));
-            else Graphics.Blit(_screen, _small);
+            float keep = 1f - _cropTop - _cropBottom;
+            if (SystemInfo.graphicsUVStartsAtTop) Graphics.Blit(_screen, _small, new Vector2(1f, -keep), new Vector2(0f, 1f - _cropBottom));
+            else Graphics.Blit(_screen, _small, new Vector2(1f, keep), new Vector2(0f, _cropBottom));
 
             int slot = _head;
             _head = (_head + 1) % _ring.Length;
             _count = Mathf.Min(_count + 1, _ring.Length);
             _pending++;
+            // The size and the ring are taken now, not when the readback lands. A resize reallocates both
+            // while a frame is in flight, and decoding an old-size frame at the new size read past the end
+            // of its buffer (IndexOutOfRangeException in Quantise). A new attempt resets the ring the same
+            // way, so a frame from the race before must not land in this one's first slot either.
+            int generation = _generation, w = _w, h = _h;
+            byte[][] ring = _ring;
             AsyncGPUReadback.Request(_small, 0, TextureFormat.RGBA32, req =>
             {
                 _pending--;
-                if (req.hasError || _ring == null || slot >= _ring.Length) return;
-                GifWriter.Quantise(req.GetData<byte>(), _w, _h, _ring[slot], bottomUp: true);
+                if (req.hasError || generation != _generation || ring != _ring || slot >= ring.Length) return;
+                if (req.GetData<byte>().Length < w * h * 4) return;
+                GifWriter.Quantise(req.GetData<byte>(), w, h, ring[slot], bottomUp: true);
             });
         }
 

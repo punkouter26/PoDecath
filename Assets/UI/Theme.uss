@@ -234,8 +234,13 @@
     border-left-width: 4px;
     border-left-color: var(--accent);
 }
-.order-row--gained { background-color: rgba(46, 191, 140, 0.28); }
-.order-row--lost { background-color: rgba(255, 108, 92, 0.22); }
+/* A change of place: a light wash, and the arrow (BroadcastView.DrawArrow) says which way. */
+.order-row--gained { background-color: rgba(46, 191, 140, 0.16); }
+.order-row--lost { background-color: rgba(255, 108, 92, 0.14); }
+/* The athlete's colour, at the edge of the row. Names are white: coloured names on a green or red wash were
+   the least legible thing on the board, and colour alone said nothing to a colour-blind viewer. */
+.order-stripe { width: 8px; height: 34px; border-radius: 4px; margin-right: 10px; flex-shrink: 0; }
+.order-arrow { width: 24px; height: 24px; margin-left: 6px; margin-right: 4px; flex-shrink: 0; }
 
 .order-rank { width: 60px; font-size: var(--t-small); -unity-font-style: bold; color: var(--ink-dim); }
 .order-name {
@@ -641,6 +646,8 @@
 /* The debug button reports as well as opens: it wears the worst grade the agent panel has found, so a
    config fault is visible from the corner of the screen without opening anything. */
 .frame-btn--open { background-color: rgba(46, 191, 140, 0.28); }
+/* STOP while the demo loop runs: amber, so a kiosk screen says it is driving itself. */
+.frame-btn--demo { background-color: rgb(120, 92, 30); border-width: 2px; border-color: var(--warn); color: rgb(255, 236, 200); }
 
 /* DEBUG's grade: a dot at the right end of the button, grey with nothing to say. The button makes room
    for it so it never touches the word. */
@@ -853,16 +860,6 @@
 
 .results-rows { flex-grow: 1; justify-content: center; }
 
-/* Everybody who did not finish, one line (wrapping) under the finishers' rows. */
-.results-dnf {
-    font-size: 28px;
-    color: var(--ink-dim);
-    white-space: normal;
-    padding: var(--gap-1) var(--gap-2);
-    margin-bottom: var(--gap-1);
-    border-radius: 6px;
-    background-color: var(--row);
-}
 
 .result-row--compact { min-height: 58px; height: 58px; padding-top: 0; padding-bottom: 0; margin-bottom: 4px; }
 .result-row--compact .result-rank { font-size: var(--t-small); width: 64px; }
@@ -1022,6 +1019,44 @@
 .modal-scrim--watch { display: none; }
 
 .results-actions { margin-top: var(--gap-2); }
+
+/* Faces on the results card: each finisher's portrait on their row, framed underneath in their colour. */
+.result-face { width: 64px; height: 64px; margin-right: 16px; border-radius: 8px; border-bottom-width: 5px; flex-shrink: 0; -unity-background-scale-mode: scale-and-crop; background-color: rgb(30, 34, 44); align-items: center; justify-content: center; }
+.result-row--compact .result-face { width: 44px; height: 44px; margin-right: 12px; border-bottom-width: 4px; }
+.face-initial { font-size: var(--t-small); -unity-font-style: bold; color: rgb(255, 255, 255); }
+
+/* Everybody who did not finish: a face each, three across, name and where they went down beside it. */
+.results-out { background-color: var(--row); border-radius: var(--radius-sm); padding: 8px 12px; margin-top: 4px; }
+.results-out-head { font-size: var(--t-micro); -unity-font-style: bold; color: var(--ink-dim); letter-spacing: 2px; margin-bottom: 4px; }
+.results-out-faces { flex-direction: row; flex-wrap: wrap; }
+.out-chip { flex-direction: row; align-items: center; width: 33%; min-height: 64px; padding: 3px 4px; }
+.out-face { width: 52px; height: 52px; margin-right: 10px; border-radius: 8px; border-bottom-width: 4px; flex-shrink: 0; -unity-background-scale-mode: scale-and-crop; background-color: rgb(30, 34, 44); align-items: center; justify-content: center; }
+.out-words { flex-shrink: 1; flex-grow: 1; }
+.out-name { font-size: var(--t-micro); -unity-font-style: bold; white-space: normal; }
+.out-what { font-size: var(--t-micro); color: var(--ink-dim); white-space: normal; }
+
+/* A one-time hint (Hints.cs): a small bubble beside what it explains; a tap or six seconds puts it away. */
+.hint-bubble {
+    background-color: rgb(255, 214, 102);
+    color: rgb(28, 22, 6);
+    font-size: var(--t-small);
+    -unity-font-style: bold;
+    white-space: normal;
+    -unity-text-align: middle-center;
+    padding: 14px 20px;
+    border-radius: 14px;
+    border-width: 2px;
+    border-color: rgb(28, 22, 6);
+}
+
+/* The card's safe area: centred between the frame's two rows, never under them. */
+.results-safe {
+    align-items: center;
+    justify-content: center;
+    padding-top: var(--frame-top-clear);
+    padding-bottom: var(--frame-clear);
+}
+.results-safe > .modal { max-height: 100%; }
 .results-actions .btn--tool { flex-grow: 1; flex-basis: 0; margin-left: 4px; margin-right: 4px; }
 
 /* ------------------------------------------------------------------ setup: one action row, flipping tiles */

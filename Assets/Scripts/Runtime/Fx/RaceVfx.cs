@@ -71,7 +71,7 @@ namespace PoDecath.Fx
         void HookHurdles()
         {
             _hurdles.Clear();
-            foreach (Hurdle h in FindObjectsByType<Hurdle>(FindObjectsSortMode.None))
+            foreach (Hurdle h in FindObjectsByType<Hurdle>())
             {
                 _hurdles.Add(h);
                 h.KnockedOver += OnHurdleKnocked;

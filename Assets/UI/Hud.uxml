@@ -16,7 +16,7 @@
     <Style src="project://database/Assets/UI/Theme.uss" />
 
     <ui:VisualElement name="root" class="root" picking-mode="Ignore">
-        <ui:VisualElement name="safe" class="safe" picking-mode="Ignore" style="padding: 16px;">
+        <ui:VisualElement name="safe" class="safe" picking-mode="Ignore">
 
             <ui:VisualElement class="spacer" picking-mode="Ignore" />
 

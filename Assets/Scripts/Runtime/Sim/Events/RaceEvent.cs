@@ -36,6 +36,8 @@ namespace PoDecath.Sim
             public string definitionName;
             public AthleteKind kind;
             public Color color;
+            /// <summary>The definition's rendered head and shoulders, for the faces on the results card. May be null.</summary>
+            public Texture2D portrait;
             public GameObject go;
             public AthleteRig rig;
             public PolicyRunner runner;
@@ -266,7 +268,18 @@ namespace PoDecath.Sim
             RaceStarted?.Invoke();
         }
 
-        public void RestartNow() => StartRace();
+        /// <summary>
+        /// Starts the event again now. A race thrown away before its end counts as an attempt, the same as
+        /// one that finished: <see cref="Attempt"/> is how fifteen things (the highlight clip, the photo
+        /// finish, the splits, the tape, the results card's top speeds, the chaos counts, the commentary)
+        /// know a new race has begun, and Finish is the only other place that moves it. Without this a mid-race
+        /// RESTART carried the abandoned race's clip frames, crossings and splits into the next one.
+        /// </summary>
+        public void RestartNow()
+        {
+            if (Current == Phase.Running || Current == Phase.Countdown) Attempt++;
+            StartRace();
+        }
 
         protected virtual void ResetAthlete(Athlete a)
         {

@@ -248,7 +248,7 @@ namespace PoDecath.EditorTools
                         {
                             SessionState.SetFloat(KeyT0, Time.fixedTime);
                             _tracked = UnityEngine.Object
-                                .FindObjectsByType<AthleteRig>(FindObjectsSortMode.None)
+                                .FindObjectsByType<AthleteRig>()
                                 .Where(r => r.IsBound)
                                 .ToArray();
                             _startPos = _tracked.ToDictionary(r => r, r => r.BasePosition);
@@ -359,8 +359,8 @@ namespace PoDecath.EditorTools
         /// <summary>Snapshots what the scene is actually doing, then writes its row of the report.</summary>
         static void Record(string scenePath, float simSeconds)
         {
-            var runners = UnityEngine.Object.FindObjectsByType<PolicyRunner>(FindObjectsSortMode.None);
-            var rigs = UnityEngine.Object.FindObjectsByType<AthleteRig>(FindObjectsSortMode.None);
+            var runners = UnityEngine.Object.FindObjectsByType<PolicyRunner>();
+            var rigs = UnityEngine.Object.FindObjectsByType<AthleteRig>();
             int withModel = runners.Count(r => r.HasModel);
             int bound = rigs.Count(r => r.IsBound);
             int fallen = rigs.Count(r => r.IsBound && r.UprightDot < 0.4f);

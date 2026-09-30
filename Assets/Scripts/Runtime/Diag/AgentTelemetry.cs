@@ -211,7 +211,7 @@ namespace PoDecath.Diag
             }
             else
             {
-                PolicyRunner[] runners = FindObjectsByType<PolicyRunner>(FindObjectsSortMode.None);
+                PolicyRunner[] runners = FindObjectsByType<PolicyRunner>();
                 foreach (PolicyRunner r in runners)
                 {
                     Agent a = Resolve(r, r != null ? r.name : "agent");

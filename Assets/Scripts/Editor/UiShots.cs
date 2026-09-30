@@ -165,7 +165,121 @@ namespace PoDecath.EditorTools
             if (!EditorApplication.isPlaying) return 0;
             EditorApplication.isPaused = true;
             for (int i = 0; i < frames; i++) EditorApplication.Step();
+            // With the editor unfocused the Game view is not drawn, and a coroutine waiting on
+            // WaitForEndOfFrame (the highlight clip's grabber) never resumes: no clip, no replay, no error.
+            // A repaint request draws it once per call, which is enough end-of-frames to record a clip.
+            UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
             return Time.frameCount;
+        }
+
+        /// <summary>
+        /// The game's state in one line, for <c>training/tools/flow_check.sh</c>: scene, event phase and attempt,
+        /// whether a results card has reported itself, which screens are up, the time scale, RESTART's label,
+        /// whether CHAOS is open, and on the menu the field size and the lit event.
+        /// </summary>
+        public static string State()
+        {
+            var s = new StringBuilder(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+            var race = UnityEngine.Object.FindAnyObjectByType<Sim.RaceEvent>();
+            if (race != null)
+                s.Append($" | {race.GetType().Name} {race.Current} att={race.Attempt} shown={race.ResultsShown} n={race.Athletes.Count} t={race.RaceTime:F1}");
+            s.Append($" | setup {Vis<UI.SetupView>()} hud {Vis<UI.HudView>()} bcast {Vis<UI.BroadcastView>()} results {Vis<UI.ResultsView>()} frame {Vis<UI.AppFrameView>()}");
+            s.Append($" | ts={Time.timeScale}");
+            var hud = UnityEngine.Object.FindAnyObjectByType<UI.HudView>();
+            VisualElement hr = hud != null ? hud.GetComponent<UIDocument>().rootVisualElement : null;
+            if (hr != null)
+            {
+                VisualElement pop = hr.Q("chaos-pop");
+                s.Append($" | restart='{hr.Q<Label>("restart-label")?.text}' chaosOpen={pop != null && !pop.ClassListContains("hidden")}");
+            }
+            var setup = UnityEngine.Object.FindAnyObjectByType<UI.SetupView>();
+            if (setup != null) s.Append($" | field={setup.FieldSize} event={setup.EventIndex}");
+            var frame = UnityEngine.Object.FindAnyObjectByType<UI.AppFrameView>();
+            VisualElement fr = frame != null ? frame.GetComponent<UIDocument>().rootVisualElement : null;
+            s.Append($" | corner='{fr?.Q<Button>("menu")?.text}' title='{fr?.Q<Label>("title")?.text}'");
+            s.Append($" | demo={Sim.DemoMode.Active} {Sim.DemoMode.Index + 1}/{Sim.DemoMode.Count} laps={Sim.SessionSettings.Laps} hurdles={Sim.SessionSettings.Hurdles} loading={UI.SceneLoader.Busy}");
+            return s.ToString();
+        }
+
+        static string Vis<T>() where T : UI.UiRoot
+        {
+            T o = UnityEngine.Object.FindAnyObjectByType<T>();
+            return o == null ? "-" : o.ScreenVisible ? "ON" : "off";
+        }
+
+        /// <summary>
+        /// Pretends the screen has a notch <paramref name="top"/> and a home bar <paramref name="bottom"/> screen
+        /// pixels deep (0, 0 puts the real safe area back). Every UiRoot re-pads on its next Update.
+        /// </summary>
+        public static string Notch(int top, int bottom)
+        {
+            UI.UiRoot.SafeAreaOverride = top <= 0 && bottom <= 0 ? (Rect?)null
+                : new Rect(0f, bottom, Screen.width, Screen.height - top - bottom);
+            return UI.UiRoot.SafeAreaOverride?.ToString() ?? "real safe area";
+        }
+
+        /// <summary>
+        /// What would be hidden on a phone with a notch and a home bar, and what the frame's rows sit on top of:
+        /// every visible button (and the results modal) checked against the frame rows and against the
+        /// simulated safe band. Reference pixels, same as the layout check.
+        /// </summary>
+        public static string NotchCheck()
+        {
+            var sb = new StringBuilder();
+            Rect screen = default, top = default, bottom = default;
+            Rect safe = UI.UiRoot.SafeAreaOverride ?? Screen.safeArea;
+            var docs = new List<UIDocument>();
+            foreach (UIDocument d in UnityEngine.Object.FindObjectsByType<UIDocument>())
+            {
+                if (!d.isActiveAndEnabled || d.rootVisualElement?.panel == null || (d.panelSettings != null && d.panelSettings.targetTexture != null)) continue;
+                docs.Add(d);
+                screen = d.rootVisualElement.panel.visualTree.worldBound;
+                if (d.rootVisualElement.Q("frame-top") is VisualElement ft && ft.resolvedStyle.display != DisplayStyle.None) top = ft.worldBound;
+                if (d.rootVisualElement.Q("frame-bottom") is VisualElement fb && fb.resolvedStyle.display != DisplayStyle.None) bottom = fb.worldBound;
+            }
+            float k = Screen.height > 0 ? screen.height / Screen.height : 1f;
+            float bandTop = (Screen.height - safe.yMax) * k, bandBottom = screen.height - safe.yMin * k;
+            int hits = 0;
+            sb.Append($"screen {screen.width:0}x{screen.height:0}, safe band y {bandTop:0}-{bandBottom:0}, frame rows 0-{top.yMax:0} / {bottom.yMin:0}-{screen.height:0}");
+            foreach (UIDocument d in docs)
+            {
+                string doc = d.visualTreeAsset != null ? d.visualTreeAsset.name : d.name;
+                if (d.rootVisualElement.Q("modal") is VisualElement modal && Shown(modal))
+                {
+                    Rect m = modal.worldBound;
+                    sb.Append($"\n  {doc} modal y {m.yMin:0}-{m.yMax:0}");
+                    if (m.yMin < bandTop || m.yMax > bandBottom) { hits++; sb.Append("  OUTSIDE SAFE BAND"); }
+                    if (m.Overlaps(top) || m.Overlaps(bottom)) { hits++; sb.Append("  UNDER FRAME ROW"); }
+                }
+                if (doc == "AppFrame")
+                {
+                    // The frame's own five: never under their own rows, but they must clear the notch too.
+                    foreach (string n in new[] { "title", "fps", "menu", "debug", "version" })
+                    {
+                        VisualElement e = d.rootVisualElement.Q(n);
+                        if (e == null || !Shown(e)) continue;
+                        Rect w = e.worldBound;
+                        if (w.yMin < bandTop - 1f || w.yMax > bandBottom + 1f) { hits++; sb.Append($"\n  outside safe band: AppFrame/{n} y {w.yMin:0}-{w.yMax:0}"); }
+                    }
+                    continue;
+                }
+                d.rootVisualElement.Query<Button>().ForEach(b =>
+                {
+                    if (!Shown(b) || b.worldBound.height < 2f) return;
+                    Rect w = b.worldBound;
+                    string name = string.IsNullOrEmpty(b.name) ? b.text : b.name;
+                    if (w.yMin < bandTop - 1f || w.yMax > bandBottom + 1f) { hits++; sb.Append($"\n  outside safe band: {doc}/{name} y {w.yMin:0}-{w.yMax:0}"); }
+                    else if (w.Overlaps(top) || w.Overlaps(bottom)) { hits++; sb.Append($"\n  under frame row: {doc}/{name} y {w.yMin:0}-{w.yMax:0}"); }
+                });
+            }
+            return $"notch-check {hits} problem(s): {sb}";
+        }
+
+        static bool Shown(VisualElement e)
+        {
+            for (VisualElement p = e; p != null; p = p.parent)
+                if (p.resolvedStyle.display == DisplayStyle.None || p.ClassListContains("hidden") || p.resolvedStyle.opacity < 0.01f) return false;
+            return true;
         }
 
         /// <summary>

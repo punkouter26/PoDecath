@@ -70,8 +70,8 @@ namespace PoDecath.Fx
             if (rig == null) rig = GetComponentInChildren<AthleteRig>();
             if (effort == null) effort = GetComponent<EffortMeter>();
             if (steps == null) steps = GetComponent<FootstepAudio>();
-            _director = FindFirstObjectByType<BroadcastDirector>();
-            _race = FindFirstObjectByType<RaceEvent>();
+            _director = FindAnyObjectByType<BroadcastDirector>();
+            _race = FindAnyObjectByType<RaceEvent>();
             _block = new MaterialPropertyBlock();
 
             _skins = GetComponentsInChildren<SkinnedMeshRenderer>(true);

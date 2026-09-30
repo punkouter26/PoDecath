@@ -67,12 +67,12 @@ namespace PoDecath.Diag
 
         void OnEnable()
         {
-            if (race == null) race = FindFirstObjectByType<RaceEvent>();
+            if (race == null) race = FindAnyObjectByType<RaceEvent>();
             if (race == null) { enabled = false; return; }
-            if (drama == null) drama = FindFirstObjectByType<DramaMeter>();
+            if (drama == null) drama = FindAnyObjectByType<DramaMeter>();
             race.RaceStarted += OnStarted;
             race.RaceComplete += OnComplete;
-            foreach (Hurdle h in FindObjectsByType<Hurdle>(FindObjectsSortMode.None))
+            foreach (Hurdle h in FindObjectsByType<Hurdle>())
             {
                 h.Struck += OnStruck;
                 h.KnockedOver += OnToppled;
@@ -96,9 +96,9 @@ namespace PoDecath.Diag
                 scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name,
                 when = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
             };
-            var vfx = FindFirstObjectByType<Fx.RaceVfx>();
+            var vfx = FindAnyObjectByType<Fx.RaceVfx>();
             _rec.referenceImpulse = vfx != null ? vfx.referenceImpulse : -1f;
-            var director = FindFirstObjectByType<BroadcastDirector>();
+            var director = FindAnyObjectByType<BroadcastDirector>();
             _rec.anticipateRisk = director != null ? director.anticipateRisk : -1f;
             _rec.fatigueJoules = -1f;
             foreach (RaceEvent.Athlete a in race.Athletes)

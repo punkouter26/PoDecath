@@ -433,9 +433,59 @@ wrong again:
   Toolkit is not in either. The only pictures of the menus are the phone's own screenshots
   (`training/deploy_android.ps1`, `Build/Android/shots/`).
 
-- `UiRoot` writes the safe-area insets onto the element named `safe` **inline**, which beats any USS
-  padding on it. Padding a screen clear of the frame goes on a wrapper inside `safe` (`.bcast-body`,
-  `.setup`), never on `safe` itself.
+- `UiRoot` applies the safe area by moving the **edges** (`left/right/top/bottom`) of the element named
+  `safe`, which is absolutely positioned (`.safe`), not by padding it (changed 2026-09-30). Padding does
+  not move absolute children, so the frame's MENU/FPS row, its DEBUG row and the diagnostics sheet sat
+  under the notch and the home bar on every phone that has them. The insets are also re-applied until the
+  panel has a width, because the first frame has none: the old code padded by raw device pixels there and
+  never corrected it (right by luck at 1080 wide, a third out at 720 and 1440). Every screen's UXML needs a
+  `safe` element, the results card included (`.results-safe`, which also clears the frame's rows).
+- **Test the notch in the editor** with `UiShots.Notch(topPx, bottomPx)` (sets `UiRoot.SafeAreaOverride`,
+  editor only; `Notch(0,0)` puts the real one back) and `UiShots.NotchCheck()`, which lists every visible
+  button, the frame's five anchors and the results modal that fall outside the safe band or under the
+  frame's rows. `training/tools/notch_shots.sh <prefix>` shoots menu, race and results at 16:9, 19.5:9,
+  20:9 and 21:9 with a 141/102 px notch and home bar and runs both checks on each.
+- **State-flow checks**: `training/tools/flow_check.sh` (MAIN -> race -> RESTART x2 -> results -> wait ->
+  AGAIN -> results -> FIELD -> race -> MENU -> long jump -> results -> FIELD, 14 checks) and
+  `training/tools/demo_check.sh` (the kiosk loop, 8 checks), both off `UiShots.State()`, a one-line
+  readout of scene, phase, attempt, visible screens, time scale, the corner button and the demo. They
+  print PASS/FAIL per step and the console errors logged since the run began (`clear_console` does not
+  empty the buffer `console` reads, so filter by time).
+- **`RaceEvent.Attempt` is the "new race" signal for fifteen components** (clip, photo finish, splits,
+  tape, top speeds, chaos counts, commentary, music, drama, telemetry). `Finish` moves it, and since
+  2026-09-30 so does `RestartNow` when it throws away a live race. Anything new that keeps per-race state
+  should reset on it too, and nothing else should move it.
+- **DEMO / kiosk mode** (`Sim/DemoMode.cs`, 2026-09-30): the frame's top-right button is DEMO on the menu
+  and STOP while the loop runs. Every event on the menu in order, one of each athlete, the results card
+  held `DemoMode.ResultsSeconds` (10 s), round and round. It goes through the player's own doors only
+  (`RaceRoster`, `SessionSettings.SetEvent`, LoadScene) and adds a `DemoRunner` to each scene from a
+  `sceneLoaded` hook, so no scene carries it and none needs rebuilding. A watchdog moves on after 15
+  minutes in one event. On a device the loop survives an app restart (PlayerPrefs) and keeps the screen
+  awake; in the editor every Play starts with it off. It trims `races/` and `telemetry/` to the newest 300
+  files each event (clips already keep 20). Demo races are free races, never season legs.
+- **Every change of screen goes through `UI.SceneLoader.Load(scene, label)`** (2026-09-30): START, FIELD,
+  MENU, the season's NEXT and the demo. It loads in the background behind a code-built card ("LOADING · 400 M"
+  and a bar) on a `DontDestroyOnLoad` UIDocument at sorting order 1000, refuses a second load while one is under
+  way (`SceneLoader.Busy`), and logs an error if one takes over 30 s. Never call `SceneManager.LoadScene` from
+  game code again; a blocking load froze the last frame for seconds. Scripts that drive the game must wait for
+  the scene rather than for a number of frames (`UiShots.State()` ends with `loading=`).
+- **Back and MENU** (`AppFrameView.OnBack`, `OnMenu`): Android's Back arrives as `Keyboard.escapeKey`. It closes
+  what is open (diagnostics, CHAOS, a turned-over tile, the replay), then acts as MENU; MENU in a live race asks
+  SURE? first, and Back on the menu needs a second press to leave. In the demo, STOP ends the loop only when held
+  `stopHoldSeconds` (1.2 s); a tap, a touch anywhere or Back only put a line in the title chip. The menu starts
+  the demo by itself after `SetupView.attractSeconds` (60, 0 = off) untouched, counting the last ten down.
+- **One-time hints** (`UI.Hints.ShowOnce(key, target, text)`): once per device (PlayerPrefs `podecath.hint.*`),
+  one at a time, never in the demo, put into the target screen's `root` element so they go when the screen is
+  put away. `Hints.ResetAll()` shows them again. Keys: tiles, follow, unpin, fps.
+- **The highlight clip is cropped** to the picture between the frame's top row and the HUD's controls
+  (`HighlightClip.Crop`, from `AppFrameView.FrameRows` and `HudView.ControlsTop`), so the replay and the shared
+  GIF no longer show buttons that cannot be pressed.
+- **Stepping an unfocused editor does not fire `WaitForEndOfFrame`** unless the Game view is drawn, and the clip's
+  grabber waits on it: no clip, no replay, no error. `UiShots.Step` now asks for a repaint after each batch. A
+  capture run that finds no REPLAY button on the results card has hit this.
+- A time scale set while stepping can outlive play mode and land in `ProjectSettings/TimeManager.asset`:
+  it was committed there at **6** on 2026-09-30 (8c5808b), which ran every race scene opened directly at
+  six times speed. The capture scripts now set it back to 1 after they stop play mode.
 - Every UI document shares one PanelSettings, so they are one panel and their world rects are comparable:
   the broadcast lower third sits on `HudView.ControlsTop`, measured each frame, not on a guessed margin.
 - `AudioBakery.BakeBank` runs in every scene build. It keeps any bank slot whose clips live under

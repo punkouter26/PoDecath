@@ -67,7 +67,7 @@ namespace PoDecath.UI
         /// <summary>One row of the running order, kept so it can be re-used and animated rather than rebuilt.</summary>
         class Row
         {
-            public VisualElement element;
+            public VisualElement element, stripe, arrow;
             public Label rank, name, gap;
             public RaceEvent.Athlete athlete;
             public float flash;      // seconds left on the gained/lost highlight
@@ -137,18 +137,29 @@ namespace PoDecath.UI
                 element.AddToClassList("order-row");
                 element.AddToClassList("hidden");
 
+                // The athlete's colour is a stripe at the edge, and the name is white. Names used to be printed in
+                // that colour, on a row that flashed green or red when places changed, which put green text on
+                // red; the change of place is an arrow now, which also reads without telling red from green.
+                var stripe = new VisualElement();
+                stripe.AddToClassList("order-stripe");
                 var rank = new Label("-");
                 rank.AddToClassList("order-rank");
                 var name = new Label("");
                 name.AddToClassList("order-name");
+                var arrow = new VisualElement();
+                arrow.AddToClassList("order-arrow");
+                arrow.AddToClassList("hidden");
                 var gap = new Label("");
                 gap.AddToClassList("order-gap");
 
+                element.Add(stripe);
                 element.Add(rank);
                 element.Add(name);
+                element.Add(arrow);
                 element.Add(gap);
                 _orderHost.Add(element);
-                var row = new Row { element = element, rank = rank, name = name, gap = gap };
+                var row = new Row { element = element, stripe = stripe, rank = rank, name = name, gap = gap, arrow = arrow };
+                arrow.generateVisualContent += ctx => DrawArrow(ctx, row.gained);
                 // A name is a way to follow that runner: the cameras lock on, and the card says so.
                 element.RegisterCallback<ClickEvent>(_ => { if (row.athlete != null) Pin(row.athlete); });
                 _rows.Add(row);
@@ -184,7 +195,7 @@ namespace PoDecath.UI
                 foreach (Row r in _rows) r.athlete = null;
             }
 
-            if (hud == null) hud = FindFirstObjectByType<HudView>();
+            if (hud == null) hud = FindAnyObjectByType<HudView>();
             // STATS answers on the frame it is pressed, not on the next tenth of a second.
             if (StatsOn != _statsWere) { _statsWere = StatsOn; _nextRefresh = 0f; }
             Countdown();
@@ -225,6 +236,9 @@ namespace PoDecath.UI
             TopBar(order, leader);
             RecordSplits(leader);
             OrderStrip(order, leader);
+            // The first race this device has seen: say that a name is a way to follow that runner.
+            if (!_followHinted && race.Current == RaceEvent.Phase.Running)
+                _followHinted = Hints.Seen("follow") || Hints.ShowOnce("follow", _orderHost, "Tap a name to follow that runner with the cameras");
             LowerThirdText(order);
             Strain();
             _map?.MarkDirtyRepaint();
@@ -379,7 +393,8 @@ namespace PoDecath.UI
                 int place = order.IndexOf(a);
 
                 SetText(row.rank, (place + 1).ToString());
-                SetText(row.name, a.name, a.color);
+                SetText(row.name, a.name);
+                row.stripe.style.backgroundColor = a.color;
                 SetText(row.gap, Gap(a, leader, place));
                 row.gap.style.color = a.fell ? new Color(1f, 0.5f, 0.42f)
                                     : a.recovering ? new Color(1f, 0.78f, 0.33f)   // amber: in trouble, not out
@@ -402,6 +417,8 @@ namespace PoDecath.UI
                     row.flash = 0.9f;
                     row.element.EnableInClassList("order-row--gained", row.gained);
                     row.element.EnableInClassList("order-row--lost", !row.gained);
+                    Show(row.arrow, true);
+                    row.arrow.MarkDirtyRepaint();
                 }
                 row.athlete = a;
             }
@@ -428,6 +445,7 @@ namespace PoDecath.UI
                 if (row.flash > 0f) continue;
                 row.element.RemoveFromClassList("order-row--gained");
                 row.element.RemoveFromClassList("order-row--lost");
+                Show(row.arrow, false);
             }
         }
 
@@ -625,6 +643,33 @@ namespace PoDecath.UI
             if (director == null) return;
             director.Pin(director.Pinned == a ? null : a);
             _nextRefresh = 0f;
+            if (director.Pinned != null) Hints.ShowOnce("unpin", _lowerThird, "Tap this card to hand the cameras back", above: true);
+        }
+
+        bool _followHinted;
+
+        /// <summary>A place gained or lost: a small triangle, up and green or down and red.</summary>
+        static void DrawArrow(MeshGenerationContext ctx, bool up)
+        {
+            Rect r = ctx.visualElement.contentRect;
+            if (r.width < 2f || r.height < 2f) return;
+            Painter2D p = ctx.painter2D;
+            p.fillColor = up ? new Color(0.24f, 0.82f, 0.59f) : new Color(1f, 0.42f, 0.36f);
+            p.BeginPath();
+            if (up)
+            {
+                p.MoveTo(new Vector2(r.center.x, r.yMin + 2f));
+                p.LineTo(new Vector2(r.xMax - 1f, r.yMax - 3f));
+                p.LineTo(new Vector2(r.xMin + 1f, r.yMax - 3f));
+            }
+            else
+            {
+                p.MoveTo(new Vector2(r.xMin + 1f, r.yMin + 3f));
+                p.LineTo(new Vector2(r.xMax - 1f, r.yMin + 3f));
+                p.LineTo(new Vector2(r.center.x, r.yMax - 2f));
+            }
+            p.ClosePath();
+            p.Fill();
         }
 
         void LowerThirdText(List<RaceEvent.Athlete> order)

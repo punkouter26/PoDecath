@@ -143,6 +143,44 @@ every screen: `DOCS/reports/2026-09-30-ui-consolidation-2.html`.
 | Close-up of the leader for the last 20% (owner request) | `BroadcastDirector.closingFraction` (0.8), `closeLead` (3.2 m), `closeHeight` (1.25 m), `InClosingStretch` | from 80% of the distance to the end of the race the head-on camera sits about 4 m in front of the leader, in their lane, at chest height, aimed straight at them; falls do not cut away. Before that, a fall is shown close up on the faller for `incidentSeconds` instead of on the stadium wide (40 m back, 30 m up). Measured on a 100 m race: at 62% the gallery was on TrackRail, at 86% on the close-up with the leader's whole body in frame |
 | Slimmer corner chips | `AppFrameView.Chip`, `.frame-fps`, `.frame-dot` | frame-rate chip 440 px -> 300 px (frame time is on the LIVE page), grey rather than red before its first reading; DEBUG's grade is a coloured dot instead of "DEBUG !" |
 
+## UI/UX state-flow review and DEMO mode, 2026-09-30
+
+The whole loop driven over the Unity CLI and checked at every step (`training/tools/flow_check.sh`, 14 checks;
+`training/tools/demo_check.sh`, 8), every screen shot at 16:9, 19.5:9, 20:9 and 21:9 with a simulated notch
+(`training/tools/notch_shots.sh`), and every build scene scanned for missing scripts, missing prefabs, dangling
+references and broken event hookups (none in any of the five). Before and after pictures:
+`DOCS/reports/2026-09-30-uiux-flow-review.html`.
+
+| Item | Where | Result |
+|---|---|---|
+| RESTART mid-race did not reset the race | `RaceEvent.RestartNow` | `Attempt` only moved on a finish, and fifteen components reset on it, so a thrown-away race left its clip frames, photo-finish marks, splits, top speeds and a broken tape in the next one. A restart of a live race now counts as an attempt |
+| Game speed saved as 6x | `ProjectSettings/TimeManager.asset` | committed at 6 in 8c5808b (leaked from a stepped capture); any race scene opened directly ran six times fast. Back to 1, and the capture scripts reset it after they stop |
+| Highlight clip crash on a resize | `HighlightClip.Grab` | a readback in flight across a screen-size change was decoded at the new size (IndexOutOfRangeException); a frame from the previous race could land in the next clip. Readbacks carry their size, ring and a generation now |
+| Music error on every frame after a live script reload | `MusicDirector.EnsureSources` | 870 NullReferenceExceptions in three minutes; the sources are rebuilt if lost |
+| FIELD forgot the field and the event | `SetupView.BuildRunners`, `s_lastEvent` | a race of 3 came back as one of each (8), a long jump came back as 100 M. Both kept now |
+| Notch: the frame's rows sat under it | `UiRoot.ApplySafeArea` | the safe area is applied as the edges of `safe`, not its padding, so the absolute MENU/FPS row, DEBUG row and diagnostics sheet move clear of the notch and the home bar |
+| Notch: wrong size on phones not 1080 wide | `UiRoot` | the first frame has no layout width, so the insets went on in device pixels and were never corrected (a third short on 720 wide). Re-applied until the width is known |
+| Results card had no safe area | `Results.uxml` `.results-safe` | centred between the frame's rows and inside the notch; the scrim and replay stay full bleed |
+| Clipped "SEASON 2/5" | `SetupView.RefreshSeason` | 171 px in a 149 px button; mid-season it reads NEXT 2/5, which is also what a tap does |
+| 82 compiler warnings | 18 files | Unity 6.6 deprecations (`FindFirstObjectByType`, `FindObjectsSortMode`, four Android build settings). 0 now |
+| Screenshot script broken | `training/tools/ui_shots.sh` | its results wait used the deprecated lookup, which the CLI's eval rejects |
+| **DEMO (kiosk) mode**, owner request | `Sim/DemoMode.cs`, `AppFrameView`, `SetupView.StartDemo` | the frame's top-right corner is DEMO on the menu (it was a greyed-out MENU) and STOP while the loop runs. Every event on the menu, one of each athlete, results held 10 s, round and round; the title chip says `DEMO 2/5 · 400 M` and counts down to the next event. Survives an app restart on a phone, keeps the screen awake, trims old race logs; in the editor it always starts off. Checked end to end: 100 m -> 400 m on its own -> hurdles -> long jump on its own -> back to 100 m on its own -> STOP, 8 of 8, no errors |
+
+### Seven of the ten ideas, same day (owner picked 2, 3, 4, 6, 8, 9, 10)
+
+| Idea | Where | Result |
+|---|---|---|
+| Loading card | `UI/SceneLoader.cs`, every scene change | background loading behind "LOADING · 100 M" and a bar; one load at a time; a load past 30 s says so in the console |
+| MENU asks twice, Back works | `AppFrameView.OnMenu`, `OnBack` | MENU in a live race says SURE? first, like RESTART. Back closes what is open, then acts as MENU; on the menu it asks BACK AGAIN TO LEAVE |
+| Faces on the results card | `ResultsView.Face`, `OutLine`, `Results.uxml` `out` | each finisher's portrait on their row; everybody out as a face with "fell at 24 m", three across, instead of a paragraph |
+| Running order you can read | `BroadcastView.BuildRows`, `DrawArrow` | white names, the athlete's colour as a stripe, a drawn green up or red down arrow on a change of place |
+| Kiosk extras | `AppFrameView`, `SetupView.attractSeconds` | STOP ends the demo only when held 1.2 s; a tap or touch says HOLD STOP TO TAKE OVER; an untouched menu starts the demo after 60 s |
+| One-time hints | `UI/Hints.cs` | tap a face, tap a name to follow, tap the card to hand the cameras back, tap the frame rate: once each per device |
+| Replay without buttons | `HighlightClip.Crop` | the clip is the picture between the frame's top row and the race controls |
+
+Checked: `flow_check.sh` 18 of 18 with the new MENU and Back steps, no console errors. Not built: ideas 1 (back a
+runner), 5 (hide the developer corners) and 7 (pause on interruption).
+
 ## State-flow and framing review, 2026-09-13
 
 Ten defects found by driving the live editor over the MCP bridge rather than by reading code, and fixed

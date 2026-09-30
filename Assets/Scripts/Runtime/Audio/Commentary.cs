@@ -96,7 +96,7 @@ namespace PoDecath.Audio
         {
             HookHurdles();
             // The viewer's buttons. Found rather than wired, the same way the hurdles are.
-            _chaos = FindFirstObjectByType<ViewerChaos>();
+            _chaos = FindAnyObjectByType<ViewerChaos>();
             if (_chaos != null) _chaos.Fired += OnChaos;
         }
 
@@ -134,7 +134,7 @@ namespace PoDecath.Audio
         void HookHurdles()
         {
             _hurdles.Clear();
-            foreach (Hurdle h in FindObjectsByType<Hurdle>(FindObjectsSortMode.None))
+            foreach (Hurdle h in FindObjectsByType<Hurdle>())
             {
                 _hurdles.Add(h);
                 h.KnockedOver += OnHurdleKnocked;

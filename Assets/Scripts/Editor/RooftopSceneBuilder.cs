@@ -512,7 +512,7 @@ namespace PoDecath.EditorTools
                     commentary.voice = speech;
 
                     // The overlay was built before the mix existed, so the caption band is wired from here.
-                    var overlay = Object.FindFirstObjectByType<PoDecath.UI.BroadcastView>();
+                    var overlay = Object.FindAnyObjectByType<PoDecath.UI.BroadcastView>();
                     if (overlay != null) overlay.commentary = commentary;
                 }
 
@@ -531,7 +531,7 @@ namespace PoDecath.EditorTools
                 acoustics.occluders = creatureLayer >= 0 ? ~(1 << creatureLayer) : ~0;
 
                 // The diagnostics panel reports what the crowd is doing, and it was built before the mix.
-                var telemetry = Object.FindFirstObjectByType<PoDecath.Diag.TelemetryOverlay>();
+                var telemetry = Object.FindAnyObjectByType<PoDecath.Diag.TelemetryOverlay>();
                 if (telemetry != null) telemetry.audioMix = raceAudio;
             }
 

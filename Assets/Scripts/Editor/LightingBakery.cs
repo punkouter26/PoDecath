@@ -68,7 +68,7 @@ namespace PoDecath.EditorTools
         static int UnwrapProBuilder()
         {
             int n = 0;
-            foreach (ProBuilderMesh pb in UnityEngine.Object.FindObjectsByType<ProBuilderMesh>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (ProBuilderMesh pb in UnityEngine.Object.FindObjectsByType<ProBuilderMesh>(FindObjectsInactive.Include))
             {
                 if (pb == null) continue;   // Optimize returns quietly on an empty mesh
                 pb.Optimize(true);

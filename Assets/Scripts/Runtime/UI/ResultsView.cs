@@ -36,7 +36,8 @@ namespace PoDecath.UI
         public PhotoFinish photoFinish;
 
         VisualElement _rootEl, _modal, _rows, _seasonPanel, _seasonRows, _replay, _scrim;
-        Label _title, _subtitle, _seasonTitle, _clipText, _nextLabel, _dnf, _shareLabel;
+        Label _title, _subtitle, _seasonTitle, _clipText, _nextLabel, _shareLabel;
+        VisualElement _out, _outFaces;
         Button _again, _change, _next, _watch, _share;
         string _shareNote = "";
 
@@ -75,7 +76,8 @@ namespace PoDecath.UI
             _seasonRows = Find<VisualElement>("season-rows");
             _seasonTitle = Find<Label>("season-title");
             _clipText = Find<Label>("clip-text");
-            _dnf = Find<Label>("dnf");
+            _out = Find<VisualElement>("out");
+            _outFaces = Find<VisualElement>("out-faces");
             _share = Find<Button>("share");
             _shareLabel = Find<Label>("share-label");
             _replay = Find<VisualElement>("replay");
@@ -202,7 +204,7 @@ namespace PoDecath.UI
         void PhotoStrip(List<RaceEvent.RaceResult> results, bool compact)
         {
             if (_photo == null) return;
-            if (photoFinish == null) photoFinish = FindFirstObjectByType<PhotoFinish>();
+            if (photoFinish == null) photoFinish = FindAnyObjectByType<PhotoFinish>();
             _photoMarks.Clear();
             if (photoFinish != null)
                 foreach (PhotoFinish.Crossing c in photoFinish.Crossings)
@@ -279,8 +281,11 @@ namespace PoDecath.UI
             _shareNote = "";
             int finishers = 0;
             foreach (RaceEvent.RaceResult r in results) if (r.finished) finishers++;
+            int outs = results.Count - finishers;
             // Past eight rows the card would need to scroll on a phone; compact rows keep sixteen on one screen.
-            bool compact = finishers > 8;
+            // The faces of the runners who went down take room too (a row of three per 72 px), so a board with
+            // more than six finishers and a row or more of them goes compact as well.
+            bool compact = finishers > 8 || (finishers > 6 && outs > 0) || finishers + (outs + 2) / 3 > 9;
 
             int shown = 0;
             foreach (RaceEvent.RaceResult r in results)
@@ -294,6 +299,7 @@ namespace PoDecath.UI
                 var rank = new Label(r.rank.ToString());
                 rank.AddToClassList("result-rank");
                 rank.style.color = r.color;
+                VisualElement face = Face(r, "result-face");
 
                 // The name, and under it what this runner did in the race: the numbers that used to live
                 // only on the diagnostics sheet. Left off compact rows, which have no height for a second line.
@@ -319,6 +325,7 @@ namespace PoDecath.UI
                 points.AddToClassList("result-points");
 
                 row.Add(rank);
+                row.Add(face);
                 row.Add(who);
                 row.Add(time);
                 row.Add(points);
@@ -367,20 +374,63 @@ namespace PoDecath.UI
         /// A runner who did not finish still has to be on the card, because the board has to show that they
         /// were in the race and what happened to them; it does not need a full row of "DNF, 0 pts" to say so.
         /// </summary>
+        /// <summary>
+        /// Everybody who did not finish, as faces rather than a paragraph: three across, each with the name
+        /// and where they went down. In a field of sixteen with contact on, fifteen can fall, and the line
+        /// this replaced was six lines of names and metres to read through.
+        /// </summary>
         void OutLine(List<RaceEvent.RaceResult> results)
         {
-            if (_dnf == null) return;
-            var sb = new System.Text.StringBuilder();
+            if (_out == null || _outFaces == null) return;
+            _outFaces.Clear();
             foreach (RaceEvent.RaceResult r in results)
             {
                 if (r.finished) continue;
-                string what = r.Status.StartsWith("DNF ") ? r.Status.Substring(4) : r.Status;
-                sb.Append(sb.Length == 0 ? "" : "  ·  ")
-                  .Append($"<color=#{ColorUtility.ToHtmlStringRGB(r.color)}>{r.name}</color> {what}");
+                var chip = new VisualElement();
+                chip.AddToClassList("out-chip");
+                chip.Add(Face(r, "out-face"));
+                var words = new VisualElement();
+                words.AddToClassList("out-words");
+                var name = new Label(r.name);
+                name.AddToClassList("out-name");
+                var what = new Label(r.Status.StartsWith("DNF ") ? r.Status.Substring(4) : r.Status);
+                what.AddToClassList("out-what");
+                words.Add(name);
+                words.Add(what);
+                chip.Add(words);
+                _outFaces.Add(chip);
             }
-            bool any = sb.Length > 0;
-            Show(_dnf, any);
-            if (any) SetText(_dnf, "<b>OUT</b>  " + sb);
+            Show(_out, _outFaces.childCount > 0);
+        }
+
+        /// <summary>
+        /// The athlete's rendered head and shoulders (the menu's portrait), framed in their colour; their
+        /// initial on their colour when the definition has no portrait.
+        /// </summary>
+        VisualElement Face(RaceEvent.RaceResult r, string cls)
+        {
+            var face = new VisualElement();
+            face.AddToClassList(cls);
+            face.style.borderBottomColor = r.color;
+            Texture2D portrait = null;
+            if (race != null) foreach (RaceEvent.Athlete a in race.Athletes) if (a.name == r.name) { portrait = a.portrait; break; }
+            if (portrait != null) face.style.backgroundImage = new StyleBackground(portrait);
+            else
+            {
+                face.style.backgroundColor = r.color * 0.6f;
+                var initial = new Label(string.IsNullOrEmpty(r.name) ? "?" : r.name.Substring(0, 1));
+                initial.AddToClassList("face-initial");
+                face.Add(initial);
+            }
+            return face;
+        }
+
+        /// <summary>Puts the card back over the replay. What the phone's Back does while the replay is up; false when it was not.</summary>
+        public bool StopWatching()
+        {
+            if (!_watching) return false;
+            Watch(false);
+            return true;
         }
 
         /// <summary>This runner's race in one line: its fastest moment, how often it got back up, and the work its joints did.</summary>
@@ -507,8 +557,8 @@ namespace PoDecath.UI
 
         void ChangeRunners()
         {
-            Time.timeScale = 1f;
-            SceneManager.LoadScene(setupSceneName);
+            DemoMode.Stop();   // FIELD is somebody taking over from the kiosk loop
+            SceneLoader.Load(setupSceneName, "Menu");
         }
     }
 }

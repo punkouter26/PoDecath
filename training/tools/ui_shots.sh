@@ -83,7 +83,7 @@ ev 'PoDecath.EditorTools.UiShots.Call("TelemetryOverlay","SetScreenVisible", fal
 ev 'UnityEngine.Time.timeScale = 6f' >/dev/null
 for i in $(seq 1 120); do
   step 15
-  up=$(ev '(UnityEngine.Object.FindFirstObjectByType<PoDecath.UI.ResultsView>() is PoDecath.UI.ResultsView rv && rv.ScreenVisible)')
+  up=$(ev '(UnityEngine.Object.FindAnyObjectByType<PoDecath.UI.ResultsView>() is PoDecath.UI.ResultsView rv && rv.ScreenVisible)')
   case "$up" in *true*|*True*) break;; esac
 done
 ev 'UnityEngine.Time.timeScale = 1f' >/dev/null
@@ -91,7 +91,7 @@ ev 'UnityEngine.Time.timeScale = 1f' >/dev/null
 # unscaled time 5 ms a step, so wait for the frames rather than for a number of steps.
 for i in $(seq 1 60); do
   step 20
-  got=$(ev '(UnityEngine.Object.FindFirstObjectByType<PoDecath.Fx.HighlightClip>() is PoDecath.Fx.HighlightClip hc && hc.LastFrames != null)')
+  got=$(ev '(UnityEngine.Object.FindAnyObjectByType<PoDecath.Fx.HighlightClip>() is PoDecath.Fx.HighlightClip hc && hc.LastFrames != null)')
   case "$got" in *true*|*True*) break;; esac
 done
 step 20
@@ -102,5 +102,8 @@ shot results_replay
 ev 'PoDecath.EditorTools.UiShots.Call("ResultsView","Watch", false)' >/dev/null
 
 unity command editor_stop >/dev/null
+# A time scale set while stepping can outlive play mode and land in ProjectSettings/TimeManager.asset
+# (it was committed there at 6 once, which ran every race scene opened directly at six times speed).
+ev 'UnityEngine.Time.timeScale = 1f' >/dev/null
 unity command menu --path "PoDecath/UI/Game View 1080x1920 (9:16)" >/dev/null
 echo "Pictures and layout reports in Build/UiShots/"

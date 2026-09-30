@@ -205,7 +205,7 @@ namespace PoDecath.Diag
         /// </summary>
         AgentTelemetry Sampler()
         {
-            if (agents == null) agents = FindFirstObjectByType<AgentTelemetry>(FindObjectsInactive.Include);
+            if (agents == null) agents = FindAnyObjectByType<AgentTelemetry>(FindObjectsInactive.Include);
             return agents;
         }
 
@@ -384,7 +384,7 @@ namespace PoDecath.Diag
 
         static int CountAudibleSources()
         {
-            AudioSource[] all = FindObjectsByType<AudioSource>(FindObjectsSortMode.None);
+            AudioSource[] all = FindObjectsByType<AudioSource>();
             int n = 0;
             foreach (AudioSource s in all) if (s != null && s.isPlaying && s.volume > 0.001f) n++;
             return n;

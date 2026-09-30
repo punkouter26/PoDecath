@@ -27,6 +27,9 @@
     <ui:VisualElement name="root" class="root hidden">
         <ui:VisualElement name="replay" class="replay hidden" />
         <ui:VisualElement name="scrim" class="modal-scrim">
+            <!-- The safe area, so a tall card (sixteen finishers and the season table) stops short of the
+                 notch, the home bar and the frame's MENU and DEBUG rows. The scrim and the replay stay full bleed. -->
+            <ui:VisualElement name="safe" class="safe results-safe">
             <ui:VisualElement name="modal" class="modal modal--out">
                 <ui:Label name="title" class="label-display" text="RESULTS" />
                 <ui:Label name="subtitle" class="label-small muted" text="" style="margin-bottom: 16px;" />
@@ -40,8 +43,11 @@
 
                 <ui:VisualElement name="rows" class="results-rows" />
 
-                <!-- Everybody who did not finish, on one line: name and where they went down. -->
-                <ui:Label name="dnf" class="results-dnf hidden" text="" />
+                <!-- Everybody who did not finish: a face each, with the name and where they went down. Filled by ResultsView. -->
+                <ui:VisualElement name="out" class="results-out hidden">
+                    <ui:Label class="results-out-head" text="OUT" />
+                    <ui:VisualElement name="out-faces" class="results-out-faces" />
+                </ui:VisualElement>
 
                 <!-- The season table, when this race was a leg of one. Filled by ResultsView from SeasonStore. -->
                 <ui:VisualElement name="season" class="season-panel hidden">
@@ -77,6 +83,7 @@
                         <ui:Label class="btn-label" text="FIELD" />
                     </ui:Button>
                 </ui:VisualElement>
+            </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

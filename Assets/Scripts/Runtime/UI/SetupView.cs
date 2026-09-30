@@ -72,11 +72,40 @@ namespace PoDecath.UI
         bool _confirmEnd;
         readonly List<Button> _eventButtons = new List<Button>();
         int _event;
+        // The event picked last, kept across the scene loads for the rest of the run so a trip to a race and
+        // back lands on the same chip (it used to reset to the first event every time).
+        static int s_lastEvent;
 
         /// <summary>The scene START loads: whichever event is selected.</summary>
         string SceneName => events.Count > 0 ? events[_event].sceneName : null;
 
         int Max => RaceRoster.MaxRunners;
+
+        /// <summary>Runners picked right now, and the event chip that is lit. Read by the flow check.</summary>
+        public int FieldSize => Total();
+        public int EventIndex => _event;
+
+        /// <summary>
+        /// Kiosk mode (DEMO in the frame's corner on this screen): every event on this menu in order, each
+        /// with one of every athlete on the roster, looping with nobody touching anything. See <see cref="DemoMode"/>.
+        /// </summary>
+        public void StartDemo()
+        {
+            var legs = new List<DemoMode.Leg>();
+            foreach (EventChoice e in events)
+                if (e != null && !string.IsNullOrEmpty(e.sceneName))
+                    legs.Add(new DemoMode.Leg { label = e.label, scene = e.sceneName, laps = e.laps, hurdles = e.hurdles });
+            var names = new List<string>();
+            foreach (RunnerRow r in rows)
+                if (r.definition != null && names.Count < Max) names.Add(r.definition.displayName);
+            DemoMode.Begin(legs, names);
+        }
+
+        /// <summary>What a tap on tile <paramref name="index"/> does: one more of that athlete. For the flow check.</summary>
+        public void AddRunner(int index)
+        {
+            if (index >= 0 && index < rows.Count && rows[index].definition != null) Adjust(rows[index], +1);
+        }
 
         protected override void Build()
         {
@@ -84,6 +113,10 @@ namespace PoDecath.UI
             SessionSettings.VisitedMenu = true;
             Time.timeScale = 1f;
             Application.targetFrameRate = 60;
+
+            // Before anything selects an event: BuildSeason re-words the hint through SelectEvent(_event), and
+            // with _event still 0 that put the first chip back and overwrote the remembered one.
+            _event = Mathf.Max(0, s_lastEvent);
 
             _eventHost = Find<VisualElement>("events");
             _runnerHost = Find<VisualElement>("runners");
@@ -104,8 +137,50 @@ namespace PoDecath.UI
             if (_none != null) _none.clicked += () => SetEveryone(0);
 
             BuildSeason();
-            SelectEvent(0);
+            SelectEvent(s_lastEvent);
             Refresh();
+
+            // Kiosk attract: any touch on this screen restarts the idle clock.
+            _lastTouch = Time.unscaledTime;
+            Root.RegisterCallback<PointerDownEvent>(_ => Touched(), TrickleDown.TrickleDown);
+        }
+
+        [Tooltip("Seconds the menu may sit untouched before the DEMO loop starts by itself (a kiosk's attract "
+               + "mode). The last ten are counted down on the line under the event chips. 0 turns it off.")]
+        public float attractSeconds = 60f;
+        const float AttractWarning = 10f;
+        float _lastTouch;
+        bool _attractShown, _tilesHinted;
+
+        protected override void Update()
+        {
+            base.Update();
+            if (!_tilesHinted && rows.Count > 0 && rows[0].row != null)
+                _tilesHinted = Hints.Seen("tiles") || Hints.ShowOnce("tiles", rows[0].row, "Tap a face to add a runner  ·  − takes one off  ·  i shows their record");
+
+            if (attractSeconds <= 0f || DemoMode.Active || SceneLoader.Busy) return;
+            float idle = Time.unscaledTime - _lastTouch;
+            if (idle >= attractSeconds) { _lastTouch = Time.unscaledTime; StartDemo(); return; }
+            if (idle >= attractSeconds - AttractWarning)
+            {
+                _attractShown = true;
+                SetText(_hint, $"Demo starts in {Mathf.CeilToInt(attractSeconds - idle)} s  ·  tap anywhere to stay");
+            }
+        }
+
+        void Touched()
+        {
+            _lastTouch = Time.unscaledTime;
+            if (_attractShown) { _attractShown = false; SelectEvent(_event); }   // puts the event's own line back
+        }
+
+        /// <summary>Turns every tile showing its record back to its face. What the phone's Back does here first; false when none was turned.</summary>
+        public bool CloseCards()
+        {
+            bool any = false;
+            foreach (RunnerRow r in rows)
+                if (r.row != null && r.row.ClassListContains("runner-tile--flipped")) { Flip(r); any = true; }
+            return any;
         }
 
         // ---------------------------------------------------------------- season and cards
@@ -135,7 +210,8 @@ namespace PoDecath.UI
         {
             SeasonStore.Season s = SeasonStore.Current.season;
             // One word under an icon: which leg is next reads off the number, and its name is on the hint line.
-            SetText(_seasonLabel, SeasonStore.SeasonActive ? $"SEASON {s.next + 1}/{s.legs.Count}" : "SEASON");
+            // Mid-season a tap runs the next leg, so it says NEXT; "SEASON 2/5" was 171 px in a 149 px button.
+            SetText(_seasonLabel, SeasonStore.SeasonActive ? $"NEXT {s.next + 1}/{s.legs.Count}" : "SEASON");
             Show(_seasonReset, SeasonStore.SeasonActive);
             SelectEvent(_event);   // re-words the hint, which carries the season and save lines
             FillTileCards();
@@ -295,12 +371,28 @@ namespace PoDecath.UI
             // somebody were in and made the remainder row, whichever happened to be listed first, into
             // the biggest team in the race. One each is the same answer however long the roster gets, and
             // a tap on a tile is right there for anyone who wants eight Grandmas.
+            //
+            // Coming back from a race (FIELD on the results card, MENU in a race) the field is the one that
+            // just ran, which RaceRoster still holds: FIELD means "change the runners", and starting again from
+            // one of each threw away whatever had been picked. One of each only when nothing was picked yet,
+            // or when none of the names still matches the roster.
+            bool restore = false;
+            if (RaceRoster.Chosen)
+                foreach (RunnerRow r in rows)
+                    if (r.definition != null && RaceRoster.Selection.Contains(r.definition.displayName)) { restore = true; break; }
+
             int used = 0;
             for (int i = 0; i < rows.Count; i++)
             {
                 RunnerRow row = rows[i];
                 if (row.definition == null) continue;
-                row.count = used < Max ? 1 : 0;
+                int want = 1;
+                if (restore)
+                {
+                    want = 0;
+                    foreach (string n in RaceRoster.Selection) if (n == row.definition.displayName) want++;
+                }
+                row.count = Mathf.Min(want, Max - used);
                 used += row.count;
 
                 var tile = new VisualElement();
@@ -385,6 +477,7 @@ namespace PoDecath.UI
         {
             if (events.Count == 0) return;   // no race scene was built; StartRace says so
             _event = Mathf.Clamp(index, 0, events.Count - 1);
+            s_lastEvent = _event;
             EventChoice chosen = events[_event];
             string hint = string.IsNullOrEmpty(chosen.hint) ? $"Pick 1 to {Max} athletes." : chosen.hint;
             SetText(_hint, SeasonStore.SeasonActive ? $"{hint}  ·  {SeasonLine()}" : hint);
@@ -454,8 +547,7 @@ namespace PoDecath.UI
             SessionSettings.SetEvent(chosen.laps, chosen.hurdles);
             SessionSettings.SeasonRace = false;   // a race picked here is a free race, season or not
             SessionSettings.ApplyQuality();
-            Time.timeScale = 1f;
-            SceneManager.LoadScene(SceneName);
+            SceneLoader.Load(SceneName, chosen.label);
         }
 
         /// <summary>Round-robin over the types, so each grid row gets a mix rather than one policy per row.</summary>

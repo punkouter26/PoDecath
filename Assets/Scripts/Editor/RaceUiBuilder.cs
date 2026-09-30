@@ -158,7 +158,7 @@ namespace PoDecath.EditorTools
             {
                 telemetry.race = dash;
                 telemetry.agents = agents;
-                telemetry.audioMix = Object.FindFirstObjectByType<PoDecath.Audio.RaceAudio>();
+                telemetry.audioMix = Object.FindAnyObjectByType<PoDecath.Audio.RaceAudio>();
             }
 
             var frame = UiBakery.AddScreen<AppFrameView>("AppFrame", UiBakery.AppFrameUxml, FrameOrder);

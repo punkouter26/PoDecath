@@ -132,10 +132,18 @@ namespace PoDecath.Audio
         RaceEvent.Phase _lastPhase = RaceEvent.Phase.Idle;
         float _finishedAt = -1f;
 
-        void Awake()
+        void Awake() => EnsureSources();
+
+        /// <summary>
+        /// The three stem voices. Also called before every start, because a script reload in play mode keeps
+        /// this component but not its plain fields, and Awake does not run again: the array came back empty
+        /// and TryStart threw on every frame for the rest of the session (870 times in three minutes).
+        /// </summary>
+        void EnsureSources()
         {
             for (int i = 0; i < _src.Length; i++)
             {
+                if (_src[i] != null) continue;
                 var src = gameObject.AddComponent<AudioSource>();
                 src.playOnAwake = false;
                 src.loop = true;
@@ -155,7 +163,7 @@ namespace PoDecath.Audio
         {
             // AudioMix.Tick is owned by RaceAudio in a race. Where there is none, the duck under the
             // commentary would never release, so this ticks it instead — never both, or releases run double.
-            _ownsTick = FindFirstObjectByType<RaceAudio>() == null;
+            _ownsTick = FindAnyObjectByType<RaceAudio>() == null;
         }
 
         void OnEnable()
@@ -211,6 +219,7 @@ namespace PoDecath.Audio
             }
 
             WarnIfLengthsDiffer(clips);
+            EnsureSources();
             double at = AudioSettings.dspTime + Mathf.Max(0.05f, scheduleLead);
             for (int i = 0; i < _src.Length; i++)
             {

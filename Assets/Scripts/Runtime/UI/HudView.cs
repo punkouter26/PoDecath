@@ -92,7 +92,7 @@ namespace PoDecath.UI
             }
         }
 
-        bool ChaosOpen => _chaosPop != null && !_chaosPop.ClassListContains("hidden");
+        public bool ChaosOpen => _chaosPop != null && !_chaosPop.ClassListContains("hidden");
 
         protected override void Build()
         {
@@ -118,7 +118,7 @@ namespace PoDecath.UI
             if (_menu != null) _menu.clicked += OnMenu;
 
             // A broadcast scene has a card for the athlete on camera, and the developer line goes there.
-            _overlayCarriesStats = !handsOn && FindFirstObjectByType<BroadcastView>(FindObjectsInactive.Include) != null;
+            _overlayCarriesStats = !handsOn && FindAnyObjectByType<BroadcastView>(FindObjectsInactive.Include) != null;
 
             // Slow motion and the camera toggle are development controls; a broadcast scene has a director
             // and no reason to offer either.
@@ -131,7 +131,7 @@ namespace PoDecath.UI
             // The frame carries a MENU in the top right of every screen in the game. Where it is present
             // this one is a second button, in a second place, doing the same job -- and until both were
             // pointed at the same scene it was not even the same job. One control, one destination.
-            Show(_menu, FindFirstObjectByType<AppFrameView>(FindObjectsInactive.Include) == null);
+            Show(_menu, FindAnyObjectByType<AppFrameView>(FindObjectsInactive.Include) == null);
 
             if (dash != null) dash.RaceFinished += OnRaceFinished;
             if (perturbation != null) perturbation.enabled = SessionSettings.PerturbationEnabled;
@@ -321,8 +321,8 @@ namespace PoDecath.UI
 
         void OnMenu()
         {
-            Time.timeScale = 1f;
-            SceneManager.LoadScene(menuSceneName);
+            PoDecath.Sim.DemoMode.Stop();
+            SceneLoader.Load(menuSceneName, "Menu");
         }
     }
 }

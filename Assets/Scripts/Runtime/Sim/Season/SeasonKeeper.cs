@@ -206,8 +206,7 @@ namespace PoDecath.Sim
             SessionSettings.SetEvent(leg.laps, leg.hurdles);
             SessionSettings.SeasonRace = true;
             SessionSettings.ApplyQuality();
-            Time.timeScale = 1f;
-            SceneManager.LoadScene(leg.scene);
+            UI.SceneLoader.Load(leg.scene, leg.label);
         }
     }
 }

@@ -2,6 +2,8 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 using PoDecath.Diag;
+using PoDecath.Sim;
+using UnityEngine.InputSystem;
 
 namespace PoDecath.UI
 {
@@ -47,6 +49,20 @@ namespace PoDecath.UI
 
         Label _title, _fps, _version;
         Button _menu, _debug;
+        string _titleWord;
+        bool _onMenu;
+
+        [Tooltip("How long STOP has to be held to end the demo loop. A tap only says so: a kiosk is in a public place.")]
+        public float stopHoldSeconds = 1.2f;
+        [Tooltip("How long MENU in a live race, and Back on the menu, wait for the second tap that confirms them.")]
+        public float confirmSeconds = 3f;
+
+        float _menuArmedUntil = -1f, _quitArmedUntil = -1f, _noteUntil = -1f, _nextTouchNote;
+        float _menuDownAt;
+        bool _menuHeld, _stoppedByHold, _fpsHinted;
+        string _note;
+        RaceEvent _race;
+        VisualElement _touchRoot;
         VisualElement _debugDot;
 
         TelemetryOverlay _telemetry;
@@ -65,11 +81,23 @@ namespace PoDecath.UI
             _menu = Find<Button>("menu");
             _debug = Find<Button>("debug");
 
-            SetText(_title, string.IsNullOrWhiteSpace(titleText) ? Application.productName.ToUpperInvariant()
-                                                                 : titleText.ToUpperInvariant());
+            _titleWord = string.IsNullOrWhiteSpace(titleText) ? Application.productName.ToUpperInvariant()
+                                                              : titleText.ToUpperInvariant();
+            SetText(_title, _titleWord);
             SetText(_version, VersionLine());
 
-            if (_menu != null) _menu.clicked += OnMenu;
+            if (_menu != null)
+            {
+                _menu.clicked += OnMenu;
+                // STOP is held, not tapped, while the demo runs: the press is timed from here, and Update ends
+                // the loop once it has been held long enough, without waiting for the finger to lift.
+                _menu.RegisterCallback<PointerDownEvent>(_ => { _menuDownAt = Time.unscaledTime; _menuHeld = true; }, TrickleDown.TrickleDown);
+                _menu.RegisterCallback<PointerUpEvent>(_ => _menuHeld = false, TrickleDown.TrickleDown);
+                _menu.RegisterCallback<PointerLeaveEvent>(_ => _menuHeld = false);
+            }
+            // Any touch anywhere, on any screen of this panel: during the demo it says how to take over.
+            _touchRoot = Root.panel?.visualTree;
+            _touchRoot?.RegisterCallback<PointerDownEvent>(OnAnyTouch, TrickleDown.TrickleDown);
             if (_debug != null)
             {
                 _debug.clicked += OnDebug;
@@ -88,9 +116,11 @@ namespace PoDecath.UI
                 _fps.RegisterCallback<ClickEvent>(_ => OnFps());
             }
 
-            // Already on the menu: leave the button in place so the layout is the same on every screen,
-            // but disabled, because a MENU that reloads the menu is a way to lose a half-built roster.
-            if (_menu != null && SceneManager.GetActiveScene().name == menuSceneName) _menu.SetEnabled(false);
+            // Already on the menu, the corner is DEMO: a MENU that reloads the menu would only be a way to
+            // lose a half-built roster, and the slot was a greyed-out button. While the demo runs it is STOP on
+            // every screen. Words set in DemoLabels, every refresh.
+            _onMenu = SceneManager.GetActiveScene().name == menuSceneName;
+            DemoLabels();
 
             Rewire();
         }
@@ -103,8 +133,16 @@ namespace PoDecath.UI
         /// </summary>
         void Rewire()
         {
-            if (_telemetry == null) _telemetry = FindFirstObjectByType<TelemetryOverlay>(FindObjectsInactive.Include);
-            if (_agents == null) _agents = FindFirstObjectByType<AgentTelemetry>(FindObjectsInactive.Include);
+            if (_telemetry == null) _telemetry = FindAnyObjectByType<TelemetryOverlay>(FindObjectsInactive.Include);
+            if (_agents == null) _agents = FindAnyObjectByType<AgentTelemetry>(FindObjectsInactive.Include);
+            if (_race == null) _race = FindAnyObjectByType<RaceEvent>();
+        }
+
+        void OnDisable()
+        {
+            // The panel outlives this scene (one PanelSettings for the whole game), so the touch hook must go with it.
+            _touchRoot?.UnregisterCallback<PointerDownEvent>(OnAnyTouch, TrickleDown.TrickleDown);
+            _touchRoot = null;
         }
 
         /// <summary>
@@ -121,6 +159,18 @@ namespace PoDecath.UI
         {
             base.Update();
 
+            float now = Time.unscaledTime;
+            if (DemoMode.Active && _menuHeld && now - _menuDownAt >= stopHoldSeconds)
+            {
+                _menuHeld = false;
+                _stoppedByHold = true;   // the release that follows is not a MENU tap
+                StopDemo();
+            }
+            if (_menuArmedUntil > 0f && now > _menuArmedUntil) { _menuArmedUntil = -1f; DemoLabels(); }
+            if (_noteUntil > 0f && now > _noteUntil) { _noteUntil = -1f; DemoLabels(); }
+            // Android's Back arrives as Escape.
+            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) OnBack();
+
             _fpsAccum += Time.unscaledDeltaTime;
             _fpsFrames++;
             if (_fpsFrames >= Mathf.Max(5, fpsWindow))
@@ -134,7 +184,10 @@ namespace PoDecath.UI
             _nextText = Time.unscaledTime + 0.25f;
 
             Rewire();
+            DemoLabels();
             SetText(_fps, Chip(_shownFps));
+            if (!_fpsHinted && _onMenu && _shownFps > 0f)
+                _fpsHinted = Hints.Seen("fps") || Hints.ShowOnce("fps", _fps, "Tap the frame rate for live stats");
             if (_fps != null)
             {
                 // Grey until there is a reading: a red "--" on the menu read as a fault when nothing was wrong.
@@ -189,12 +242,110 @@ namespace PoDecath.UI
             else _telemetry.Open(TelemetryOverlay.Page.Live);
         }
 
+        /// <summary>
+        /// The corner button's word and the title chip, from the demo's state: DEMO on the menu, STOP while the
+        /// demo runs (with the chip saying which event of how many, and counting the results card down to the
+        /// next one), MENU otherwise.
+        /// </summary>
+        void DemoLabels()
+        {
+            bool armed = _menuArmedUntil > 0f;
+            if (_menu != null) _menu.text = DemoMode.Active ? (_menuHeld ? "HOLD" : "STOP") : armed ? "SURE?" : _onMenu ? "DEMO" : "MENU";
+            _menu?.EnableInClassList("frame-btn--demo", DemoMode.Active || armed);
+            if (_noteUntil > 0f) { SetText(_title, _note); return; }
+            if (!DemoMode.Active) { SetText(_title, _titleWord); return; }
+            float next = DemoMode.SecondsToNext;
+            SetText(_title, next >= 0f ? $"DEMO · {DemoMode.Next.label} IN {Mathf.CeilToInt(next)}"
+                                       : $"DEMO {DemoMode.Index + 1}/{DemoMode.Count} · {DemoMode.Current.label}");
+        }
+
+        /// <summary>
+        /// The corner button. On the menu: DEMO starts the kiosk loop. During the loop: STOP, which ends it
+        /// only when held (see Update); a tap just says so. In a live race: MENU asks SURE? first, the way
+        /// RESTART does, because it throws away more than RESTART. Otherwise: back to the menu.
+        /// </summary>
         void OnMenu()
         {
-            // Slow motion is a HUD toggle that outlives the scene it was set in, and arriving at the menu
-            // running at half speed reads as a hang.
-            Time.timeScale = 1f;
-            SceneManager.LoadScene(menuSceneName);
+            if (_stoppedByHold) { _stoppedByHold = false; return; }
+            if (DemoMode.Active) { Note("HOLD STOP TO END DEMO"); return; }
+            if (_onMenu)
+            {
+                var setup = FindAnyObjectByType<SetupView>();
+                if (setup != null) setup.StartDemo();
+                else Debug.LogWarning("[AppFrameView] DEMO pressed on a menu with no SetupView.", this);
+                return;
+            }
+
+            bool live = _race != null && (_race.Current == RaceEvent.Phase.Running || _race.Current == RaceEvent.Phase.Countdown);
+            if (live && _menuArmedUntil < 0f)
+            {
+                _menuArmedUntil = Time.unscaledTime + confirmSeconds;
+                DemoLabels();
+                return;
+            }
+            _menuArmedUntil = -1f;
+            SceneLoader.Load(menuSceneName, "Menu");
+        }
+
+        /// <summary>
+        /// Where the frame's two rows are, in panel units: the bottom of the top row, the top of the bottom
+        /// row, and the panel's height. The highlight clip crops to the picture between them. False before layout.
+        /// </summary>
+        public bool FrameRows(out float topRowBottom, out float bottomRowTop, out float panelHeight)
+        {
+            VisualElement top = Root?.Q("frame-top"), bottom = Root?.Q("frame-bottom");
+            topRowBottom = top != null ? top.worldBound.yMax : float.NaN;
+            bottomRowTop = bottom != null ? bottom.worldBound.yMin : float.NaN;
+            panelHeight = Root?.panel != null ? Root.panel.visualTree.worldBound.height : float.NaN;
+            return !float.IsNaN(topRowBottom) && !float.IsNaN(bottomRowTop) && !float.IsNaN(panelHeight) && topRowBottom < bottomRowTop;
+        }
+
+        /// <summary>Ends the demo: on the menu it stays there, anywhere else the menu comes back with that field. Also what the demo check calls.</summary>
+        public void StopDemo()
+        {
+            DemoMode.Stop();
+            if (_onMenu) DemoLabels();
+            else SceneLoader.Load(menuSceneName, "Menu");
+        }
+
+        /// <summary>A line in the title chip for a few seconds: how to take over the demo, or that Back needs a second press.</summary>
+        void Note(string text)
+        {
+            _note = text;
+            _noteUntil = Time.unscaledTime + confirmSeconds;
+            DemoLabels();
+        }
+
+        void OnAnyTouch(PointerDownEvent e)
+        {
+            if (!DemoMode.Active || Time.unscaledTime < _nextTouchNote) return;
+            if (e.target is VisualElement v && _menu != null && (v == _menu || _menu.Contains(v))) return;
+            _nextTouchNote = Time.unscaledTime + 20f;
+            Note("HOLD STOP TO TAKE OVER");
+        }
+
+        /// <summary>
+        /// The phone's Back, which did nothing anywhere. Closes whatever is open first (diagnostics, the chaos
+        /// buttons, a turned-over tile, the replay), then behaves as MENU (so a live race asks SURE? first), and
+        /// on the menu asks for a second press before leaving the app. During the demo it only says how to
+        /// take over: a kiosk's Back is not a way to end it.
+        /// </summary>
+        public void OnBack()
+        {
+            Rewire();
+            if (_telemetry != null && _telemetry.ScreenVisible) { _telemetry.SetScreenVisible(false); return; }
+            var hud = FindAnyObjectByType<HudView>();
+            if (hud != null && hud.ChaosOpen) { hud.SetChaosOpen(false); return; }
+            var setup = FindAnyObjectByType<SetupView>();
+            if (setup != null && setup.CloseCards()) return;
+            var results = FindAnyObjectByType<ResultsView>();
+            if (results != null && results.StopWatching()) return;
+            if (DemoMode.Active) { Note("HOLD STOP TO END DEMO"); return; }
+            if (!_onMenu) { OnMenu(); return; }
+
+            if (_quitArmedUntil > Time.unscaledTime) { Application.Quit(); return; }
+            _quitArmedUntil = Time.unscaledTime + confirmSeconds;
+            Note("BACK AGAIN TO LEAVE");
         }
     }
 }

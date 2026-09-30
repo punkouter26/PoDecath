@@ -61,7 +61,7 @@ namespace PoDecath.Diag
 
         void OnEnable()
         {
-            if (race == null) race = FindFirstObjectByType<RaceEvent>();
+            if (race == null) race = FindAnyObjectByType<RaceEvent>();
             if (race == null) { enabled = false; return; }
             race.RaceStarted += OnStarted;
             race.RaceComplete += OnComplete;

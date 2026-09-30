@@ -19,7 +19,7 @@ namespace PoDecath.UI
     [RequireComponent(typeof(UIDocument))]
     public abstract class UiRoot : MonoBehaviour
     {
-        [Tooltip("Applies Screen.safeArea as padding on the element named 'safe'. Off for a full-bleed screen.")]
+        [Tooltip("Insets the element named 'safe' by Screen.safeArea (its edges, not its padding). Off for a full-bleed screen.")]
         public bool applySafeArea = true;
 
         protected VisualElement Root { get; private set; }
@@ -63,6 +63,18 @@ namespace PoDecath.UI
         VisualElement _safe;
         Rect _lastSafeArea;
         Vector2Int _lastScreen;
+        bool _scaleKnown;
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// A pretend notch and home bar for the editor, in screen pixels, because the Game view always reports
+        /// the whole screen as safe. Set by <c>UiShots.Notch</c>; null is the real <c>Screen.safeArea</c>.
+        /// </summary>
+        public static Rect? SafeAreaOverride;
+        static Rect SafeArea => SafeAreaOverride ?? Screen.safeArea;
+#else
+        static Rect SafeArea => Screen.safeArea;
+#endif
 
         protected virtual void OnEnable()
         {
@@ -81,13 +93,25 @@ namespace PoDecath.UI
         protected virtual void Update()
         {
             if (!applySafeArea) return;
-            if (_lastSafeArea == Screen.safeArea && _lastScreen.x == Screen.width && _lastScreen.y == Screen.height) return;
+            if (_scaleKnown && _lastSafeArea == SafeArea && _lastScreen.x == Screen.width && _lastScreen.y == Screen.height) return;
             ApplySafeArea();
         }
 
         /// <summary>
-        /// Pads the safe element in by the notch and the home indicator, converted from screen pixels into
-        /// the panel's own reference units so it is right at any resolution.
+        /// Moves the safe element's edges in by the notch and the home indicator, converted from screen pixels
+        /// into the panel's own reference units so it is right at any resolution.
+        ///
+        /// Edges, not padding. The safe element is absolutely positioned (<c>.safe</c>), so its top, bottom,
+        /// left and right are its insets, and shrinking the box takes everything inside it along, absolute
+        /// children included. Padding did not: the frame's MENU/FPS row and DEBUG row, and the diagnostics
+        /// sheet, are absolute inside it, ignored the padding, and sat under the notch and the home bar on
+        /// any phone that has them. It also means the padding of a screen's safe element is its own again
+        /// (it used to be overwritten with the insets).
+        ///
+        /// The scale is only known once the panel has laid itself out. On the first frame it has not, the
+        /// insets went on in raw device pixels, and nothing ever re-applied them because the safe area had
+        /// not changed: right by luck on a 1080-wide phone, a third short on a 720-wide one (the top row in
+        /// the camera cutout) and a third too deep on a 1440-wide one. Update keeps trying until it is known.
         ///
         /// The clamp is not paranoia: the Device Simulator and some editor views report a safe area for a
         /// different resolution than <c>Screen.width/height</c>, and a safe area that does not fit inside
@@ -95,21 +119,23 @@ namespace PoDecath.UI
         /// </summary>
         void ApplySafeArea()
         {
-            _lastSafeArea = Screen.safeArea;
+            _lastSafeArea = SafeArea;
             _lastScreen = new Vector2Int(Screen.width, Screen.height);
             if (_safe == null || Screen.width <= 0 || Screen.height <= 0) return;
 
-            Rect sa = Screen.safeArea;
+            Rect sa = SafeArea;
             if (sa.width <= 0f || sa.height <= 0f || sa.xMax > Screen.width + 1f || sa.yMax > Screen.height + 1f)
                 sa = new Rect(0f, 0f, Screen.width, Screen.height);
 
             // The panel scales to a reference resolution, so the insets have to be scaled with it or a
-            // 1080-wide layout would be padded by raw device pixels.
-            float scale = Root.resolvedStyle.width > 1f ? Root.resolvedStyle.width / Screen.width : 1f;
-            _safe.style.paddingLeft = sa.xMin * scale;
-            _safe.style.paddingRight = (Screen.width - sa.xMax) * scale;
-            _safe.style.paddingTop = (Screen.height - sa.yMax) * scale;
-            _safe.style.paddingBottom = sa.yMin * scale;
+            // 1080-wide layout would be inset by raw device pixels.
+            float panelWidth = Root.panel != null ? Root.panel.visualTree.layout.width : float.NaN;
+            _scaleKnown = panelWidth > 1f;   // false for NaN too
+            float scale = _scaleKnown ? panelWidth / Screen.width : 1f;
+            _safe.style.left = sa.xMin * scale;
+            _safe.style.right = (Screen.width - sa.xMax) * scale;
+            _safe.style.top = (Screen.height - sa.yMax) * scale;
+            _safe.style.bottom = sa.yMin * scale;
         }
 
         // ---------------------------------------------------------------- lookups

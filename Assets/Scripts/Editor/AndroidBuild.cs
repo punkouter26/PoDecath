@@ -235,10 +235,10 @@ namespace PoDecath.EditorTools
             PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
             PlayerSettings.allowedAutorotateToLandscapeLeft = false;
             PlayerSettings.allowedAutorotateToLandscapeRight = false;
-            PlayerSettings.useAnimatedAutorotation = false;
             PlayerSettings.Android.renderOutsideSafeArea = true;
-            PlayerSettings.Android.startInFullscreen = true;
-            PlayerSettings.Android.androidIsGame = true;
+            // No system bars on screen: what startInFullscreen = true used to say, in Unity 6.6's words.
+            PlayerSettings.Android.requestedVisibleInsets = AndroidWindowInsetsType.None;
+            PlayerSettings.Android.appCategory = "game";
             PlayerSettings.Android.fullscreenMode = FullScreenMode.FullScreenWindow;
 
             // ---- code generation
@@ -313,8 +313,9 @@ namespace PoDecath.EditorTools
             // The debug keystore is deliberate for the same reason - a signing key belongs in a release
             // pipeline, not in a script that runs after every training run.
             EditorUserBuildSettings.buildAppBundle = false;
-            EditorUserBuildSettings.androidCreateSymbols = development ? AndroidCreateSymbols.Debugging
-                                                                       : AndroidCreateSymbols.Disabled;
+            UnityEditor.Android.UserBuildSettings.DebugSymbols.level = development
+                ? Unity.Android.Types.DebugSymbolLevel.Full
+                : Unity.Android.Types.DebugSymbolLevel.None;
             PlayerSettings.Android.useCustomKeystore = false;
             PlayerSettings.Android.buildApkPerCpuArchitecture = false;
             PlayerSettings.Android.preferredInstallLocation = AndroidPreferredInstallLocation.Auto;
