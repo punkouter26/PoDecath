@@ -58,6 +58,20 @@ namespace PoDecath.Audio
         [Tooltip("The short musical stab under a lower third or a result.")]
         public AudioClip sting;
 
+        [Header("Music")]
+        [Tooltip("Score stem 1 of 3: pads and a soft pulse. Seamless loop, the same length, tempo and key as "
+               + "the other two, because MusicDirector starts all three on the same DSP sample and only ever "
+               + "moves their volumes. Under the whole event; the one stem heard on the grid.")]
+        public AudioClip musicCalm;
+        [Tooltip("Score stem 2 of 3: drums and bass. Same length as musicCalm. Comes in on the gun.")]
+        public AudioClip musicDrive;
+        [Tooltip("Score stem 3 of 3: brass stabs and an arpeggio. Same length as musicCalm. Comes in when "
+               + "the race is tight or into its last stretch, and is the first thing out at the finish.")]
+        public AudioClip musicPeak;
+
+        /// <summary>True when at least one score stem is present; a bank baked before the music has none.</summary>
+        public bool HasMusic => musicCalm != null || musicDrive != null || musicPeak != null;
+
         /// <summary>What an athlete is running on. Picks which footfall set a step comes from.</summary>
         public enum Surface { Asphalt, Sand, Rubber }
 

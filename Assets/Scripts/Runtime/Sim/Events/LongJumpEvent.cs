@@ -519,6 +519,8 @@ namespace PoDecath.Sim
             return top.finished ? $"Won by {top.name}  {top.time:F2} m" : "No marks recorded";
         }
 
+        public override string HudDistanceBadge() => $"R{Round}/{Mathf.Max(1, attemptsEach)}  {LastMark}";
+
         public override string HudDistanceLine()
         {
             if (Current == Phase.Finished) return $"Best  {(Reference != null ? Reference.distance : 0f):F2} m   complete";

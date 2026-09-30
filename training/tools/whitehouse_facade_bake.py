@@ -132,6 +132,11 @@ bpy.ops.import_scene.gltf(filepath=hi_path)
 high_objs = {o.name: o for o in bpy.data.objects if o.type == "MESH"}
 for o in high_objs.values():
     o.name = "HI_" + o.name     # keep the two files' names apart; the low keeps the real name
+# Materials too: both files carry the same material names, and a second import of a name Blender already
+# has comes in as "<name>.001". Exported like that, every unbaked LOD2 part (windows, trees, paving)
+# misses BuildingLodBuilder's by-name lookup and goes grey.
+for m in list(bpy.data.materials):
+    m.name = "HI_" + m.name
 say(f"imported {len(high_objs)} high meshes at {time.time() - t0:.0f} s")
 
 say(f"importing low {lo_path}")
@@ -142,7 +147,8 @@ say(f"imported {len(low_objs)} low meshes at {time.time() - t0:.0f} s")
 baked = []
 for shell in SHELLS:
     lows = [o for n, o in low_objs.items() if n.startswith(shell)]
-    highs = [o for n, o in high_objs.items() if n.startswith("HI_" + shell)]
+    # high_objs is keyed by the name each object had on import, before the HI_ rename.
+    highs = [o for n, o in high_objs.items() if n.startswith(shell)]
     if not lows or not highs:
         say(f"{shell}: no {'low' if not lows else 'high'} mesh with that prefix; skipped")
         continue

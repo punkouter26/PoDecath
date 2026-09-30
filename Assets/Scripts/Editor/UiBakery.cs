@@ -23,7 +23,6 @@ namespace PoDecath.EditorTools
         public const string ResultsUxml = UiDir + "/Results.uxml";
         public const string SetupUxml = UiDir + "/Setup.uxml";
         public const string TelemetryUxml = UiDir + "/Telemetry.uxml";
-        public const string MainMenuUxml = UiDir + "/MainMenu.uxml";
         public const string AppFrameUxml = UiDir + "/AppFrame.uxml";
 
         const int RefWidth = 1080;

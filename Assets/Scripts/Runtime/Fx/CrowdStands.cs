@@ -170,7 +170,7 @@ namespace PoDecath.Fx
 
         void Update()
         {
-            if (_renderer == null) return;
+            if (_renderer == null || _block == null) return;   // Update can run in the editor before OnEnable has built the block
             float target = audioMix != null ? audioMix.CrowdLevel : 0.15f;
             _mood = Mathf.MoveTowards(_mood, target, Time.deltaTime * 0.8f);
             _burst = Mathf.Max(0f, _burst - burstDecay * Time.deltaTime);

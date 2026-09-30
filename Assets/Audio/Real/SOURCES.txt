@@ -1,0 +1,31 @@
+Recordings imported by PoDecath/Audio/Import Sound Pack from C:/Users/punko/AppData/Local/Temp/claude/c--Users-punko-Downloads-PoDecath/839d3115-f355-4e29-9f53-6f0d126cdd0b/scratchpad/soundpack
+Licences and sources: see LICENSES.md beside this file.
+
+crowdBed.wav  <-  Stadium Crowd Ambience Loop.wav
+footfalls_1.wav  <-  Footstep Run Asphalt 01.wav
+footfalls_2.wav  <-  Footstep Run Asphalt 02.wav
+footfalls_3.wav  <-  Footstep Run Asphalt 04.wav
+footfalls_4.wav  <-  Footstep Run Asphalt 03.wav
+crowdSwell.wav  <-  Stadium Crowd Cheer Swell.wav
+crowdGroan.wav  <-  Stadium Crowd Groan Aww.wav
+windBed.wav  <-  Wind Steady Ambience Loop.wav
+pistol.wav  <-  Starter Pistol Single Shot.wav
+breath.wav  <-  Breath Calm Loop.wav
+footfallsSand_1.wav  <-  Footstep Sand 01.wav
+footfallsSand_2.wav  <-  Footstep Sand 02.wav
+footfallsSand_3.wav  <-  Footstep Sand 03.wav
+footfallsRubber_1.wav  <-  Footstep Rubber Track 01.wav
+footfallsRubber_2.wav  <-  Footstep Rubber Track 02.wav
+footfallsRubber_3.wav  <-  Footstep Rubber Track 03.wav
+crowdApplause.wav  <-  Crowd Applause Settled.wav
+crowdChant.wav  <-  Crowd Rhythmic Clap Chant Loop.wav
+countBeep.wav  <-  Countdown Beep.wav
+lapBell.wav  <-  Lap Bell Hand Bell.wav
+hurdleClatter.wav  <-  Hurdle Metal Frame Clatter Fall.wav
+hurdleClip.wav  <-  Hurdle Bar Knock Hit.wav
+sandThud.wav  <-  Sand Pit Body Landing Thud.wav
+whoosh.wav  <-  Camera Whoosh Swish.wav
+sting.wav  <-  Broadcast Sting Musical Accent.wav
+musicCalm.wav  <-  music\calm.wav
+musicDrive.wav  <-  music\drive.wav
+musicPeak.wav  <-  music\peak.wav

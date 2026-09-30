@@ -441,6 +441,15 @@ namespace PoDecath.EditorTools
             // listeners and no source is a scene where impacts silently do nothing.
             new GameObject("CameraShake").AddComponent<CameraShake>();
 
+            // A long race runs into the evening: the look drifts toward the next preset with the leader's
+            // progress, and the floodlights come up once the light has gone. No effect under four laps.
+            var drift = volumeGo.AddComponent<DayDrift>();
+            drift.look = look;
+            drift.race = dash;
+
+            // On a phone, a hot device trades render scale for frame rate rather than stuttering.
+            new GameObject("ThermalGovernor").AddComponent<ThermalGovernor>();
+
             // The mix. Footsteps belong to the athletes; this is the crowd, the gun, the bell and the cuts.
             //
             // Three objects rather than one, because they are three different kinds of sound source. The
@@ -473,6 +482,14 @@ namespace PoDecath.EditorTools
                     stands.path = path;
                     stands.material = vfx.crowd;
                     stands.audioMix = raceAudio;
+
+                    // Camera flashes in the stands, rising with the crowd and the drama; streamers at the finish on PC.
+                    var flashes = stands.gameObject.AddComponent<CrowdFlashes>();
+                    flashes.race = dash;
+                    flashes.stands = stands;
+                    flashes.audioMix = raceAudio;
+                    flashes.drama = director != null ? director.drama : null;
+                    flashes.bank = vfx;
                 }
 
                 // The commentary. It lives on the audio object because it ducks the crowd under every line
@@ -482,10 +499,11 @@ namespace PoDecath.EditorTools
                 // in silence on purpose, and a voice calling a race with one runner in it has nothing to
                 // say. See SpeechSynth for which platforms actually produce a voice: the caption is drawn
                 // on all of them, the voice only on Android and Windows.
+                Commentary commentary = null;
                 if (fieldMode)
                 {
                     var speech = audioGo.AddComponent<SpeechSynth>();
-                    var commentary = audioGo.AddComponent<Commentary>();
+                    commentary = audioGo.AddComponent<Commentary>();
                     commentary.race = dash;
                     commentary.drama = director != null ? director.drama : null;
                     commentary.voice = speech;
@@ -494,6 +512,14 @@ namespace PoDecath.EditorTools
                     var overlay = Object.FindFirstObjectByType<PoDecath.UI.BroadcastView>();
                     if (overlay != null) overlay.commentary = commentary;
                 }
+
+                // The score under the race: three stems in lock-step, crossfaded on the drama reading, ducked
+                // under the commentary. Silent until the bank has stems (PoDecath/Bake Audio Clips, or real ones).
+                var music = audioGo.AddComponent<MusicDirector>();
+                music.bank = audio;
+                music.race = dash;
+                music.drama = director != null ? director.drama : null;
+                music.commentary = commentary;
 
                 // The room, on the listener: the reverb of a stone courtyard and the dullness of distance.
                 var acoustics = camGo.AddComponent<ListenerAcoustics>();

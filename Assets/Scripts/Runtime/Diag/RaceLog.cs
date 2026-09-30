@@ -50,6 +50,7 @@ namespace PoDecath.Diag
         long _drawSum, _triSum;
         int _renderSamples;
         float _batteryStart = -1f;
+        int _thermalMark;          // ThermalGovernor.ChangeCount at the gun: the render-scale steps this race saw
         bool _recording;
         ProfilerRecorder _draw, _tris;
 
@@ -90,6 +91,7 @@ namespace PoDecath.Diag
             _drawSum = _triSum = 0;
             _renderSamples = 0;
             _batteryStart = SystemInfo.batteryLevel;
+            _thermalMark = ThermalGovernor.ChangeCount;
             _recording = true;
         }
 
@@ -197,6 +199,9 @@ namespace PoDecath.Diag
             sb.AppendFormat(ci, "\"triangles_mean\":{0},", _renderSamples > 0 ? _triSum / _renderSamples : 0);
             sb.AppendFormat(ci, "\"battery_start\":{0:F2},", _batteryStart);
             sb.AppendFormat(ci, "\"battery_end\":{0:F2},", SystemInfo.batteryLevel);
+            // A frame rate that held because the resolution dropped is a different result from one that
+            // held at full resolution; the render-scale steps taken during the race say which it was.
+            sb.Append("\"thermal\":").Append(ThermalGovernor.Json(_thermalMark, _recordStart)).Append(",");
             sb.Append("\"results\":[");
             for (int i = 0; i < results.Count; i++)
             {

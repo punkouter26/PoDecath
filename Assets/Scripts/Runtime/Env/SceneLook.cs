@@ -62,8 +62,12 @@ namespace PoDecath.Env
         TimeOfDay _applied = (TimeOfDay)(-1);
         Tier _appliedTier = (Tier)(-1);
 
-        /// <summary>One preset, in the four numbers that distinguish it from the others.</summary>
-        struct Preset
+        /// <summary>
+        /// One preset, in the four numbers that distinguish it from the others. Public so that
+        /// <see cref="DayDrift"/> can blend between two of them during a long race without keeping a
+        /// second copy of the numbers that could drift out of step with these.
+        /// </summary>
+        public struct Preset
         {
             public Vector3 sunEuler;
             public Color sunColor;
@@ -131,6 +135,19 @@ namespace PoDecath.Env
                 skyExposure = 1f,
             },
         };
+
+        /// <summary>
+        /// The numbers behind a preset, read-only. The single source for both this component and
+        /// <see cref="DayDrift"/>, which walks a long race from one preset toward the next.
+        /// </summary>
+        public static Preset PresetFor(TimeOfDay t) => For(t);
+
+        /// <summary>
+        /// Lights or darkens the building's windows without changing the preset. For
+        /// <see cref="DayDrift"/>, which turns them on as its floodlights come up; the next
+        /// <see cref="Apply"/> with <c>force</c> puts them back to whatever the preset says.
+        /// </summary>
+        public void SetWindowsLit(bool lit) => ApplyWindows(lit);
 
         void OnEnable()
         {

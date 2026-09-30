@@ -3,7 +3,7 @@
     The frame: the five things that are in the same place on every screen the game has.
 
         top-left      the game's name
-        top-centre    the frame rate
+        top-centre    the frame rate, which opens the diagnostics on their FRAME page when tapped
         top-right     MENU
         bottom-left   DEBUG, which opens the agent/ONNX diagnostics
         bottom-right  the version
@@ -30,7 +30,7 @@
             <ui:VisualElement name="frame-top" class="frame-row frame-row--top" picking-mode="Ignore">
                 <ui:Label name="title" class="frame-chip frame-title" text="PODECATH" picking-mode="Ignore" />
                 <ui:VisualElement class="spacer" picking-mode="Ignore" />
-                <ui:Label name="fps" class="frame-chip frame-fps" text="-- FPS" picking-mode="Ignore" />
+                <ui:Label name="fps" class="frame-chip frame-fps" text="-- FPS" />
                 <ui:VisualElement class="spacer" picking-mode="Ignore" />
                 <ui:Button name="menu" class="btn btn--ghost frame-btn" text="MENU" />
             </ui:VisualElement>

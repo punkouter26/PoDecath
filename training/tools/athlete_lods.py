@@ -101,7 +101,10 @@ def cap_textures(limit):
 def import_model(path):
     ext = os.path.splitext(path)[1].lower()
     if ext in (".glb", ".gltf"):
-        bpy.ops.import_scene.gltf(filepath=path)
+        # glTF stores a vertex once per UV island / normal split, so an unmerged import is a mesh of
+        # separate patches, and a collapse cut opens every seam into a visible crack (the face first).
+        # merge_vertices keeps the seams as corner data and gives the decimator one connected surface.
+        bpy.ops.import_scene.gltf(filepath=path, merge_vertices=True)
     elif ext == ".fbx":
         bpy.ops.import_scene.fbx(filepath=path, use_anim=False)
     else:

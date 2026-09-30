@@ -1,6 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Splines;
+using UnityEngine.UIElements;
 using Unity.Cinemachine;
 using Unity.Mathematics;
 using PoDecath.Cam;
@@ -201,6 +202,90 @@ namespace PoDecath.EditorTools
                 hud.director = dir;
             }
             return chaos;
+        }
+
+        const float GantryPastLine = 1.2f;   // metres beyond the finish line, in the running direction
+        const string GantryModelPath = "Assets/Models/FinishGantry.glb";
+        const string GantryPrefabPath = "Assets/Prefabs/FinishGantry.prefab";
+        const string ThemePath = "Assets/UI/PoDecath.tss";
+
+        /// <summary>
+        /// The finish-line gantry (<c>training/tools/finish_gantry.py</c>), as a prefab instance standing on
+        /// the line with its legs on the two barriers: the live screen, the timing clock. The prefab is made
+        /// once from the model with the screen and clock renderers wired; each scene's instance is given its
+        /// race and director. Nothing happens without the model, so a checkout that has not run the Blender
+        /// script builds as before.
+        /// </summary>
+        public static FinishGantry AddFinishGantry(RaceEvent race, TrackPath loop, BroadcastDirector dir)
+        {
+            GameObject prefab = EnsureGantryPrefab();
+            if (prefab == null || race == null) return null;
+            if (!FinishLine(race, loop, out Vector3 at, out Vector3 along)) return null;
+
+            // Just past the line, not on it: the photo-finish camera looks along the line from the side, and a
+            // leg standing on the line fills its whole slit (which is where real timing gantries stand too).
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            go.transform.SetPositionAndRotation(at + along * GantryPastLine, Quaternion.LookRotation(along, Vector3.up));
+            var gantry = go.GetComponent<FinishGantry>();
+            gantry.race = race;
+            gantry.director = dir;
+            return gantry;
+        }
+
+        static GameObject EnsureGantryPrefab()
+        {
+            var model = AssetDatabase.LoadAssetAtPath<GameObject>(GantryModelPath);
+            if (model == null)
+            {
+                Debug.Log($"[PoDecath] No {GantryModelPath}; run training/tools/finish_gantry.py in Blender for the finish gantry.");
+                return null;
+            }
+            PolicyLibraryTools.EnsureFolder("Assets/Prefabs");
+            var existing = AssetDatabase.LoadAssetAtPath<GameObject>(GantryPrefabPath);
+            if (existing != null && existing.GetComponent<FinishGantry>() != null) return existing;
+
+            var root = new GameObject("FinishGantry");
+            var body = (GameObject)PrefabUtility.InstantiatePrefab(model);
+            body.transform.SetParent(root.transform, false);
+            var gantry = root.AddComponent<FinishGantry>();
+            gantry.theme = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(ThemePath);
+            foreach (MeshRenderer r in body.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (r.gameObject.name.StartsWith("Gantry_Screen")) gantry.screen = r;
+                else if (r.gameObject.name.StartsWith("Gantry_Clock")) gantry.clockFace = r;
+                // Steel and housing are lit by the probes like the athletes, not baked: the gantry is
+                // rebuilt with the scene, and a prop that needs a rebake after every nudge would not be nudged.
+                r.receiveGI = ReceiveGI.LightProbes;
+            }
+            GameObject saved = PrefabUtility.SaveAsPrefabAsset(root, GantryPrefabPath);
+            Object.DestroyImmediate(root);
+            return saved;
+        }
+
+        /// <summary>The photo-finish camera on the line. Not for the long jump, which has no line.</summary>
+        public static PhotoFinish AddPhotoFinish(RaceEvent race, TrackPath loop, ResultsView results)
+        {
+            var photo = new GameObject("PhotoFinish").AddComponent<PhotoFinish>();
+            photo.race = race;
+            photo.path = loop;
+            if (results != null) results.photoFinish = photo;
+            return photo;
+        }
+
+        /// <summary>The finish line's centre on the deck and the running direction through it, as FinishTape finds it.</summary>
+        static bool FinishLine(RaceEvent race, TrackPath loop, out Vector3 at, out Vector3 along)
+        {
+            at = along = Vector3.zero;
+            if (race is LapEvent lap && loop != null)
+            {
+                at = loop.Position(lap.startS, 0f);
+                along = loop.Tangent(lap.startS);
+                return true;
+            }
+            if (race.direction.sqrMagnitude < 1e-4f) return false;
+            along = race.direction.normalized;
+            at = race.startLine + along * race.raceDistance;
+            return true;
         }
 
         /// <summary>Points, cards and the season on the results card, and the highlight clip under it.</summary>

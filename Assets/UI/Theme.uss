@@ -71,6 +71,8 @@
        UIDocument, so none of them can measure it. */
     --frame-row:     112px;
     --frame-clear:   144px;
+    /* The top of anything drawn under the frame's top row: the row plus one grid step. */
+    --frame-top-clear: 120px;
 
     --radius:         12px;
     --radius-sm:       8px;
@@ -174,6 +176,9 @@
 
 /* ------------------------------------------------------------------ broadcast overlay */
 
+/* The overlay starts under the frame's top row, not under the screen's top edge. */
+.bcast-body { flex-grow: 1; padding: var(--gap-2); padding-top: var(--frame-top-clear); }
+
 .bcast-top {
     flex-direction: row;
     align-items: center;
@@ -197,7 +202,7 @@
 .order-row {
     flex-direction: row;
     align-items: center;
-    height: 64px;
+    height: 52px;           /* BroadcastView.RowPitch is this plus the 2 px gap */
     padding-left: var(--gap-1);
     padding-right: var(--gap-1);
     margin-bottom: 2px;
@@ -261,7 +266,9 @@
        measured from here — one 88 px button plus the bar's own padding, plus room to breathe. Without it
        the lower third is drawn underneath the buttons and half a name shows. The bar now also pads
        itself clear of the frame, so this has to clear both. */
-    margin-bottom: 352px;   /* 248 for the control bar, plus 104 for the chaos bar above it */
+    /* Only the fallback now: BroadcastView.SitOnControls measures the HUD and sets this every frame.
+       264 = one 104 px control row + 16 px of padding + the frame clearance. */
+    margin-bottom: 264px;
     /* Wipes in from the left rather than fading: it is a graphic being pushed on, not a ghost. */
     transition-property: opacity, translate;
     transition-duration: 0.24s;
@@ -302,7 +309,7 @@
     transition-timing-function: ease-out;
 }
 
-.strain-value { width: 150px; font-size: var(--t-micro); -unity-text-align: middle-right; color: var(--ink-dim); }
+.strain-value { width: 210px; font-size: var(--t-micro); -unity-text-align: middle-right; color: var(--ink-dim); }
 
 /* ------------------------------------------------------------------ commentary caption */
 
@@ -312,7 +319,7 @@
     background-color: var(--overlay);
     border-radius: var(--radius-sm);
     padding: var(--gap-1) var(--gap-3);
-    margin-bottom: var(--gap-2);
+    margin-bottom: var(--gap-1);
     /* Fades rather than wipes: a caption is speech arriving, not a graphic being pushed on. */
     transition-property: opacity, translate;
     transition-duration: 0.18s;
@@ -397,7 +404,7 @@
 .result-row {
     flex-direction: row;
     align-items: center;
-    height: 92px;
+    height: 80px;
     padding-left: var(--gap-2);
     padding-right: var(--gap-2);
     border-radius: 6px;
@@ -702,7 +709,7 @@
     border-radius: 6px;
 }
 
-.agent-legend { font-size: var(--t-micro); color: var(--ink-faint); margin-bottom: var(--gap-1); }
+.agent-legend { font-size: var(--t-micro); color: var(--ink-faint); margin-bottom: var(--gap-1); white-space: normal; }
 
 /* The sentence. This is the payload of the whole panel: what to change, in words. */
 .agent-verdict {
@@ -781,18 +788,62 @@
 .result-row--compact .result-name { font-size: var(--t-small); }
 .result-row--compact .result-time { font-size: var(--t-small); width: 220px; }
 
-/* ------------------------------------------------------------------ viewer chaos bar (HUD) */
+/* ------------------------------------------------------------------ one control row (HUD)
+ *
+ * The viewer's disturbances and the race's own buttons share one row: each is an icon over one word, so
+ * seven fit across 1080 px at 104 px tall. This was two stacked bars, 352 px of a 1920 px screen.
+ */
 
-/* Sits directly on top of the control bar, same gutters, so the two read as one block of controls. */
-.chaos-bar {
-    flex-direction: row;
+.chaos-group { flex-direction: row; flex-grow: 4; flex-basis: 0; }
+.chaos-group .btn { flex-grow: 1; flex-basis: 0; margin-left: 4px; margin-right: 4px; }
+
+.btn--tool {
+    flex-direction: column;
     align-items: center;
-    padding-left: var(--gap-2);
-    padding-right: var(--gap-2);
-    margin-bottom: -8px;    /* USS has no calc(): tucks the row onto the control bar's top padding */
+    justify-content: center;
+    min-height: 104px;
+    padding: 4px;
+    font-size: var(--t-micro);
+    -unity-font-style: bold;
+    letter-spacing: 1px;
 }
 
-.chaos-bar .btn { flex-grow: 1; margin-left: var(--gap-1); margin-right: var(--gap-1); }
+.control-bar .btn--tool { flex-grow: 1; flex-basis: 0; margin-left: 4px; margin-right: 4px; }
+
+/* Over the picture a 6% white ghost disappears into the sky; the controls carry the overlay ground. */
+.control-bar .btn--ghost, .chaos-group .btn { background-color: var(--overlay); }
+
+.btn--tool .btn-icon { width: 48px; height: 48px; margin-right: 0; margin-bottom: 4px; }
+.btn--tool .btn-label { font-size: var(--t-micro); letter-spacing: 1px; }
+.btn-icon--dark { -unity-background-image-tint-color: rgb(6, 20, 15); }
+.btn-label--dark { color: rgb(6, 20, 15); }
+
+/* ------------------------------------------------------------------ stats badges (HUD) */
+
+.badge-strip {
+    background-color: var(--overlay);
+    border-radius: var(--radius-sm);
+    padding: var(--gap-1);
+    margin-left: 4px;
+    margin-right: 4px;
+    margin-bottom: 4px;
+}
+
+.badge-row { flex-direction: row; }
+
+.badge {
+    flex-grow: 1;
+    flex-basis: 0;
+    margin: 2px;
+    padding: 4px var(--gap-1);
+    border-radius: 6px;
+    background-color: var(--row-lead);
+    font-size: var(--t-small);
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+.badge-model { font-size: var(--t-micro); color: var(--ink-dim); margin: 2px var(--gap-1); }
 
 /* A button that is an icon over a word rather than a word alone. */
 .btn--icon {
@@ -874,21 +925,81 @@
 
 .clip-text { font-size: var(--t-micro); color: var(--ink-dim); white-space: normal; flex-shrink: 1; }
 
-/* ------------------------------------------------------------------ setup: season and athlete cards */
 
-.setup-extra { flex-direction: row; align-items: center; margin-top: var(--gap-1); }
-.setup-extra .btn { flex-grow: 1; margin-right: var(--gap-1); }
+/* ------------------------------------------------------------------ results: replay and actions */
 
-.cards-list { flex-grow: 1; flex-shrink: 1; overflow: hidden; }
-
-.athlete-card {
-    padding: var(--gap-2);
-    margin-bottom: var(--gap-1);
-    border-radius: var(--radius-sm);
-    background-color: var(--row);
-    border-left-width: 8px;
+/* The highlight clip, looping full-bleed behind the card (ResultsView.TickReplay). */
+.replay {
+    position: absolute;
+    left: 0; right: 0; top: 0; bottom: 0;
+    -unity-background-scale-mode: scale-and-crop;
+    background-color: rgb(0, 0, 0);
 }
 
-.athlete-card-name { font-size: var(--t-body); -unity-font-style: bold; }
-.athlete-card-line { font-size: var(--t-micro); color: var(--ink-dim); white-space: normal; }
-.athlete-card-bests { font-size: var(--t-micro); color: var(--ink); white-space: normal; margin-top: 4px; }
+/* With a replay behind it the scrim lets the race through; REPLAY takes the card away altogether and a tap
+   on the picture brings it back. */
+.modal-scrim--replay { background-color: rgba(5, 7, 12, 0.62); }
+.modal-scrim--watch { display: none; }
+
+.results-actions { margin-top: var(--gap-2); }
+.results-actions .btn--tool { flex-grow: 1; flex-basis: 0; margin-left: 4px; margin-right: 4px; }
+
+/* ------------------------------------------------------------------ setup: one action row, flipping tiles */
+
+.setup-actions { margin-top: var(--gap-1); }
+.setup-actions .btn--tool { flex-grow: 1; flex-basis: 0; margin-right: var(--gap-1); }
+.setup-start { flex-grow: 2; flex-basis: 0; min-height: 104px; font-size: 40px; }
+
+/* A tile turned over to show the athlete's record: the count and the steppers go, the card text comes. */
+.runner-tile-card {
+    font-size: var(--t-micro);
+    color: var(--ink);
+    white-space: normal;
+    -unity-text-align: middle-center;
+    flex-grow: 1;
+}
+.runner-tile--flipped { background-color: rgba(46, 191, 140, 0.12); }
+.runner-tile--flipped .runner-tile-count, .runner-tile--flipped .runner-tile-steps { display: none; }
+
+/* ------------------------------------------------------------------ diagnostics: no scroll, three pages */
+
+/* The sheet and its scrim stop at the frame's rows, so MENU, the frame rate, DEBUG and the version stay on
+   the picture while it is open, and DEBUG closes what it opened. */
+.sheet { top: var(--frame-row); bottom: var(--frame-row); border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius); }
+.sheet-scrim { top: var(--frame-row); bottom: var(--frame-row); }
+.sheet-body { flex-grow: 1; flex-shrink: 1; overflow: hidden; }
+.sheet-head .btn--chip { min-width: 160px; }
+
+/* One athlete per line on the AGENTS list; tapping one opens its full card. */
+.agent-row {
+    flex-direction: row;
+    align-items: center;
+    min-height: 64px;
+    margin: 0 0 4px 0;
+    padding: 4px var(--gap-2);
+    background-color: var(--surface-2);
+    border-radius: var(--radius-sm);
+    border-left-width: 6px;
+    border-left-color: var(--ink-faint);
+}
+.agent-row--good { border-left-color: var(--accent); }
+.agent-row--warn { border-left-color: var(--warn); }
+.agent-row--bad { border-left-color: var(--danger); }
+.agent-row-name { flex-grow: 1; flex-shrink: 1; font-size: var(--t-small); -unity-font-style: bold; -unity-text-align: middle-left; overflow: hidden; }
+.agent-row-cell { width: 150px; font-size: var(--t-micro); -unity-text-align: middle-right; color: var(--ink-dim); }
+.agent-back { align-self: flex-start; margin-left: 0; margin-bottom: var(--gap-2); }
+
+.settings-row { margin-left: -4px; margin-right: -4px; }
+
+/* ------------------------------------------------------------------ results: photo finish */
+
+.photo-finish { margin-bottom: var(--gap-2); }
+.photo-strip {
+    height: 150px;
+    border-radius: 6px;
+    background-color: rgb(20, 20, 24);
+    -unity-background-scale-mode: stretch-to-fill;
+    border-width: 1px;
+    border-color: var(--surface-line);
+}
+.photo-caption { font-size: var(--t-micro); color: var(--ink-dim); margin-top: 4px; }

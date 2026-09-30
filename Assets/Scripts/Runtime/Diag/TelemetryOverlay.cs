@@ -61,11 +61,17 @@ namespace PoDecath.Diag
 
         // AGENTS page. The cards are kept and rewritten rather than rebuilt, for the same reason the FRAME
         // rows are: a diagnostic that allocates a hundred VisualElements a second is measuring itself.
-        VisualElement _agentsPage, _framePage, _agentList;
-        Label _headline, _exportNote;
-        Button _tabAgents, _tabFrame, _close, _export;
-        readonly List<AgentCard> _cards = new List<AgentCard>();
-        bool _onAgentsPage = true;
+        VisualElement _agentsPage, _framePage, _settingsPage, _agentList, _agentDetail, _agentCardHost;
+        Label _headline, _exportNote, _tierNote, _settingsInfo;
+        Button _tabAgents, _tabFrame, _tabSettings, _close, _export, _agentBack;
+        Button _tierMobile, _tierPc, _fps30, _fps60;
+        readonly List<AgentRow> _agentRows = new List<AgentRow>();
+        AgentCard _detail;
+        int _selected = -1;   // the athlete whose full card is open, or -1 for the list
+
+        /// <summary>The three pages of the sheet.</summary>
+        public enum Page { Agents, Frame, Settings }
+        Page _page = Page.Agents;
 
         float[] _frameMs;
         int _frameCount, _frameHead;
@@ -86,7 +92,12 @@ namespace PoDecath.Diag
 
             _agentsPage = Find<VisualElement>("agents-page");
             _framePage = Find<VisualElement>("frame-page");
+            _settingsPage = Find<VisualElement>("settings-page");
             _agentList = Find<VisualElement>("agents");
+            _agentDetail = Find<VisualElement>("agent-detail");
+            _agentCardHost = Find<VisualElement>("agent-card");
+            _agentBack = Find<Button>("agent-back");
+            _tabSettings = Find<Button>("tab-settings");
             _headline = Find<Label>("headline");
             _exportNote = Find<Label>("export-note");
             _tabAgents = Find<Button>("tab-agents");
@@ -94,8 +105,11 @@ namespace PoDecath.Diag
             _close = Find<Button>("close");
             _export = Find<Button>("export");
 
-            if (_tabAgents != null) _tabAgents.clicked += () => ShowPage(true);
-            if (_tabFrame != null) _tabFrame.clicked += () => ShowPage(false);
+            if (_tabAgents != null) _tabAgents.clicked += () => ShowPage(Page.Agents);
+            if (_tabFrame != null) _tabFrame.clicked += () => ShowPage(Page.Frame);
+            if (_tabSettings != null) _tabSettings.clicked += () => ShowPage(Page.Settings);
+            if (_agentBack != null) _agentBack.clicked += () => Select(-1);
+            if (_agentCardHost != null) { _detail = new AgentCard(); _agentCardHost.Add(_detail.root); }
             if (_close != null) _close.clicked += () => SetScreenVisible(false);
             if (_export != null) _export.clicked += OnExport;
 
@@ -104,7 +118,8 @@ namespace PoDecath.Diag
 
             StartRecorders();
             BuildRows();
-            ShowPage(true);
+            BuildSettings();
+            ShowPage(Page.Agents);
             SetScreenVisible(startOpen);
         }
 
@@ -112,13 +127,66 @@ namespace PoDecath.Diag
         /// Switches between the two questions. AGENTS is the landing page: this project's frame rate has
         /// been fine for weeks, and what costs it time is a policy nobody can see the shape of.
         /// </summary>
-        void ShowPage(bool agentsPage)
+        void ShowPage(Page page)
         {
-            _onAgentsPage = agentsPage;
-            Show(_agentsPage, agentsPage);
-            Show(_framePage, !agentsPage);
-            _tabAgents?.EnableInClassList("tab--on", agentsPage);
-            _tabFrame?.EnableInClassList("tab--on", !agentsPage);
+            _page = page;
+            Show(_agentsPage, page == Page.Agents);
+            Show(_framePage, page == Page.Frame);
+            Show(_settingsPage, page == Page.Settings);
+            _tabAgents?.EnableInClassList("tab--on", page == Page.Agents);
+            _tabFrame?.EnableInClassList("tab--on", page == Page.Frame);
+            _tabSettings?.EnableInClassList("tab--on", page == Page.Settings);
+            _nextRefresh = 0f;
+            if (page == Page.Settings) RefreshSettings();
+        }
+
+        /// <summary>Opens the sheet on a given page. The frame's FPS chip opens it straight onto FRAME.</summary>
+        public void Open(Page page)
+        {
+            ShowPage(page);
+            SetScreenVisible(true);
+        }
+
+        // ---------------------------------------------------------------- the settings page
+
+        void BuildSettings()
+        {
+            _tierMobile = Find<Button>("tier-mobile");
+            _tierPc = Find<Button>("tier-pc");
+            _fps30 = Find<Button>("fps-30");
+            _fps60 = Find<Button>("fps-60");
+            _tierNote = Find<Label>("tier-note");
+            _settingsInfo = Find<Label>("settings-info");
+
+            // Applied on the tap, not on a later START, so the effect is visible behind the sheet.
+            if (_tierMobile != null) _tierMobile.clicked += () => { RenderTier.Set(Tier.Mobile); RefreshSettings(); };
+            if (_tierPc != null) _tierPc.clicked += () => { RenderTier.Set(Tier.PC); RefreshSettings(); };
+            if (_fps30 != null) _fps30.clicked += () => SetFrameRate(30);
+            if (_fps60 != null) _fps60.clicked += () => SetFrameRate(60);
+        }
+
+        void SetFrameRate(int fps)
+        {
+            SessionSettings.TargetFrameRate = fps;
+            SessionSettings.Save();
+            SessionSettings.ApplyQuality();
+            RefreshSettings();
+        }
+
+        void RefreshSettings()
+        {
+            bool mobile = RenderTier.Current == Tier.Mobile;
+            _tierMobile?.EnableInClassList("event-btn--selected", mobile);
+            _tierPc?.EnableInClassList("event-btn--selected", !mobile);
+            _fps30?.EnableInClassList("event-btn--selected", SessionSettings.TargetFrameRate < 60);
+            _fps60?.EnableInClassList("event-btn--selected", SessionSettings.TargetFrameRate >= 60);
+            SetText(_tierNote, mobile
+                ? "Mobile: 0.8 render scale, one shadow cascade, blob shadows, the building's lighter model."
+                : "PC: full resolution, MSAA 4x, soft shadows, SSAO, depth of field.");
+            PolicyLibrary library = PolicyLibrary.Load();
+            int count = library != null ? library.entries.Count : 0;
+            SetText(_settingsInfo, $"{count} policy checkpoint(s) in the build, run on the Unity Inference Engine "
+                                 + "(CPU). Each athlete runs its own; the roster decides which.");
         }
 
         void OnExport()
@@ -194,6 +262,7 @@ namespace PoDecath.Diag
             AddRow("Athletes");
             AddRow("Audio voices");
             AddRow("Crowd");
+            AddRow("Thermal");
             if (SystemInfo.batteryLevel >= 0f) AddRow("Battery");
         }
 
@@ -252,7 +321,8 @@ namespace PoDecath.Diag
 
         void Refresh()
         {
-            if (_onAgentsPage) { RefreshAgents(); return; }
+            if (_page == Page.Agents) { RefreshAgents(); return; }
+            if (_page == Page.Settings) { RefreshSettings(); return; }
 
             float mean = Mean(), low = OnePercentLow();
             float budget = 1000f / Mathf.Max(1f, targetFps);
@@ -277,11 +347,12 @@ namespace PoDecath.Diag
             Athletes();
             Set("Audio voices", CountAudibleSources().ToString());
             Set("Crowd", audioMix != null ? audioMix.CurrentMood.ToString() : "-");
+            Set("Thermal", ThermalGovernor.Summary, ThermalGovernor.SummaryGrade);
             if (SystemInfo.batteryLevel >= 0f)
                 Set("Battery", $"{SystemInfo.batteryLevel * 100f:F0}%  {SystemInfo.batteryStatus}", SystemInfo.batteryLevel < 0.2f ? "warn" : null);
 
             SetText(_title, $"TELEMETRY   ·   {RenderTier.Current}   ·   {QualitySettings.names[QualitySettings.GetQualityLevel()]}");
-            SetText(_footer, $"{Screen.width}x{Screen.height}   {Application.targetFrameRate} fps target   F3 to close");
+            SetText(_footer, $"{Screen.width}x{Screen.height}   {Application.targetFrameRate} fps target   DEBUG or F3 closes");
         }
 
         /// <summary>
@@ -420,12 +491,11 @@ namespace PoDecath.Diag
         // ---------------------------------------------------------------- the agents page
 
         /// <summary>
-        /// Rewrites the headline and one card per athlete.
+        /// Rewrites the headline and either the list (one line per athlete) or the one athlete's full card
+        /// that is open.
         ///
-        /// Cards are matched to agents by position and only created when the field grows, so an athlete
-        /// keeps its element - and therefore its scroll position and its trend graph - across a restart.
-        /// A field that rebuilt its cards four times a second would also lose the scroll offset four times
-        /// a second, which on a phone makes the page unusable while anything is moving.
+        /// Rows are matched to agents by position and only created when the field grows, so a restart does
+        /// not rebuild them, and the open card follows its athlete by index across a restart too.
         /// </summary>
         void RefreshAgents()
         {
@@ -436,29 +506,93 @@ namespace PoDecath.Diag
             {
                 SetText(_headline, "No agent sampler in this scene. Rebuild it from PoDecath/Build Everything.");
                 GradeElement(_headline, "headline", AgentTelemetry.Grade.Neutral);
-                for (int i = 0; i < _cards.Count; i++) Show(_cards[i].root, false);
+                for (int i = 0; i < _agentRows.Count; i++) Show(_agentRows[i].root, false);
+                Select(-1);
+                return;
+            }
+
+            IReadOnlyList<AgentTelemetry.Agent> field = sampler.Agents;
+            if (_selected >= field.Count) Select(-1);
+
+            bool detail = _selected >= 0;
+            Show(_headline, !detail);
+            Show(_agentList, !detail);
+            Show(_agentDetail, detail);
+            SetText(_title, $"TELEMETRY   ·   {field.Count} athlete(s)   ·   last {sampler.HistorySeconds:F0} s");
+
+            if (detail)
+            {
+                _detail?.Write(field[_selected], sampler.HistorySeconds);
                 return;
             }
 
             SetText(_headline, sampler.Headline);
             GradeElement(_headline, "headline", sampler.HeadlineGrade);
 
-            IReadOnlyList<AgentTelemetry.Agent> field = sampler.Agents;
-            while (_cards.Count < field.Count)
+            while (_agentRows.Count < field.Count)
             {
-                var card = new AgentCard();
-                _agentList.Add(card.root);
-                _cards.Add(card);
+                int index = _agentRows.Count;
+                var row = new AgentRow(() => Select(index));
+                _agentList.Add(row.root);
+                _agentRows.Add(row);
             }
 
-            for (int i = 0; i < _cards.Count; i++)
+            for (int i = 0; i < _agentRows.Count; i++)
             {
                 bool used = i < field.Count;
-                Show(_cards[i].root, used);
-                if (used) _cards[i].Write(field[i], sampler.HistorySeconds);
+                Show(_agentRows[i].root, used);
+                if (used) _agentRows[i].Write(field[i]);
+            }
+        }
+
+        /// <summary>Opens one athlete's full card, or goes back to the list with -1.</summary>
+        void Select(int index)
+        {
+            _selected = index;
+            _nextRefresh = 0f;
+        }
+
+        /// <summary>
+        /// One athlete on one line: grade, name, speed, falls, uprightness and clamping, the four numbers the
+        /// full card's diagnosis leans on hardest. Sixteen of these fit the sheet; the full card is a tap away.
+        /// </summary>
+        sealed class AgentRow
+        {
+            internal readonly Button root;
+            readonly Label _name, _speed, _falls, _upright, _clamped;
+
+            internal AgentRow(System.Action onTap)
+            {
+                root = new Button(onTap);
+                root.AddToClassList("agent-row");
+                _name = Cell("agent-row-name");
+                _speed = Cell("agent-row-cell");
+                _falls = Cell("agent-row-cell");
+                _upright = Cell("agent-row-cell");
+                _clamped = Cell("agent-row-cell");
             }
 
-            SetText(_title, $"TELEMETRY   ·   {field.Count} athlete(s)   ·   last {sampler.HistorySeconds:F0} s");
+            Label Cell(string cls)
+            {
+                var l = new Label("-");
+                l.AddToClassList(cls);
+                root.Add(l);
+                return l;
+            }
+
+            internal void Write(AgentTelemetry.Agent a)
+            {
+                SetText(_name, a.name);
+                SetText(_speed, $"{a.speed:F1} m/s");
+                SetText(_falls, a.falls == 1 ? "1 fall" : $"{a.falls} falls");
+                SetText(_upright, $"{a.uprightMean:F2} up");
+                SetText(_clamped, a.isRL ? $"{a.clampFrac * 100f:F0}% clamp" : "-");
+                GradeElement(root, "agent-row", a.grade);
+                GradeElement(_falls, "metric-value", a.falls == 0 ? AgentTelemetry.Grade.Good : AgentTelemetry.Grade.Warn);
+                GradeElement(_upright, "metric-value", a.uprightMean > 0.9f ? AgentTelemetry.Grade.Good
+                                                    : a.uprightMean > 0.7f ? AgentTelemetry.Grade.Warn
+                                                                           : AgentTelemetry.Grade.Bad);
+            }
         }
 
         /// <summary>Puts the good/warn/bad modifier of one base class on an element, and takes the others off.</summary>

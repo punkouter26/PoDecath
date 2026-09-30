@@ -433,6 +433,17 @@ wrong again:
   Toolkit is not in either. The only pictures of the menus are the phone's own screenshots
   (`training/deploy_android.ps1`, `Build/Android/shots/`).
 
+- `UiRoot` writes the safe-area insets onto the element named `safe` **inline**, which beats any USS
+  padding on it. Padding a screen clear of the frame goes on a wrapper inside `safe` (`.bcast-body`,
+  `.setup`), never on `safe` itself.
+- Every UI document shares one PanelSettings, so they are one panel and their world rects are comparable:
+  the broadcast lower third sits on `HudView.ControlsTop`, measured each frame, not on a guessed margin.
+- `AudioBakery.BakeBank` runs in every scene build. It keeps any bank slot whose clips live under
+  `Assets/Audio/Real/` (the imported recordings); before 2026-09-29 a rebuild silently put the
+  synthesised placeholders back.
+- `AthleteRosterBuilder` skips `Assets/Models/Characters/Mobile/`: those are the phone skins, wired as
+  `skinOverrideMobile`, not athletes of their own.
+
 ## Dropping in a new checkpoint
 
 1. Export the policy to ONNX (rsl_rl `export_policy_as_onnx`, or MuJoCo/PyTorch `torch.onnx.export`),
@@ -478,6 +489,26 @@ observation (0, 0, -1).
   `UnityEngine.SceneManagement.SceneManager`. Keep `EditorApplication.Step()` batches small — the pipeline
   server aborts any main-thread operation over 5 s, and a full field of sixteen blows through that fast.
   Audio reports `isPlaying == false` while play mode is stepped; unpause before judging it.
+
+- **Pictures and layout checks of the UI** (2026-09-29): `training/tools/ui_shots.sh <prefix> [1920|2400]`
+  drives MAIN -> race -> results over the CLI and writes `Build/UiShots/<prefix>_*.png` plus
+  `layout_*.json`. `UiShots.Capture` renders the main camera and re-targets every panel into textures at
+  an exact size, so the picture is the phone's shape whatever the Game view is; `capture_game_view
+  --source screen` is scaled to the editor window (1280 x 720) and is no use for portrait. Things learned
+  getting there:
+  - `EditorApplication.Step()` frames run **after** the call that asked for them returns. Anything that
+    must see stepped frames (profiler recorders, a clip finishing) is set up in one call and read in a
+    later one.
+  - A stepped frame advances game and unscaled time by one fixed step (5 ms). `Time.timeScale = 6` makes a
+    race run six times faster per step; anything timed in *unscaled* seconds (the highlight clip's tail)
+    still crawls, so wait for the state, not for a number of steps.
+  - In a stepped editor `UnityStats` reports whichever view drew last, and the Render profiler counters
+    read zero. Count triangles from the scene instead: `UiShots.VisibleTriangles()` (LOD groups resolved
+    by hand, static-batched renderers counted by their own submesh range, which is only in the serialised
+    `m_StaticBatchInfo`).
+  - `RenderTier.Set` from `eval` can blow the 5 s main-thread limit (it swaps the pipeline asset). Set the
+    `podecath.tier` PlayerPref before entering play mode instead.
+  - Panels that draw into a texture of their own (the gantry clock) are skipped by the capture and the check.
 
 ## House rules (from the project owner, apply to every session)
 

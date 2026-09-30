@@ -132,7 +132,7 @@ namespace PoDecath.EditorTools
             try
             {
                 Debug.Log("[PoDecath] Rebuilding every shipped scene.");
-                PoDecathSceneBuilder.BuildAll();          // MainMenu, layers, physics, policy library
+                PoDecathSceneBuilder.BuildAll();          // layers, physics, policy library, build list
                 RooftopSceneBuilder.Build();              // Rooftop      - the dev straight
                 RooftopSceneBuilder.BuildLap();           // RooftopLap   - one runner, one loop
                 RooftopSceneBuilder.BuildRace();          // RooftopRace  + MAIN

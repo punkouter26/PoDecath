@@ -61,6 +61,10 @@ namespace PoDecath.EditorTools
                     if (m != null && !materials.ContainsKey(m.name)) materials[m.name] = m;
             }
 
+            TuneLawn(lod0, materials);
+            int grained = ApplyStoneDetail(lod0);
+            if (grained > 0) Debug.Log($"[PoDecath] Stone grain pass on {grained} full-detail wall(s).");
+
             Dictionary<string, MeshRenderer> lod1 = Instantiate(lod1Asset, building.transform, "LOD1", materials);
             Dictionary<string, MeshRenderer> lod2 = lod2Asset != null
                 ? Instantiate(lod2Asset, building.transform, "LOD2", materials)
@@ -94,6 +98,154 @@ namespace PoDecath.EditorTools
         }
 
         public const string BakeDir = "Assets/Textures/Building";
+
+        /// <summary>
+        /// Multiplier on the lawn's base colour (linear), 1 = as imported.
+        ///
+        /// The grounds' turf read pale and minty once the rooftop was baked. Measured 2026-09-29 on
+        /// RooftopLap from 18 m up at 45 degrees (UiShots.LawnProbe): baked rgb(138,191,112), and the same
+        /// with the turf taken off the lightmap and lit by the sky probe instead is identical, so the bake is
+        /// not what brightens it; the afternoon sky at ambient 1.15 on a bright texture is. The "deep
+        /// green" it was remembered as, rgb(102,135,80), is the turf with no sky light at all. Real turf has
+        /// an albedo around 0.1 to 0.25; 0.72 on this texture puts the lit lawn roughly halfway back to that
+        /// green without making it look unlit. The owner's glb is not touched: a tuned copy of its material
+        /// goes on the turf at every LOD.
+        /// </summary>
+        const float LawnTone = 0.72f;
+        const string LawnMaterialName = "WH_Lawn_Tiled";
+        const string LawnTunedPath = BakeDir + "/WH_Lawn_Tiled_Tuned.mat";
+
+        static void TuneLawn(Dictionary<string, MeshRenderer> lod0, Dictionary<string, Material> materials)
+        {
+            if (!materials.TryGetValue(LawnMaterialName, out Material source) || !source.HasProperty("baseColorFactor")) return;
+            var tuned = AssetDatabase.LoadAssetAtPath<Material>(LawnTunedPath);
+            if (tuned == null)
+            {
+                System.IO.Directory.CreateDirectory(BakeDir);
+                tuned = new Material(source);
+                AssetDatabase.CreateAsset(tuned, LawnTunedPath);
+            }
+            tuned.CopyPropertiesFromMaterial(source);
+            Color f = source.GetColor("baseColorFactor");
+            tuned.SetColor("baseColorFactor", new Color(f.r * LawnTone, f.g * LawnTone, f.b * LawnTone, f.a));
+            EditorUtility.SetDirty(tuned);
+
+            foreach (MeshRenderer r in lod0.Values)
+            {
+                Material[] mats = r.sharedMaterials;
+                bool hit = false;
+                for (int i = 0; i < mats.Length; i++) if (mats[i] == source) { mats[i] = tuned; hit = true; }
+                if (hit) r.sharedMaterials = mats;
+            }
+            materials[LawnMaterialName] = tuned;   // the LOD copies look materials up by the original name
+        }
+
+        const string GrainPath = BakeDir + "/StoneGrain.png";
+        const string GrainMaterialPath = BakeDir + "/StoneGrain.mat";
+        static readonly string[] Shells = { "Residence", "Wings", "SouthPortico", "NorthPortico" };
+
+        /// <summary>
+        /// The walls' close-up detail. Their textures are 4096 px atlases over a 150 m building (7 to 13
+        /// texels a metre), soft within a few metres of the camera, and the glTF material has no detail slot.
+        /// A second material on each full-detail shell (Assets/Shaders/StoneDetail.shader) multiplies a
+        /// tileable stone grain onto the wall in world metres and fades it out with distance, leaving the
+        /// imported material untouched. LOD0 only, which the phone never draws. Returns how many shells.
+        /// </summary>
+        static int ApplyStoneDetail(Dictionary<string, MeshRenderer> lod0)
+        {
+            Shader shader = Shader.Find("PoDecath/StoneDetail");
+            if (shader == null) return 0;
+            Texture2D grain = EnsureGrain();
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(GrainMaterialPath);
+            if (mat == null)
+            {
+                mat = new Material(shader) { name = "StoneGrain" };
+                AssetDatabase.CreateAsset(mat, GrainMaterialPath);
+            }
+            mat.shader = shader;
+            mat.SetTexture("_DetailMap", grain);
+            EditorUtility.SetDirty(mat);
+
+            int n = 0;
+            foreach (string shell in Shells)
+            {
+                if (!lod0.TryGetValue(shell, out MeshRenderer r)) continue;
+                var mats = new List<Material>(r.sharedMaterials);
+                if (mats.Contains(mat)) { n++; continue; }
+                mats.Add(mat);   // one submesh, so the extra slot draws the whole shell again
+                r.sharedMaterials = mats.ToArray();
+                n++;
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// 512 px of tileable stone grain around 0.5, written once and kept: mottled weathering over about a
+        /// quarter of the tile, a finer grain, and a speckle, all periodic so the tile has no seam. Linear
+        /// data, so 0.5 is exactly the neutral of the shader's 2x multiply.
+        /// </summary>
+        static Texture2D EnsureGrain()
+        {
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(GrainPath);
+            if (tex == null)
+            {
+                const int size = 512;
+                var px = new Color32[size * size];
+                var rng = new System.Random(7331);
+                float[] speck = new float[size * size];
+                for (int i = 0; i < speck.Length; i++) speck[i] = (float)rng.NextDouble() * 2f - 1f;
+                for (int y = 0; y < size; y++)
+                    for (int x = 0; x < size; x++)
+                    {
+                        float v = 0.5f
+                                + 0.070f * Periodic(x, y, 128, size, 11)
+                                + 0.045f * Periodic(x, y, 32, size, 23)
+                                + 0.025f * Periodic(x, y, 8, size, 37)
+                                + 0.020f * speck[y * size + x];
+                        byte b = (byte)Mathf.Clamp(Mathf.RoundToInt(v * 255f), 0, 255);
+                        px[y * size + x] = new Color32(b, b, b, 255);
+                    }
+                var t = new Texture2D(size, size, TextureFormat.RGBA32, false, true);
+                t.SetPixels32(px);
+                System.IO.Directory.CreateDirectory(BakeDir);
+                System.IO.File.WriteAllBytes(GrainPath, t.EncodeToPNG());
+                Object.DestroyImmediate(t);
+                AssetDatabase.ImportAsset(GrainPath);
+            }
+            if (AssetImporter.GetAtPath(GrainPath) is TextureImporter imp && (imp.sRGBTexture || imp.wrapMode != TextureWrapMode.Repeat))
+            {
+                imp.sRGBTexture = false;
+                imp.wrapMode = TextureWrapMode.Repeat;
+                imp.mipmapEnabled = true;
+                imp.anisoLevel = 4;
+                imp.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(GrainPath);
+        }
+
+        /// <summary>Smooth value noise in -1..1 on a lattice of <paramref name="cell"/> px that wraps at <paramref name="size"/>.</summary>
+        static float Periodic(int x, int y, int cell, int size, int seed)
+        {
+            int cells = size / cell;
+            float fx = (float)x / cell, fy = (float)y / cell;
+            int x0 = Mathf.FloorToInt(fx), y0 = Mathf.FloorToInt(fy);
+            float tx = fx - x0, ty = fy - y0;
+            tx = tx * tx * (3f - 2f * tx);
+            ty = ty * ty * (3f - 2f * ty);
+            float a = Hash(x0 % cells, y0 % cells, seed), b = Hash((x0 + 1) % cells, y0 % cells, seed);
+            float c = Hash(x0 % cells, (y0 + 1) % cells, seed), d = Hash((x0 + 1) % cells, (y0 + 1) % cells, seed);
+            return Mathf.Lerp(Mathf.Lerp(a, b, tx), Mathf.Lerp(c, d, tx), ty);
+        }
+
+        static float Hash(int x, int y, int seed)
+        {
+            unchecked
+            {
+                uint h = (uint)(x * 374761393 + y * 668265263 + seed * 144665);
+                h = (h ^ (h >> 13)) * 1274126177u;
+                return ((h ^ (h >> 16)) & 0xFFFF) / 32767.5f - 1f;
+            }
+        }
 
         /// <summary>
         /// A LOD2 part whose relief and colour have been baked down from the full-detail mesh

@@ -6,6 +6,10 @@
     No scrolling: a field past eight rows switches to compact rows (ResultsView adds the compact
     modifier class to each row), so sixteen finishers still fit inside the modal on a portrait phone.
 
+    The replay is the highlight clip of this race, looping full-bleed behind the card, so results and the
+    replay are one screen rather than a file name on a line. REPLAY takes the card off it; a tap on the
+    picture puts the card back.
+
     Never write a double hyphen inside one of these comments. XML forbids it, the importer throws, and
     the whole file lands as an EMPTY VisualTreeAsset (0.2 kb, against 8 to 16 kb for the other screens),
     so every lookup in ResultsView fails and the results card silently never appears. That is exactly
@@ -16,10 +20,18 @@
     <Style src="project://database/Assets/UI/Theme.uss" />
 
     <ui:VisualElement name="root" class="root hidden">
+        <ui:VisualElement name="replay" class="replay hidden" />
         <ui:VisualElement name="scrim" class="modal-scrim">
             <ui:VisualElement name="modal" class="modal modal--out">
                 <ui:Label name="title" class="label-display" text="RESULTS" />
                 <ui:Label name="subtitle" class="label-small muted" text="" style="margin-bottom: 16px;" />
+
+                <!-- The photo finish: time runs left to right, a tick where each of the first three bodies crossed the painted line. Built
+                     by PhotoFinish on the line; hidden when there is none, or when the board is already full. -->
+                <ui:VisualElement name="photo" class="photo-finish hidden">
+                    <ui:VisualElement name="photo-strip" class="photo-strip" />
+                    <ui:Label name="photo-caption" class="photo-caption" text="" />
+                </ui:VisualElement>
 
                 <ui:VisualElement name="rows" class="results-rows" />
 
@@ -38,10 +50,23 @@
                     <ui:Label name="clip-text" class="clip-text" text="" />
                 </ui:VisualElement>
 
-                <ui:VisualElement class="row" style="margin-top: 16px;">
-                    <ui:Button name="next" class="btn btn--primary hidden" text="NEXT EVENT" style="flex-grow: 1; margin-right: 8px;" />
-                    <ui:Button name="again" class="btn btn--primary" text="RACE AGAIN" style="flex-grow: 1; margin-right: 8px;" />
-                    <ui:Button name="change" class="btn btn--ghost" text="CHANGE FIELD" style="flex-grow: 1; margin-left: 8px;" />
+                <ui:VisualElement class="row results-actions">
+                    <ui:Button name="next" class="btn btn--primary btn--tool hidden">
+                        <ui:VisualElement class="btn-icon btn-icon--dark" style="background-image: url('project://database/Assets/UI/Icons/next.png');" />
+                        <ui:Label name="next-label" class="btn-label btn-label--dark" text="NEXT" />
+                    </ui:Button>
+                    <ui:Button name="again" class="btn btn--primary btn--tool">
+                        <ui:VisualElement class="btn-icon btn-icon--dark" style="background-image: url('project://database/Assets/UI/Icons/return.png');" />
+                        <ui:Label class="btn-label btn-label--dark" text="AGAIN" />
+                    </ui:Button>
+                    <ui:Button name="watch" class="btn btn--ghost btn--tool hidden">
+                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/video.png');" />
+                        <ui:Label class="btn-label" text="REPLAY" />
+                    </ui:Button>
+                    <ui:Button name="change" class="btn btn--ghost btn--tool">
+                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/multiplayer.png');" />
+                        <ui:Label class="btn-label" text="FIELD" />
+                    </ui:Button>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

@@ -8,6 +8,11 @@
     Everything fits one portrait screen. The events are one row of chips and the field is a grid of tiles
     (three across) sized in code to the height that is left, so nothing here scrolls: a menu that has to be
     scrolled to find START is a menu with a hidden button.
+
+    The athlete cards are the tiles themselves: tap a tile (not its steppers) and it turns over to show
+    that athlete's record on this device, tap it again and it turns back. There used to be a CARDS button
+    and a sheet over the whole screen for the same numbers. The season controls and the field presets share
+    START's row, one icon over one word each, so the whole bottom of the menu is one row.
 -->
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Theme.uss" />
@@ -25,41 +30,30 @@
                 <ui:VisualElement name="events" class="event-grid" />
 
                 <ui:VisualElement class="row" style="margin-bottom: 8px;">
-                    <ui:Label class="label-micro" text="FIELD" style="flex-grow: 1;" />
+                    <ui:Label class="label-micro" text="FIELD  ·  TAP A TILE FOR ITS RECORD" style="flex-grow: 1;" />
                     <ui:Label name="total" class="label-small muted" text="Total 0 / 16" />
                 </ui:VisualElement>
                 <ui:VisualElement name="runners" class="runner-grid" />
 
-                <ui:VisualElement class="row" style="margin-top: 8px;">
-                    <ui:Button name="none" class="btn btn--ghost" text="NONE" style="flex-grow: 1; margin-right: 8px;" />
-                    <ui:Button name="all" class="btn btn--ghost" text="ONE EACH" style="flex-grow: 1; margin-right: 8px;" />
-                    <ui:Button name="start" class="btn btn--primary" text="START" style="flex-grow: 2; min-height: 104px; font-size: 40px;" />
-                </ui:VisualElement>
-
-                <!-- A season runs every event in decathlon order with this field and keeps a points table;
-                     the cards are every athlete's record on this device. -->
-                <ui:VisualElement class="setup-extra">
-                    <ui:Button name="cards" class="btn btn--ghost btn--icon">
-                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/leaderboardsSimple.png');" />
-                        <ui:Label class="btn-label" text="CARDS" />
+                <ui:VisualElement class="row setup-actions">
+                    <ui:Button name="none" class="btn btn--ghost btn--tool">
+                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/cross.png');" />
+                        <ui:Label class="btn-label" text="NONE" />
                     </ui:Button>
-                    <ui:Button name="season" class="btn btn--ghost btn--icon" style="flex-grow: 2;">
+                    <ui:Button name="all" class="btn btn--ghost btn--tool">
+                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/multiplayer.png');" />
+                        <ui:Label class="btn-label" text="ONE EACH" />
+                    </ui:Button>
+                    <!-- A season runs every event in decathlon order with this field and keeps a points table. -->
+                    <ui:Button name="season" class="btn btn--ghost btn--tool">
                         <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/trophy.png');" />
-                        <ui:Label name="season-label" class="btn-label" text="START SEASON" />
+                        <ui:Label name="season-label" class="btn-label" text="SEASON" />
                     </ui:Button>
-                </ui:VisualElement>
-            </ui:VisualElement>
-        </ui:VisualElement>
-
-        <!-- The athlete cards: one per roster entry, filled by SetupView from SeasonStore. -->
-        <ui:VisualElement name="cards-sheet" class="modal-scrim hidden">
-            <ui:VisualElement class="modal" style="max-height: 86%;">
-                <ui:Label class="label-title" text="ATHLETE CARDS" />
-                <ui:Label name="cards-hint" class="label-small muted" text="" style="margin-bottom: 16px; white-space: normal;" />
-                <ui:VisualElement name="cards-list" class="cards-list" />
-                <ui:VisualElement class="row" style="margin-top: 16px;">
-                    <ui:Button name="season-reset" class="btn btn--ghost" text="END SEASON" style="flex-grow: 1; margin-right: 8px;" />
-                    <ui:Button name="cards-close" class="btn btn--primary" text="CLOSE" style="flex-grow: 1; margin-left: 8px;" />
+                    <ui:Button name="season-reset" class="btn btn--ghost btn--tool hidden">
+                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/cross.png');" />
+                        <ui:Label name="season-reset-label" class="btn-label" text="END" />
+                    </ui:Button>
+                    <ui:Button name="start" class="btn btn--primary setup-start" text="START" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

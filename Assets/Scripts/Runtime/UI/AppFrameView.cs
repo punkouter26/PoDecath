@@ -70,6 +70,13 @@ namespace PoDecath.UI
 
             if (_menu != null) _menu.clicked += OnMenu;
             if (_debug != null) _debug.clicked += OnDebug;
+            // The frame rate is a door as well as a reading: a tap opens the diagnostics straight onto its
+            // FRAME page, which is the one place a phone can see draw calls, memory and the 1% low.
+            if (_fps != null)
+            {
+                _fps.pickingMode = PickingMode.Position;
+                _fps.RegisterCallback<ClickEvent>(_ => OnFps());
+            }
 
             // Already on the menu: leave the button in place so the layout is the same on every screen,
             // but disabled, because a MENU that reloads the menu is a way to lose a half-built roster.
@@ -160,6 +167,14 @@ namespace PoDecath.UI
                 return;
             }
             _telemetry.SetScreenVisible(!_telemetry.ScreenVisible);
+        }
+
+        void OnFps()
+        {
+            Rewire();
+            if (_telemetry == null) return;
+            if (_telemetry.ScreenVisible) _telemetry.SetScreenVisible(false);
+            else _telemetry.Open(TelemetryOverlay.Page.Frame);
         }
 
         void OnMenu()

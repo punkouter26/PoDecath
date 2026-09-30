@@ -55,6 +55,10 @@ namespace PoDecath.EditorTools
             public float minLen, maxLen;  // seconds the source should be
             public float cut;             // seconds kept
             public bool loop, mono = true, trim = true;
+            // A music stem: kept sample for sample — no trim, no cut, no loop cross-fade, no normalising —
+            // because MusicDirector starts all three on one DSP sample, and anything that changes one stem's
+            // length or start shifts it off the beat of the other two for good. Only resampled.
+            public bool stem;
         }
 
         static readonly Rule[] Rules =
@@ -95,6 +99,15 @@ namespace PoDecath.EditorTools
                        exclude = "fire|sword", minLen = 0.15f, maxLen = 4f, cut = 0.5f },
             new Rule { field = "sting", all = new[] { "sting|stinger|logo|fanfare|jingle|hit short|musical accent" },
                        exclude = "bee|wasp|scorpion", minLen = 0.3f, maxLen = 8f, cut = 1f, mono = false },
+            // The score. Not something a sound-effects bundle has: these are for a folder of stems dropped in
+            // on purpose, named calm / drive / peak under a music/ folder (the folder path counts, so
+            // "music/calm.wav" matches). The three must be the same length; see MusicDirector.
+            new Rule { field = "musicCalm", all = new[] { "music", "calm" },
+                       minLen = 2f, maxLen = 600f, cut = 2f, loop = true, mono = false, trim = false, stem = true },
+            new Rule { field = "musicDrive", all = new[] { "music", "drive" },
+                       minLen = 2f, maxLen = 600f, cut = 2f, loop = true, mono = false, trim = false, stem = true },
+            new Rule { field = "musicPeak", all = new[] { "music", "peak" },
+                       minLen = 2f, maxLen = 600f, cut = 2f, loop = true, mono = false, trim = false, stem = true },
         };
 
         [Serializable] class Config { public string folder; public bool dryRun = true; }
@@ -172,10 +185,18 @@ namespace PoDecath.EditorTools
 
             if (!dryRun)
             {
+                // The licence is the pack's, not this importer's: a LICENSES.md (or LICENSE.txt) in the folder is
+                // copied beside the clips and named here. Only without one does the note fall back to the
+                // Sonniss bundle's terms, which is the pack this was first written for.
+                string licence = new[] { "LICENSES.md", "LICENSE.md", "LICENSE.txt", "License.txt" }
+                    .Select(n => Path.Combine(folder, n)).FirstOrDefault(File.Exists);
+                if (licence != null) File.Copy(licence, $"{outDir}/{Path.GetFileName(licence)}", true);
                 File.WriteAllText($"{outDir}/SOURCES.txt",
                     "Recordings imported by PoDecath/Audio/Import Sound Pack from " + folder + "\n" +
-                    "Sonniss GDC Game Audio Bundle licence: royalty-free, commercial use allowed, no attribution\n" +
-                    "required; the raw files may not be redistributed as a sound library.\n\n" + sources);
+                    (licence != null
+                        ? $"Licences and sources: see {Path.GetFileName(licence)} beside this file.\n\n"
+                        : "Sonniss GDC Game Audio Bundle licence: royalty-free, commercial use allowed, no attribution\n" +
+                          "required; the raw files may not be redistributed as a sound library.\n\n") + sources);
                 AssetDatabase.Refresh();
                 foreach (var kv in assign) foreach (string p in kv.Value) ConfigureImporter(p, Rules.First(r => r.field == kv.Key));
                 Wire(bank, assign);
@@ -317,6 +338,15 @@ namespace PoDecath.EditorTools
             for (int c = 0; c < outCh; c++) chans[c] = Resample(chans[c], rate, Rate);
             frames = chans[0].Length;
 
+            // A stem goes through as it came, resampled only. Its level against the other two stems is the
+            // mix its composer made, and normalising each to -3 dBFS separately would undo it.
+            if (rule.stem)
+            {
+                if (frames <= 16) return false;
+                WriteWav(dst, chans, Rate);
+                return true;
+            }
+
             int start = rule.trim ? FirstSound(chans, frames) : 0;
             float keepSec = rule.loop ? rule.cut + 0.5f : rule.cut;   // a loop needs its cross-fade tail too
             int length = Mathf.Min(frames - start, Mathf.RoundToInt(keepSec * Rate));
@@ -434,11 +464,15 @@ namespace PoDecath.EditorTools
             // Long beds stream from disk; short one-shots are decompressed once and kept, which is what makes
             // a footfall fire on the frame it is asked for.
             s.loadType = rule.loop && rule.cut > 5f ? AudioClipLoadType.Streaming : AudioClipLoadType.DecompressOnLoad;
+            // Stems are held compressed in memory rather than streamed: three streams scheduled to start on
+            // one DSP sample is three disk reads that all have to be ready at once, and one late is one
+            // out of time for the rest of the scene.
+            if (rule.stem) s.loadType = AudioClipLoadType.CompressedInMemory;
             s.compressionFormat = AudioCompressionFormat.Vorbis;
             s.quality = 0.7f;
             ai.defaultSampleSettings = s;
             ai.forceToMono = rule.mono;
-            ai.loadInBackground = rule.loop;
+            ai.loadInBackground = rule.loop && !rule.stem;
             ai.SaveAndReimport();
         }
 

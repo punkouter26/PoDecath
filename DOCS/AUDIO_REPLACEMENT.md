@@ -37,6 +37,7 @@ sting is heard for half a second at a time.
 | `sandThud` | a body landing in a pit, 300–500 ms |
 | `whoosh` | 300–500 ms, under a camera cut, well down in the mix |
 | `sting` | a 0.5–1 s musical stab under a lower third or a result |
+| `musicCalm`, `musicDrive`, `musicPeak` | three **stems of one piece**: same tempo, same key, and **exactly the same length** (whole bars, seamless loops). `MusicDirector` starts all three on one DSP sample and only moves their volumes — calm alone before the race, drive added at the gun, peak added when the race is tight or in its last stretch. Stereo is fine. The importer takes files named `calm` / `drive` / `peak` under a `music/` folder and keeps them sample for sample (no trim, no normalising) |
 
 ## Format
 

@@ -4,7 +4,7 @@ using UnityEngine;
 namespace PoDecath.Audio
 {
     /// <summary>
-    /// The mix: four buses, a master, and the ducking between them.
+    /// The mix: five buses, a master, and the ducking between them.
     ///
     /// This is a code mixer rather than an <c>AudioMixer</c> asset, deliberately. Creating a mixer asset
     /// from a script needs <c>UnityEditor.Audio.AudioMixerController</c>, which is editor-internal, and the
@@ -29,15 +29,22 @@ namespace PoDecath.Audio
             Broadcast,
             /// <summary>Menus and buttons. Never ducked, because a button has to answer.</summary>
             Ui,
+            /// <summary>
+            /// The score (<see cref="MusicDirector"/>). Added last so every bus above keeps its index and its
+            /// saved level; ducked under a commentary line, because a caller talking over a band is a caller
+            /// nobody can hear on a phone speaker.
+            /// </summary>
+            Music,
         }
 
         const string KeyMaster = "podecath.vol.master";
         const string KeyCrowd = "podecath.vol.crowd";
         const string KeySfx = "podecath.vol.sfx";
+        const string KeyMusic = "podecath.vol.music";
 
-        static readonly float[] _bus = { 1f, 1f, 1f, 1f };
-        static readonly float[] _duck = { 1f, 1f, 1f, 1f };
-        static readonly float[] _duckTarget = { 1f, 1f, 1f, 1f };
+        static readonly float[] _bus = { 1f, 1f, 1f, 1f, 1f };
+        static readonly float[] _duck = { 1f, 1f, 1f, 1f, 1f };
+        static readonly float[] _duckTarget = { 1f, 1f, 1f, 1f, 1f };
         static float _master = 1f;
         static bool _loaded;
         static float _dopplerMute;
@@ -124,6 +131,7 @@ namespace PoDecath.Audio
             _master = PlayerPrefs.GetFloat(KeyMaster, 1f);
             _bus[(int)Bus.Crowd] = PlayerPrefs.GetFloat(KeyCrowd, 1f);
             _bus[(int)Bus.Sfx] = PlayerPrefs.GetFloat(KeySfx, 1f);
+            _bus[(int)Bus.Music] = PlayerPrefs.GetFloat(KeyMusic, 1f);
         }
 
         static void Save()
@@ -131,6 +139,7 @@ namespace PoDecath.Audio
             PlayerPrefs.SetFloat(KeyMaster, _master);
             PlayerPrefs.SetFloat(KeyCrowd, _bus[(int)Bus.Crowd]);
             PlayerPrefs.SetFloat(KeySfx, _bus[(int)Bus.Sfx]);
+            PlayerPrefs.SetFloat(KeyMusic, _bus[(int)Bus.Music]);
         }
     }
 }

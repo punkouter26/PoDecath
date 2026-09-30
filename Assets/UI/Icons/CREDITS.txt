@@ -6,3 +6,10 @@ warning       SLICK button         movie         camera picker, highlight clip
 trophy        season standings     medal1        podium / points
 star          personal best        leaderboardsSimple  athlete cards
 share1        saved clip
+
+Added 2026-09-29 (UI consolidation pass), same pack and licence:
+return        RESTART / RACE AGAIN     next          NEXT EVENT
+gear          SETTINGS tab             barsVertical  STATS badges
+multiplayer   CHANGE FIELD / ONE EACH  video         REPLAY
+cross         NONE                     plus          (spare)
+wrench        diagnostics              home          (spare)

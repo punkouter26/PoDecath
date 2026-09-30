@@ -18,7 +18,7 @@ MonoBehaviour:
   mjcfOverride: {fileID: 0}
   actionScale: 0
   skinOverride: {fileID: 6635245195314443262, guid: dfbb640436dfb754ca02fff2edfde1ed, type: 3}
-  skinOverrideMobile: {fileID: 0}
+  skinOverrideMobile: {fileID: 6635245195314443262, guid: d35469d8323b34543a94ad43a6588262, type: 3}
   boneMap:
   - body: pelvis
     bone: bone_0

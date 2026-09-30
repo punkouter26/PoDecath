@@ -33,6 +33,8 @@ namespace PoDecath.UI
         public BroadcastDirector director;
         [Tooltip("Optional. Without it the caption band stays off the picture and nothing else changes.")]
         public Commentary commentary;
+        [Tooltip("The HUD whose controls the lower third sits on. Found in the scene if left empty.")]
+        public HudView hud;
 
         [Header("Strain")]
         [Tooltip("Reading at which the strain bar is fully red. 1 would mean every joint pinned at its "
@@ -62,6 +64,9 @@ namespace PoDecath.UI
             public float flash;      // seconds left on the gained/lost highlight
             public bool gained;
         }
+
+        /// <summary>One running-order row plus its gap (.order-row in Theme.uss: 52 + 2), in reference pixels.</summary>
+        const float RowPitch = 54f;
 
         readonly List<Row> _rows = new List<Row>();
         readonly List<Label> _splitLabels = new List<Label>();
@@ -158,6 +163,7 @@ namespace PoDecath.UI
             }
 
             Countdown();
+            SitOnControls();
             LowerThirdVisibility();
             CaptionBand();
             DecayFlashes();
@@ -165,6 +171,24 @@ namespace PoDecath.UI
             if (Time.unscaledTime < _nextRefresh) return;
             _nextRefresh = Time.unscaledTime + 0.1f;
             Refresh();
+        }
+
+        /// <summary>
+        /// Rests the caption and the lower third on top of the HUD's controls, measured, rather than on a
+        /// margin guessed from what the control bar used to be. Every document shares one PanelSettings, so
+        /// the HUD's world rect is in this panel's coordinates. Falls back to the stylesheet's margin when
+        /// there is no HUD or it has not been laid out yet.
+        /// </summary>
+        void SitOnControls()
+        {
+            if (_lowerThird == null) return;
+            if (hud == null) hud = FindFirstObjectByType<HudView>();
+            float top = hud != null ? hud.ControlsTop : float.NaN;
+            VisualElement safe = Root?.Q<VisualElement>("body");
+            if (float.IsNaN(top) || safe == null) { _lowerThird.style.marginBottom = StyleKeyword.Null; return; }
+            float contentBottom = safe.worldBound.yMax - safe.resolvedStyle.paddingBottom;
+            float margin = Mathf.Max(0f, contentBottom - top + 8f);
+            if (Mathf.Abs(_lowerThird.resolvedStyle.marginBottom - margin) > 1f) _lowerThird.style.marginBottom = margin;
         }
 
         // ---------------------------------------------------------------- the picture
@@ -340,9 +364,10 @@ namespace PoDecath.UI
 
                 if (wasPlace >= 0 && wasPlace != i)
                 {
-                    // Start it where it was and let the transition carry it to where it is now. 52 px is
-                    // the row height in the stylesheet; a row that moved two places starts two rows away.
-                    float from = (wasPlace - i) * 52f;
+                    // Start it where it was and let the transition carry it to where it is now. The pitch
+                    // is the row height plus its gap in the stylesheet; a row that moved two places starts
+                    // two rows away.
+                    float from = (wasPlace - i) * RowPitch;
                     row.element.style.translate = new StyleTranslate(new Translate(0f, from));
                     row.element.schedule.Execute(() => row.element.style.translate = new StyleTranslate(new Translate(0f, 0f))).StartingIn(0);
                     row.gained = i < wasPlace;

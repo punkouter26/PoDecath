@@ -50,6 +50,7 @@ namespace PoDecath.UI
             [NonSerialized] public Label countLabel;
             [NonSerialized] public Button minus, plus;
             [NonSerialized] public VisualElement row;
+            [NonSerialized] public Label card;
         }
 
         public List<RunnerRow> rows = new List<RunnerRow>();
@@ -62,9 +63,8 @@ namespace PoDecath.UI
         VisualElement _eventHost, _runnerHost;
         Label _hint, _total;
         Button _start, _all, _none;
-        Button _cards, _season, _seasonReset, _cardsClose;
-        Label _seasonLabel, _cardsHint;
-        VisualElement _cardsSheet, _cardsList;
+        Button _season, _seasonReset;
+        Label _seasonLabel, _seasonResetLabel;
         bool _confirmEnd;
         readonly List<Button> _eventButtons = new List<Button>();
         int _event;
@@ -108,17 +108,11 @@ namespace PoDecath.UI
 
         void BuildSeason()
         {
-            _cards = Find<Button>("cards");
             _season = Find<Button>("season");
             _seasonLabel = Find<Label>("season-label");
-            _cardsSheet = Find<VisualElement>("cards-sheet");
-            _cardsList = Find<VisualElement>("cards-list");
-            _cardsHint = Find<Label>("cards-hint");
             _seasonReset = Find<Button>("season-reset");
-            _cardsClose = Find<Button>("cards-close");
+            _seasonResetLabel = Find<Label>("season-reset-label");
 
-            if (_cards != null) _cards.clicked += OpenCards;
-            if (_cardsClose != null) _cardsClose.clicked += () => Show(_cardsSheet, false);
             if (_season != null) _season.clicked += OnSeason;
             if (_seasonReset != null) _seasonReset.clicked += OnEndSeason;
 
@@ -133,20 +127,23 @@ namespace PoDecath.UI
             SeasonCloud.Pull(adopted => { if (adopted) RefreshSeason(); });
         }
 
-        static string CloudLine()
-        {
-            string where = SeasonCloud.Linked ? SeasonCloud.StatusLine : "Saved on this device";
-            return $"{where}  ·  {SeasonStore.Current.cards.Count} athlete card(s)";
-        }
-
         void RefreshSeason()
         {
             SeasonStore.Season s = SeasonStore.Current.season;
-            if (SeasonStore.SeasonActive)
-                SetText(_seasonLabel, $"CONTINUE SEASON  {s.next + 1}/{s.legs.Count}  {s.legs[s.next].label}");
-            else
-                SetText(_seasonLabel, "START SEASON");
+            // One word under an icon: which leg is next reads off the number, and its name is on the hint line.
+            SetText(_seasonLabel, SeasonStore.SeasonActive ? $"SEASON {s.next + 1}/{s.legs.Count}" : "SEASON");
             Show(_seasonReset, SeasonStore.SeasonActive);
+            SelectEvent(_event);   // re-words the hint, which carries the season and save lines
+            FillTileCards();
+        }
+
+        /// <summary>The second line of the hint: where the records are kept and, mid-season, what is next.</summary>
+        static string SeasonLine()
+        {
+            string where = SeasonCloud.Linked ? SeasonCloud.StatusLine : "Saved on this device";
+            if (!SeasonStore.SeasonActive) return where;
+            SeasonStore.Season s = SeasonStore.Current.season;
+            return $"Season: next is {s.legs[s.next].label}  ·  {where}";
         }
 
         /// <summary>
@@ -181,81 +178,71 @@ namespace PoDecath.UI
             return SeasonEvent.Sprint100;
         }
 
-        /// <summary>Asks once before throwing a season away: the second tap within the sheet ends it.</summary>
+        /// <summary>Asks once before throwing a season away: the second tap on END ends it.</summary>
         void OnEndSeason()
         {
             if (!_confirmEnd)
             {
                 _confirmEnd = true;
-                if (_seasonReset != null) _seasonReset.text = "TAP AGAIN TO END";
+                SetText(_seasonResetLabel, "SURE?");
                 return;
             }
             _confirmEnd = false;
-            if (_seasonReset != null) _seasonReset.text = "END SEASON";
+            SetText(_seasonResetLabel, "END");
             SeasonStore.EndSeason();
             RefreshSeason();
-            FillCards();
-        }
-
-        void OpenCards()
-        {
-            _confirmEnd = false;
-            if (_seasonReset != null) _seasonReset.text = "END SEASON";
-            FillCards();
-            Show(_cardsSheet, true);
         }
 
         /// <summary>
-        /// One card per athlete that has raced on this device, best single-event score first. Each card is
-        /// the athlete's record in plain numbers: races, wins, falls, the fastest it has been measured going,
-        /// the work its joints have done, and its best mark in every event with the points it was worth.
+        /// Turns a tile over, or back. A tap on a stepper is a stepper, not a flip: the click is ignored when
+        /// it came from inside a button.
         /// </summary>
-        void FillCards()
+        void OnTileClicked(RunnerRow row, ClickEvent evt)
         {
-            if (_cardsList == null) return;
-            _cardsList.Clear();
-            var cards = new List<SeasonStore.Card>(SeasonStore.Current.cards);
-            cards.Sort((a, b) => b.bestPoints.CompareTo(a.bestPoints));
-            SetText(_cardsHint, cards.Count == 0
-                ? "No races yet. Every race adds to these, season or not."
-                : CloudLine());
+            for (var e = evt.target as VisualElement; e != null && e != row.row; e = e.parent)
+                if (e is Button) return;
+            Flip(row);
+        }
 
-            // Each card is about 170 px tall; show as many as the sheet has room for rather than scrolling.
-            int max = Mathf.Min(cards.Count, 7);
-            for (int i = 0; i < max; i++)
-            {
-                SeasonStore.Card c = cards[i];
-                var card = new VisualElement();
-                card.AddToClassList("athlete-card");
-                card.style.borderLeftColor = c.Colour;
+        /// <summary>Turns tile <paramref name="index"/> over or back; what a tap does, callable by the UI captures.</summary>
+        public void FlipTile(int index)
+        {
+            if (index >= 0 && index < rows.Count && rows[index].row != null) Flip(rows[index]);
+        }
 
-                var name = new Label(c.athlete);
-                name.AddToClassList("athlete-card-name");
-                name.style.color = c.Colour;
-                var line = new Label($"{c.races} races  ·  {c.wins} wins  ·  {c.podiums} podiums  ·  {c.falls} falls  ·  got up {c.recoveries}"
-                                   + $"  ·  top {c.topSpeed:F1} m/s  ·  {c.joules / 1000f:F0} kJ of work");
-                line.AddToClassList("athlete-card-line");
+        void Flip(RunnerRow row)
+        {
+            bool flip = !row.row.ClassListContains("runner-tile--flipped");
+            row.row.EnableInClassList("runner-tile--flipped", flip);
+            Show(row.card, flip);
+            if (flip) SetText(row.card, CardText(row));
+        }
 
-                var bests = new System.Text.StringBuilder();
-                foreach (SeasonStore.Best b in c.bests)
-                {
-                    if (bests.Length > 0) bests.Append("   ");
-                    bests.Append($"{ScoringTable.Label(b.evt)} {ScoringTable.Format(b.evt, b.value)} ({b.points})");
-                }
-                var best = new Label(bests.Length > 0 ? "Bests: " + bests : "No marks yet");
-                best.AddToClassList("athlete-card-bests");
+        void FillTileCards()
+        {
+            foreach (RunnerRow r in rows)
+                if (r.card != null && !r.card.ClassListContains("hidden")) SetText(r.card, CardText(r));
+        }
 
-                card.Add(name);
-                card.Add(line);
-                card.Add(best);
-                _cardsList.Add(card);
-            }
-            if (cards.Count > max)
-            {
-                var more = new Label($"+{cards.Count - max} more");
-                more.AddToClassList("label-micro");
-                _cardsList.Add(more);
-            }
+        /// <summary>
+        /// The athlete's record on this device in plain numbers, sized for the back of a tile: races, wins
+        /// and falls, the fastest it has been measured going, the work its joints have done, and its best
+        /// mark per event with the points it was worth.
+        /// </summary>
+        static string CardText(RunnerRow row)
+        {
+            SeasonStore.Card c = null;
+            string name = row.definition != null ? row.definition.displayName : "";
+            foreach (SeasonStore.Card k in SeasonStore.Current.cards)
+                if (k.athlete == name) { c = k; break; }
+            if (c == null || c.races == 0) return "No races yet.\nEvery race adds to this card.";
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"{c.races} races · {c.wins} wins\n{c.podiums} podiums · {c.falls} falls\n");
+            sb.Append($"top {c.topSpeed:F1} m/s · {c.joules / 1000f:F0} kJ");
+            foreach (SeasonStore.Best b in c.bests)
+                sb.Append($"\n{ScoringTable.Label(b.evt)} {ScoringTable.Format(b.evt, b.value)} ({b.points})");
+            return sb.ToString();
         }
 
         void BuildEvents()
@@ -317,10 +304,18 @@ namespace PoDecath.UI
                 steps.Add(minus);
                 steps.Add(plus);
 
+                // The back of the tile: this athlete's record, shown instead of the count and steppers.
+                var card = new Label("");
+                card.AddToClassList("runner-tile-card");
+                card.AddToClassList("hidden");
+
                 tile.Add(name);
                 tile.Add(count);
+                tile.Add(card);
                 tile.Add(steps);
+                tile.RegisterCallback<ClickEvent>(e => OnTileClicked(captured, e));
                 _runnerHost.Add(tile);
+                row.card = card;
 
                 row.countLabel = count;
                 row.minus = minus;
@@ -360,7 +355,8 @@ namespace PoDecath.UI
             if (events.Count == 0) return;   // no race scene was built; StartRace says so
             _event = Mathf.Clamp(index, 0, events.Count - 1);
             EventChoice chosen = events[_event];
-            SetText(_hint, string.IsNullOrEmpty(chosen.hint) ? $"Pick 1 to {Max} athletes." : chosen.hint);
+            string hint = string.IsNullOrEmpty(chosen.hint) ? $"Pick 1 to {Max} athletes." : chosen.hint;
+            SetText(_hint, SeasonStore.SeasonActive ? $"{hint}  ·  {SeasonLine()}" : hint);
             for (int i = 0; i < _eventButtons.Count; i++)
                 _eventButtons[i].EnableInClassList("event-btn--selected", i == _event);
         }

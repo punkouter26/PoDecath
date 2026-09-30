@@ -77,7 +77,7 @@ namespace PoDecath.Fx
 
         void LateUpdate()
         {
-            if (_quad == null) return;
+            if (_quad == null || _block == null || _renderer == null) return;
             Vector3 origin = Origin();
 
             if (!Physics.Raycast(origin + Vector3.up * rayStart, Vector3.down, out RaycastHit hit, rayStart + rayLength,

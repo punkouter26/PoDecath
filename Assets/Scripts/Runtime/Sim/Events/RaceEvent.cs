@@ -530,6 +530,9 @@ namespace PoDecath.Sim
         }
 
         /// <summary>Middle line of the live status card.</summary>
+        /// <summary>The same reading cut down to one badge on the HUD's stats strip.</summary>
+        public virtual string HudDistanceBadge() => $"{Distance:F0} / {raceDistance:F0} m";
+
         public virtual string HudDistanceLine()
         {
             Athlete r = Reference;

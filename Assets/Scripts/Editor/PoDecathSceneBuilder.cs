@@ -15,7 +15,7 @@ using PoDecath.Cam;
 namespace PoDecath.EditorTools
 {
     /// <summary>
-    /// One-shot project scaffolding: layer, foot physics material, the MainMenu scene,
+    /// One-shot project scaffolding: layer, foot physics material, the policy library,
     /// build list, portrait player settings, physics stepping. Idempotent: re-running rebuilds the scenes.
     /// </summary>
     public static class PoDecathSceneBuilder
@@ -26,7 +26,8 @@ namespace PoDecath.EditorTools
         const string PrefabsDir = "Assets/Prefabs";
         const string ScenesDir = "Assets/Scenes";
         const string FootPhysMatPath = MaterialsDir + "/Foot.physicMaterial";
-        const string MainMenuScenePath = ScenesDir + "/MainMenu.unity";
+        const string RetiredMainMenuPath = ScenesDir + "/MainMenu.unity";
+        const string SetupScenePath = ScenesDir + "/MAIN.unity";
 
         const int RefWidth = 1080;
         const int RefHeight = 1920;
@@ -42,13 +43,12 @@ namespace PoDecath.EditorTools
             EnsureLayer(CreatureLayer, CreatureLayerIndex);
             EnsureFootPhysicsMaterial();
             PolicyLibraryTools.Refresh();
-            BuildMainMenuScene();
             ConfigureBuildSettings();
             ConfigurePlayerSettings();
             ConfigurePhysics();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            EditorSceneManager.OpenScene(MainMenuScenePath);
+            if (System.IO.File.Exists(SetupScenePath)) EditorSceneManager.OpenScene(SetupScenePath);
             Debug.Log("[PoDecath] Build Everything complete.");
         }
 
@@ -109,19 +109,19 @@ namespace PoDecath.EditorTools
         }
 
         /// <summary>
-        /// Makes sure MainMenu is in the build list without disturbing what is already there.
+        /// Takes the retired developer menu out of the build list, and leaves everything else alone.
         ///
-        /// This used to assign the whole list, which was correct when MainMenu and Arena were the only
-        /// two scenes and actively destructive afterwards: RaceUiBuilder inserts MAIN at index 0 and
-        /// RooftopSceneBuilder appends the four rooftop scenes, so running "Build Everything" threw all
-        /// five away and left a build that could not reach a race.
+        /// MainMenu was an evaluation screen whose three controls were a quality tier, a frame-rate target and
+        /// a checkpoint picker that nothing read. The first two are the SETTINGS page of the diagnostics
+        /// sheet now (DEBUG, bottom-left, on every screen); the scene is gone (2026-09-29, UI consolidation).
+        /// This used to assign the whole list, which was actively destructive once RaceUiBuilder and
+        /// RooftopSceneBuilder added their scenes, so it only ever removes.
         /// </summary>
         static void ConfigureBuildSettings()
         {
             var scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
-            if (scenes.Any(s => s.path == MainMenuScenePath)) return;
-            scenes.Add(new EditorBuildSettingsScene(MainMenuScenePath, true));
-            EditorBuildSettings.scenes = scenes.ToArray();
+            if (scenes.RemoveAll(s => s.path == RetiredMainMenuPath) > 0)
+                EditorBuildSettings.scenes = scenes.ToArray();
         }
 
         static void ConfigurePlayerSettings()
@@ -144,33 +144,6 @@ namespace PoDecath.EditorTools
         }
 
         // ------------------------------------------------------------------ scenes
-
-        static void BuildMainMenuScene()
-        {
-            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-
-            var camGo = new GameObject("Main Camera");
-            camGo.tag = "MainCamera";
-            var cam = camGo.AddComponent<Camera>();
-            cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.07f, 0.08f, 0.11f);
-            camGo.transform.position = new Vector3(0, 1, -10);
-            camGo.AddComponent<AudioListener>();
-
-            // One UI Toolkit document. What was ninety lines of VerticalLayoutGroup, Dropdown and Text
-            // construction is a UXML layout in Assets/UI/MainMenu.uxml wearing the shared stylesheet.
-            CreateEventSystem();
-            var menu = UiBakery.AddScreen<MainMenuView>("MainMenu", UiBakery.MainMenuUxml, 0f);
-            if (menu != null) menu.playSceneName = "MAIN";
-
-            // The frame belongs here too. This is a scene the game ships and the HUD's MENU button loads,
-            // so leaving it out made "the same five things in the same place on every screen" false on the
-            // one screen a player reaches by asking for the menu — and took the version number off the
-            // corner of any screenshot taken of it.
-            RaceUiBuilder.AddFrameAndTelemetry(null);
-
-            EditorSceneManager.SaveScene(scene, MainMenuScenePath);
-        }
 
         // ------------------------------------------------------------------ input
 

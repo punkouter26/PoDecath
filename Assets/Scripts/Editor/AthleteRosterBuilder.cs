@@ -75,6 +75,9 @@ namespace PoDecath.EditorTools
             int index = 0;
             foreach (string path in paths)
             {
+                // Characters/Mobile holds each model's phone copy (athlete_lods.py), wired below as that
+                // athlete's skinOverrideMobile. It is not a roster entry of its own.
+                if (path.Contains("/Mobile/")) continue;   // AssetDatabase paths always use forward slashes
                 var skin = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                 if (skin == null) continue;
                 if (skin.GetComponentInChildren<SkinnedMeshRenderer>(true) == null)

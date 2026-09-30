@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using PoDecath.Audio;
@@ -54,6 +56,12 @@ namespace PoDecath.EditorTools
                 AssetDatabase.CreateAsset(bank, BankPath);
             }
 
+            // Slots already holding real recordings (PoDecath/Audio/Import Sound Pack, which writes under
+            // Assets/Audio/Real) are put back after the synthesis below. Every scene build runs this bake, so
+            // without it a rebuild silently swapped the imported crowd, pistol and bell back to the
+            // synthesised placeholders.
+            var real = RealSlots(bank);
+
             bank.crowdBed = Save("crowd_bed", CrowdBed());
             bank.crowdSwell = Save("crowd_swell", CrowdSwell());
             bank.crowdGroan = Save("crowd_groan", CrowdGroan());
@@ -88,11 +96,20 @@ namespace PoDecath.EditorTools
                 Save("footfall_rubber_2", Footfall(1, Ground.Rubber)),
                 Save("footfall_rubber_3", Footfall(2, Ground.Rubber)),
             };
+            // The score's three stems. Same tempo, key and length, so MusicDirector can start them on one
+            // DSP sample and only ever move their faders.
+            bank.musicCalm = Save("music_calm", MusicCalm());
+            bank.musicDrive = Save("music_drive", MusicDrive());
+            bank.musicPeak = Save("music_peak", MusicPeak());
+
+            foreach (var kv in real) kv.Key.SetValue(bank, kv.Value);
+            if (real.Count > 0) Debug.Log($"[PoDecath] Kept {real.Count} bank slot(s) that hold real recordings: {string.Join(", ", real.Keys.Select(f => f.Name))}.");
 
             EditorUtility.SetDirty(bank);
             AssetDatabase.SaveAssets();
             Debug.Log($"[PoDecath] Baked {AudioDir}: crowd bed/swell/groan/applause/chant, wind, pistol, beep, bell, "
-                    + "clatter, clip, thud, whoosh, sting, breath, and 10 footfalls across three surfaces.");
+                    + "clatter, clip, thud, whoosh, sting, breath, 10 footfalls across three surfaces, and the "
+                    + "three music stems (calm, drive, peak).");
 
             // Deliberately not `return bank`. Every clip above went through SaveAndReimport, and the
             // reimport unloads the native side of anything already in memory — including this asset. The
@@ -101,6 +118,21 @@ namespace PoDecath.EditorTools
             // every `bank != null` guard quietly takes the wrong branch. Loading it back resolves it.
             return AssetDatabase.LoadAssetAtPath<AudioBank>(BankPath);
         }
+
+        /// <summary>The bank's clip fields (single or array) whose every clip lives under Assets/Audio/Real, with their values.</summary>
+        static Dictionary<System.Reflection.FieldInfo, object> RealSlots(AudioBank bank)
+        {
+            var kept = new Dictionary<System.Reflection.FieldInfo, object>();
+            foreach (var f in typeof(AudioBank).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+            {
+                object v = f.GetValue(bank);
+                if (v is AudioClip c && IsReal(c)) kept[f] = c;
+                else if (v is AudioClip[] a && a.Length > 0 && a.All(IsReal)) kept[f] = a;
+            }
+            return kept;
+        }
+
+        static bool IsReal(AudioClip c) => c != null && AssetDatabase.GetAssetPath(c).Replace('\\', '/').Contains("/Audio/Real/");
 
         // ------------------------------------------------------------------ recipes
 
@@ -514,6 +546,223 @@ namespace PoDecath.EditorTools
                 outp[i] = band.Process(noise[i]) * env;
             }
             return Normalize(outp, 0.5f);
+        }
+
+        // ------------------------------------------------------------------ music
+
+        //
+        // Three stems of one piece: 120 bpm, 4/4, A minor, eight bars (16 s), the progression Am - F - C - G
+        // at two bars a chord. MusicDirector plays all three at once from the same DSP sample and moves only
+        // their volumes, so the stems are written as layers of one arrangement rather than as three tracks:
+        // calm is complete on its own, drive adds the rhythm section under it, peak adds the colour on top.
+        //
+        // Every note is written with wrap-around, so a pad still releasing at the end of bar eight lands on
+        // the start of bar one: the loop has no seam because the file has no ends. Nothing here is filtered
+        // across the whole buffer, for the same reason — a filter's memory would not wrap, and would click.
+        // They are quiet and plain on purpose; a real set drops onto the same three bank slots.
+        //
+
+        const float MusicBpm = 120f;
+        const int MusicBars = 8;
+
+        /// <summary>Am, F, C, G as MIDI note triads (voiced round middle C), two bars each.</summary>
+        static readonly int[][] MusicChords =
+        {
+            new[] { 57, 60, 64 },   // A3 C4 E4
+            new[] { 53, 57, 60 },   // F3 A3 C4
+            new[] { 55, 60, 64 },   // G3 C4 E4 (C, second inversion: keeps the voices moving by step)
+            new[] { 55, 59, 62 },   // G3 B3 D4
+        };
+
+        /// <summary>The bass under each chord: A2, F2, C3, G2.</summary>
+        static readonly int[] MusicRoots = { 45, 41, 48, 43 };
+
+        static float Beat => 60f / MusicBpm;
+
+        /// <summary>Samples in one loop. 8 bars at 120 bpm is exactly 16 s, so all three stems are 705,600 samples.</summary>
+        static int MusicLength => Mathf.RoundToInt(MusicBars * 4 * Beat * Rate);
+
+        static float Hz(int midi) => 440f * Mathf.Pow(2f, (midi - 69) / 12f);
+
+        static int[] ChordAtBar(int bar) => MusicChords[(bar / 2) % MusicChords.Length];
+        static int RootAtBar(int bar) => MusicRoots[(bar / 2) % MusicRoots.Length];
+
+        /// <summary>
+        /// Calm: sustained pads on each chord (two voices a few cents apart, which is what makes a sine pad
+        /// breathe instead of hum) and a soft pulse on the root in eighths. Heard alone before the race and
+        /// under everything after it.
+        /// </summary>
+        static float[] MusicCalm()
+        {
+            int n = MusicLength;
+            var outp = new float[n];
+            float[] pad = { 1f, 0.35f, 0.18f, 0.08f };
+            float[] pulse = { 1f, 0.25f };
+            float bar = 4f * Beat;
+
+            for (int b = 0; b < MusicBars; b += 2)
+            {
+                int[] chord = ChordAtBar(b);
+                foreach (int note in chord)
+                {
+                    // Held for the chord's two bars, released across the next one's attack: a cross-fade
+                    // between chords rather than a gap.
+                    AddTone(outp, b * bar, Hz(note), pad, 0.075f, attack: 0.8f, hold: 2f * bar, release: 1.6f, detuneCents: -6f);
+                    AddTone(outp, b * bar, Hz(note), pad, 0.075f, attack: 0.8f, hold: 2f * bar, release: 1.6f, detuneCents: 6f);
+                }
+            }
+            for (int e = 0; e < MusicBars * 8; e++)
+            {
+                int b = e / 8;
+                float accent = e % 2 == 0 ? 1f : 0.6f;   // on the beat, and softer between
+                AddTone(outp, e * Beat * 0.5f, Hz(RootAtBar(b) + 12), pulse, 0.11f * accent,
+                        attack: 0.006f, hold: 0.03f, release: 0.2f, decay: 9f);
+            }
+            return Normalize(outp, 0.5f);
+        }
+
+        /// <summary>
+        /// Drive: kick on one and three (and a push on the "and" of four every second bar), a snare of
+        /// band-limited noise on two and four, closed hats in eighths, and a bass in eighths on the root.
+        /// The bass carries its second and third harmonics on purpose — a phone speaker has no 55 Hz, and a
+        /// bass line that only exists on headphones is not a bass line on the platform this ships to.
+        /// </summary>
+        static float[] MusicDrive()
+        {
+            int n = MusicLength;
+            var outp = new float[n];
+            float bar = 4f * Beat;
+            float[] bass = { 1f, 0.55f, 0.3f, 0.12f };
+            int hit = 0;
+
+            for (int b = 0; b < MusicBars; b++)
+            {
+                float t0 = b * bar;
+                Kick(outp, t0, 0.9f);
+                Kick(outp, t0 + 2f * Beat, 0.8f);
+                if (b % 2 == 1) Kick(outp, t0 + 3.5f * Beat, 0.55f);
+
+                NoiseHit(outp, t0 + 1f * Beat, 0.24f, 18f, 0.42f, 21000 + hit++, 900f, 5200f, toneHz: 185f, toneGain: 0.35f);
+                NoiseHit(outp, t0 + 3f * Beat, 0.24f, 18f, 0.42f, 21000 + hit++, 900f, 5200f, toneHz: 185f, toneGain: 0.35f);
+
+                for (int e = 0; e < 8; e++)
+                {
+                    float at = t0 + e * Beat * 0.5f;
+                    NoiseHit(outp, at, 0.06f, 70f, e % 2 == 1 ? 0.2f : 0.11f, 22000 + hit++, 7000f, 16000f);
+                    int root = RootAtBar(b);
+                    // Octave jump on the last eighth of each bar: the one piece of movement the line has.
+                    int note = e == 7 ? root + 12 : root;
+                    AddTone(outp, at, Hz(note), bass, 0.3f, attack: 0.004f, hold: 0.17f, release: 0.06f, decay: 3f);
+                }
+            }
+            return Normalize(outp, 0.6f);
+        }
+
+        /// <summary>
+        /// Peak: brass-like stabs on the chord an octave up (a sawtooth's harmonic series, short and hard
+        /// at the front) on a syncopated figure, and a sixteenth-note arpeggio over the chord tones. The
+        /// part that says "this is the end of it", and the first thing to leave at the finish.
+        /// </summary>
+        static float[] MusicPeak()
+        {
+            int n = MusicLength;
+            var outp = new float[n];
+            float bar = 4f * Beat;
+            float[] brass = { 1f, 0.6f, 0.45f, 0.34f, 0.25f, 0.18f, 0.12f, 0.08f };
+            float[] arp = { 1f, 0.3f, 0.1f };
+            int[] walk = { 0, 1, 2, 3, 2, 1, 2, 3 };   // up and back over four chord tones
+
+            for (int b = 0; b < MusicBars; b++)
+            {
+                float t0 = b * bar;
+                int[] chord = ChordAtBar(b);
+
+                // One, the "and" of two, and on the second bar of each chord a third stab on four.
+                float[] stabs = b % 2 == 0 ? new[] { 0f, 1.5f } : new[] { 0f, 1.5f, 3f };
+                foreach (float s in stabs)
+                    foreach (int note in chord)
+                        AddTone(outp, t0 + s * Beat, Hz(note + 12), brass, 0.06f, attack: 0.022f, hold: 0.15f, release: 0.14f, decay: 2.5f);
+
+                int[] tones = { chord[0] + 12, chord[1] + 12, chord[2] + 12, chord[0] + 24 };
+                for (int x = 0; x < 16; x++)
+                    AddTone(outp, t0 + x * Beat * 0.25f, Hz(tones[walk[x % walk.Length]]), arp, 0.07f,
+                            attack: 0.003f, hold: 0.03f, release: 0.09f, decay: 14f);
+            }
+            return Normalize(outp, 0.5f);
+        }
+
+        /// <summary>
+        /// One note of additive synthesis written into a loop: linear attack, hold, linear release to
+        /// silence, an optional exponential decay across the whole note, and every sample written modulo
+        /// the buffer length so a note that runs past the end finishes at the start.
+        /// </summary>
+        static void AddTone(float[] buf, float atSeconds, float hz, float[] partials, float gain,
+                            float attack, float hold, float release, float decay = 0f, float detuneCents = 0f)
+        {
+            int n = buf.Length;
+            int start = Mathf.RoundToInt(atSeconds * Rate);
+            int len = Mathf.RoundToInt((hold + release) * Rate);
+            float f = hz * Mathf.Pow(2f, detuneCents / 1200f);
+            // Double for the phase: a pad is five seconds long, and a float phase that far in has lost
+            // enough precision to be heard as a wobble in the upper partials.
+            double w = 2.0 * Math.PI * f / Rate;
+            for (int i = 0; i < len; i++)
+            {
+                float t = (float)i / Rate;
+                float env = Mathf.Min(1f, t / Mathf.Max(1e-4f, attack));
+                if (t > hold) env *= Mathf.Max(0f, 1f - (t - hold) / Mathf.Max(1e-4f, release));
+                if (decay > 0f) env *= Mathf.Exp(-decay * t);
+                float s = 0f;
+                for (int p = 0; p < partials.Length; p++)
+                {
+                    float fp = f * (p + 1);
+                    if (fp > Rate * 0.45f) break;   // above Nyquist the partial folds back as noise
+                    s += (float)Math.Sin(w * (p + 1) * i) * partials[p];
+                }
+                buf[(start + i) % n] += s * env * gain;
+            }
+        }
+
+        /// <summary>A kick: a sine swept down from about 115 Hz to 45 Hz, and a click so it reads on a small speaker.</summary>
+        static void Kick(float[] buf, float atSeconds, float gain)
+        {
+            int n = buf.Length;
+            int start = Mathf.RoundToInt(atSeconds * Rate);
+            int len = Mathf.RoundToInt(0.34f * Rate);
+            float phase = 0f;
+            for (int i = 0; i < len; i++)
+            {
+                float t = (float)i / Rate;
+                float f = 45f + 70f * Mathf.Exp(-30f * t);
+                phase += 2f * Mathf.PI * f / Rate;
+                float body = Mathf.Sin(phase) * Mathf.Exp(-9f * t);
+                float click = Mathf.Sin(2f * Mathf.PI * 1600f * t) * Mathf.Exp(-400f * t) * 0.25f;
+                buf[(start + i) % n] += (body + click) * Mathf.Min(1f, t / 0.0015f) * gain;
+            }
+        }
+
+        /// <summary>
+        /// A burst of band-limited noise with its own filters and its own seed — hats and snare. Each hit
+        /// is filtered on its own, so no filter memory crosses the loop point, and written with wrap-around.
+        /// </summary>
+        static void NoiseHit(float[] buf, float atSeconds, float seconds, float decay, float gain, int seed,
+                             float lowHz, float highHz, float toneHz = 0f, float toneGain = 0f)
+        {
+            int n = buf.Length;
+            int start = Mathf.RoundToInt(atSeconds * Rate);
+            int len = Mathf.RoundToInt(seconds * Rate);
+            float[] noise = White(len, seed);
+            var hp = new Biquad(); hp.SetHighpass(lowHz, 0.7f, Rate);
+            var lp = new Biquad(); lp.SetLowpass(highHz, 0.7f, Rate);
+            for (int i = 0; i < len; i++)
+            {
+                float t = (float)i / Rate;
+                float s = lp.Process(hp.Process(noise[i])) * Mathf.Exp(-decay * t);
+                if (toneGain > 0f) s += Mathf.Sin(2f * Mathf.PI * toneHz * t) * Mathf.Exp(-25f * t) * toneGain;
+                // A short fade at the tail so a hit cut off by its length does not end on a step.
+                float tail = Mathf.Min(1f, (len - i) / (0.004f * Rate));
+                buf[(start + i) % n] += s * Mathf.Min(1f, t / 0.001f) * tail * gain;
+            }
         }
 
 

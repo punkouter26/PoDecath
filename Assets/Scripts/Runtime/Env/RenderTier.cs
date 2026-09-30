@@ -91,18 +91,15 @@ namespace PoDecath.Env
 
         /// <summary>
         /// The lowest level of detail a phone is allowed to draw as its building. 1 is the decimated
-        /// LOD1 (273k triangles in the glb); 2 is the LOD2 shell (68k).
+        /// LOD1 (273k triangles in the glb); 2 is the LOD2 shell (77k, windows kept, the full building's
+        /// relief and colour baked onto it by whitehouse_facade_bake.py).
         ///
-        /// Measured 2026-09-12 with the sweep: the race scene on the mobile tier draws 712k triangles
-        /// against a 200k target, 3.5x over, and the LOD ceiling is the biggest single lever left. It
-        /// stays at 1 for one reason: the shipped <c>WhiteHouse_LOD2.glb</c> was cut by a rule that
-        /// deletes every window segment (<c>W_*</c>), the cars and the flags outright, so a phone on
-        /// LOD2 would look at a windowless facade from twenty metres. <c>training/tools/whitehouse_lods.py</c>
-        /// now keeps the windows at LOD2 as a hard-decimated mesh instead; once that script has been
-        /// re-run in Blender and the sweep has been re-measured, raise this to 2. Nothing else needs to
-        /// change: BuildingLodBuilder already wires three levels.
+        /// 2 since 2026-09-29. Counted from the race camera over a race (UiShots.VisibleTriangles, camera
+        /// pass only, eight athletes): the building and scenery draw about 160k at ceiling 1 and 70k at 2,
+        /// and the phone athlete skins (athlete_lods.py) take the field from about 220k to 61k, so the
+        /// phone's picture went from about 380k to about 130k against the 200k budget.
         /// </summary>
-        public const int MobileLodCeiling = 1;
+        public const int MobileLodCeiling = 2;
 
         // ------------------------------------------------------------------ budgets
         //

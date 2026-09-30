@@ -116,6 +116,13 @@ namespace PoDecath.EditorTools
 
             // Points, athlete cards and the season on the card; the highlight clip saved under it.
             ShowBuilder.AddSeasonAndClip(dash, results);
+            // A race with a line gets the photo finish under the results heading and the gantry over the line
+            // (its big screen follows whoever the gallery is on). The long jump has neither.
+            if (pit == null)
+            {
+                ShowBuilder.AddPhotoFinish(dash, path, results);
+                ShowBuilder.AddFinishGantry(dash, path, dir);
+            }
 
             AddFrameAndTelemetry(dash);
             return dir;

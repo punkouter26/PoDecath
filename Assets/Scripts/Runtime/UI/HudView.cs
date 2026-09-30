@@ -35,7 +35,7 @@ namespace PoDecath.UI
         public bool statsHiddenAtStart = true;
         [Tooltip("Hands-on scenes get slow motion and a camera toggle. A broadcast scene gets neither.")]
         public bool handsOn = false;
-        public string menuSceneName = "MainMenu";
+        public string menuSceneName = "MAIN";
 
         Label _model, _speed, _distance, _stability, _attempt, _lastResult;
         VisualElement _statsCard;
@@ -50,6 +50,28 @@ namespace PoDecath.UI
 
         /// <summary>Whether the developer card is open. The results modal reads this before hiding it.</summary>
         public bool StatsOpen => _statsCard != null && !_statsCard.ClassListContains("hidden");
+
+        /// <summary>
+        /// The top edge of everything this HUD has along the bottom of the screen (the control row, and the
+        /// stats strip when it is open), in panel pixels; NaN before the first layout or while hidden.
+        ///
+        /// Every document here shares one PanelSettings, so they are one panel and their world
+        /// coordinates are directly comparable. The broadcast overlay used to guess this height as a
+        /// constant (352 px, "cannot be measured from here"); it can, and it is what the lower third now
+        /// sits on, so opening STATS lifts the lower third instead of drawing the badges over it.
+        /// </summary>
+        public float ControlsTop
+        {
+            get
+            {
+                if (!ScreenVisible) return float.NaN;
+                VisualElement bar = Root?.Q<VisualElement>("control-bar");
+                if (bar == null || float.IsNaN(bar.worldBound.yMin) || bar.worldBound.height < 1f) return float.NaN;
+                float top = bar.worldBound.yMin + bar.resolvedStyle.paddingTop;
+                if (StatsOpen && _statsCard.worldBound.height > 1f) top = Mathf.Min(top, _statsCard.worldBound.yMin);
+                return top;
+            }
+        }
 
         protected override void Build()
         {
@@ -187,16 +209,19 @@ namespace PoDecath.UI
             {
                 RaceEvent.Athlete r = dash.Reference;
                 string model = r != null && r.runner != null ? r.runner.ModelName : (r != null ? r.name : "-");
-                SetText(_model, $"{(r != null ? r.name : "event")}  |  {model}");
 
+                // Badges: the number and its unit, nothing else. The key words the card used to print
+                // ("Speed", "Distance") are what the units already say, and the phase moves up to the model
+                // line, which is the one place on the strip with room for a word.
                 bool fell = r != null && r.fell;
-                SetText(_speed, $"{dash.Speed:F2} m/s   {(fell ? "FELL" : dash.Status)}");
-                SetText(_distance, dash.HudDistanceLine());
+                SetText(_model, $"{(r != null ? r.name : "event")}  ·  {model}  ·  {(fell ? "FELL" : dash.Status)}");
+                SetText(_speed, $"{dash.Speed:F2} m/s");
+                SetText(_distance, dash.HudDistanceBadge());
                 SetText(_stability,
-                        fell ? "0 %  (fell)" : $"{dash.Stability * 100f:F0} %",
+                        fell ? "fell" : $"{dash.Stability * 100f:F0}% up",
                         fell ? new Color(1f, 0.3f, 0.25f)
                              : dash.Stability < 0.6f ? new Color(1f, 0.8f, 0.3f) : Color.white);
-                SetText(_attempt, (dash.Attempt + 1).ToString());
+                SetText(_attempt, $"#{dash.Attempt + 1}");
                 return;
             }
 

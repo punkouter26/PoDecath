@@ -48,6 +48,15 @@ namespace PoDecath.Fx
 
         public static string Folder => Path.Combine(Application.persistentDataPath, "clips");
 
+        /// <summary>
+        /// The frames of the last finished clip, oldest first, as palette indices (top row first, into
+        /// <see cref="GifWriter.Palette"/>); null until a race has finished and again once the next attempt
+        /// starts recording over them. The results card plays these as its replay.
+        /// </summary>
+        public IReadOnlyList<byte[]> LastFrames { get; private set; }
+        public int FrameWidth => _w;
+        public int FrameHeight => _h;
+
         RenderTexture _screen, _small;
         byte[][] _ring;
         int _head, _count, _w, _h;
@@ -92,6 +101,7 @@ namespace PoDecath.Fx
             {
                 _lastAttempt = race.Attempt;
                 _recording = true;
+                LastFrames = null;   // the ring is about to be written over
                 _triggered = false;
                 _stopAt = -1f;
                 _count = 0;
@@ -212,6 +222,7 @@ namespace PoDecath.Fx
             var frames = new List<byte[]>(_count);
             int start = (_head - _count + _ring.Length) % _ring.Length;
             for (int i = 0; i < _count; i++) frames.Add(_ring[(start + i) % _ring.Length]);
+            LastFrames = frames;
 
             string evt = ScoringTable.Label(ScoringTable.Classify(race)).Replace(" ", "").ToLowerInvariant();
             string folder = Folder;
