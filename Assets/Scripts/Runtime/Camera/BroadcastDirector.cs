@@ -99,8 +99,19 @@ namespace PoDecath.Cam
         [Tooltip("Shortest hold even an incident or a finisher respects before it takes the picture. Without "
                + "it a pack race with six falls cut to the wide shot six times in fifteen seconds.")]
         public float forcedCutMinHold = 2.5f;
-        [Tooltip("How long the wide shot stays on a fall before the running order resumes.")]
+        [Tooltip("How long a fall is shown on the faller, close up, before the camera goes back to the leader. Not in the closing stretch, which stays on the leader.")]
         public float incidentSeconds = 5f;
+
+        [Header("Closing stretch")]
+        [Tooltip("Share of the race after which the gallery stays on the leader's body, close up, until the race "
+               + "is over (owner, 2026-09-30: \"on the last 20% of the race the camera zooms in on the body of "
+               + "whoever is leading\"). Falls no longer cut away from it. 1 turns the close-up off.")]
+        [Range(0.5f, 1f)] public float closingFraction = 0.8f;
+        [Tooltip("Metres the close-up camera sits in front of its runner, before the lookahead. With the head-on "
+               + "lens (42 deg across) about 4 m in all keeps the whole body, feet included, above the bottom card.")]
+        public float closeLead = 3.2f;
+        [Tooltip("Height of the close-up camera above the deck: chest height, so it looks the runner in the eye.")]
+        public float closeHeight = 1.25f;
 
         [Header("Anticipation")]
         [Tooltip("Cut to a runner about to fall before it does. Off by default since 2026-09-30: in a pack "
@@ -204,6 +215,12 @@ namespace PoDecath.Cam
         float _narrow, _widen;                           // framing nudge: seconds narrow, 0..1 pull-back
 
         public Shot Current { get; private set; } = Shot.StartLine;
+
+        bool _closing, _closeUp;                         // in the closing stretch; the head-on camera is the close-up
+        RaceEvent.Athlete _closeSubject;                 // who the close-up is on, to snap rather than swing on a change
+
+        /// <summary>True while the gallery is on the leader's body for the closing stretch of the race.</summary>
+        public bool InClosingShot => _closing;
         public string CurrentName => Current.ToString();
 
         /// <summary>The viewer's camera choice. Set by the HUD's camera button.</summary>
@@ -422,16 +439,29 @@ namespace PoDecath.Cam
                 ? Pinned
                 : Anticipate(leader, ref cutNow) ?? leader;
 
+            // The closing stretch belongs to the leader's body, close up, and nothing interrupts it. Before
+            // it, a fall is shown on the faller, close up, rather than on the stadium wide, which is 40 m
+            // back and 30 m up and showed the roof rather than anybody on it (owner, 2026-09-30).
+            _closing = InClosingStretch(leader);
+            bool showFaller = !_closing && Pinned == null && _incidentLeft > 0f && faller != null && faller.go != null;
+            if (showFaller) focus = faller;
+            _closeUp = _closing || showFaller;
+            if (_closeUp && focus != _closeSubject) { _snapAim = true; _snapDolly = true; }
+            if (!_closeUp && _closeSubject != null) _snapDolly = true;   // back to the leader in one move, not a glide
+            _closeSubject = _closeUp ? focus : null;
+
             // The aim glides to whoever is on camera rather than teleporting: a lead change swings the
             // aimed cameras through a fraction of a second instead of yanking all of them at once.
             if (focus != null)
             {
                 Vector3 aimTarget = Subject(focus);
-                _aimSmooth = _snapAim ? aimTarget : Vector3.Lerp(_aimSmooth, aimTarget, 1f - Mathf.Exp(-aimGlide * Time.deltaTime));
+                // A close-up aims straight at the chest: the glide trails a runner by a couple of metres, which
+                // from a camera three metres away put the leader against the edge of the frame on a bend.
+                _aimSmooth = _snapAim || _closeUp ? aimTarget : Vector3.Lerp(_aimSmooth, aimTarget, 1f - Mathf.Exp(-aimGlide * Time.deltaTime));
                 _snapAim = false;
                 _leaderSubject.position = _aimSmooth;
             }
-            Featured = _incidentLeft > 0f && faller != null ? faller : focus;
+            Featured = focus;
 
             // The dolly's arc position glides the same way, with wrap handling at the lap line: a raw read
             // of the leader's arc would teleport both moving cameras across the loop the moment one
@@ -518,7 +548,7 @@ namespace PoDecath.Cam
 
             // The framing metric becomes a control: an individual shot that has held fewer than
             // minInFrame runners for over a second pulls itself back until the field is legible again.
-            if (framingNudge && OnIndividual)
+            if (framingNudge && OnIndividual && !_closeUp)   // a close-up is one body in frame on purpose
                 _narrow = AthletesInFrame() < minInFrame ? _narrow + Time.deltaTime : Mathf.Max(0f, _narrow - Time.deltaTime * 2f);
             else
                 _narrow = 0f;
@@ -576,12 +606,21 @@ namespace PoDecath.Cam
             return risky;
         }
 
+        /// <summary>Whether the leader has covered <see cref="closingFraction"/> of the race while it is still being run.</summary>
+        bool InClosingStretch(RaceEvent.Athlete leader)
+        {
+            if (leader == null || race.Current != RaceEvent.Phase.Running || closingFraction >= 1f) return false;
+            return race.raceDistance > 0f && leader.distance / race.raceDistance >= closingFraction;
+        }
+
         Shot Choose(RaceEvent.Athlete leader, int finished, float leaderS)
         {
             if (race.Current == RaceEvent.Phase.Countdown || race.Current == RaceEvent.Phase.Idle) return Shot.StartLine;
             if (race.Current == RaceEvent.Phase.Finished)
                 return reverseCam != null && _finishedAge > finishReverseAfter ? Shot.Reverse : Shot.Finish;
-            if (_incidentLeft > 0f) return Shot.Wide;
+            // The close-up: the leader through the closing stretch, or a faller before it. Both are the head-on
+            // camera brought in to a few metres (PlaceCameras).
+            if (_closeUp) return Shot.HeadOn;
             if (leader == null) return Shot.Finish;
 
             float f = race.raceDistance > 0f ? leader.distance / race.raceDistance : 0f;
@@ -617,7 +656,19 @@ namespace PoDecath.Cam
             // nobody's lane puts them out of frame; ahead so the field chases into shot behind the leader.
             Place(railCam, path.Position(leaderS + railLead + look + extra, 0f) + up * (railHeight + extra * 0.2f));
             Place(bendCam, path.Position(NearestBendApex(leaderS), outward + 3f) + up * bendHeight);
-            Place(headOnCam, path.Position(leaderS + headOnLead + look, 0f) + up * headOnHeight);
+            if (_closeUp && focus != null)
+            {
+                // Close up: a few metres in front of the runner, in the runner's own lane, off the raw arc
+                // position. The glided dolly position trails a runner by about a second of their speed, which
+                // at this distance would put the camera inside them.
+                float s = ArcOf(focus);
+                Vector3 at = focus.IsRL ? focus.rig.BasePosition : focus.go != null ? focus.go.transform.position : path.Position(s);
+                float lane = path.Lateral(at, s);
+                float lead = focus.fell || focus.recovering ? closeLead + 1f : closeLead + look;
+                Place(headOnCam, path.Position(s + lead, lane) + up * closeHeight);
+            }
+            else
+                Place(headOnCam, path.Position(leaderS + headOnLead + look, 0f) + up * headOnHeight);
             Place(finishCam, path.Position(_finishS, outward * 0.8f) + up * finishHeight);
             // Hero: ankle height just off the shoulder. Cable: high above the centre line ahead of the
             // race, the deep shot. Reverse: behind the line, looking back once it is decided.
