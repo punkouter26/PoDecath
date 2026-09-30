@@ -35,9 +35,15 @@ namespace PoDecath.UI
         [Tooltip("Optional. The photo finish shown under the heading. Found in the scene if left empty.")]
         public PhotoFinish photoFinish;
 
-        VisualElement _rootEl, _modal, _rows, _seasonPanel, _seasonRows, _clipLine, _replay, _scrim;
-        Label _title, _subtitle, _seasonTitle, _clipText, _nextLabel;
-        Button _again, _change, _next, _watch;
+        VisualElement _rootEl, _modal, _rows, _seasonPanel, _seasonRows, _replay, _scrim;
+        Label _title, _subtitle, _seasonTitle, _clipText, _nextLabel, _dnf, _shareLabel;
+        Button _again, _change, _next, _watch, _share;
+        string _shareNote = "";
+
+        // Each runner's fastest moment in this race, sampled here because nothing else keeps it per race:
+        // the season card keeps a lifetime best, and the telemetry sampler a ninety-second window.
+        readonly Dictionary<RaceEvent.Athlete, float> _topSpeed = new Dictionary<RaceEvent.Athlete, float>();
+        int _speedAttempt = -1;
 
         // The replay: the clip ring decoded one frame at a time into one texture, at the clip's own rate.
         Texture2D _replayTex;
@@ -68,8 +74,10 @@ namespace PoDecath.UI
             _seasonPanel = Find<VisualElement>("season");
             _seasonRows = Find<VisualElement>("season-rows");
             _seasonTitle = Find<Label>("season-title");
-            _clipLine = Find<VisualElement>("clip");
             _clipText = Find<Label>("clip-text");
+            _dnf = Find<Label>("dnf");
+            _share = Find<Button>("share");
+            _shareLabel = Find<Label>("share-label");
             _replay = Find<VisualElement>("replay");
             _scrim = Find<VisualElement>("scrim");
             _watch = Find<Button>("watch");
@@ -83,6 +91,7 @@ namespace PoDecath.UI
             if (_change != null) _change.clicked += ChangeRunners;
             if (_next != null) _next.clicked += NextEvent;
             if (_watch != null) _watch.clicked += () => Watch(true);
+            if (_share != null) _share.clicked += () => _shareNote = ClipShare.Share(clip != null ? clip.LastClip : null);
             // A tap anywhere on the picture while watching brings the card back.
             _replay?.RegisterCallback<PointerDownEvent>(_ => { if (_watching) Watch(false); });
             if (race != null) race.RaceComplete += Show;
@@ -99,14 +108,45 @@ namespace PoDecath.UI
         protected override void Update()
         {
             base.Update();
+            SampleSpeeds();
             if (clip == null || !ScreenVisible) return;
             TickReplay();
-            // The clip is encoded on a worker thread after the card is already up, so its line is polled
-            // rather than set once: "Saving clip..." turns into the file name when the write finishes.
-            if (_clipLine == null) return;
+            ShareButton();
+        }
+
+        void SampleSpeeds()
+        {
+            if (race == null) return;
+            if (race.Attempt != _speedAttempt) { _speedAttempt = race.Attempt; _topSpeed.Clear(); }
+            if (race.Current != RaceEvent.Phase.Running) return;
+            foreach (RaceEvent.Athlete a in race.Athletes)
+            {
+                if (a.finished || a.fell) continue;
+                _topSpeed.TryGetValue(a, out float best);
+                if (a.speed > best) _topSpeed[a] = a.speed;
+            }
+        }
+
+        /// <summary>
+        /// SHARE, in place of the line that printed the clip's file name. The clip is encoded on a worker
+        /// thread after the card is already up, so the button is polled rather than set once: it reads
+        /// SAVING until the write finishes. The line under the rows only appears to say what a tap did, or
+        /// why there is no clip on this device at all.
+        /// </summary>
+        void ShareButton()
+        {
             string status = clip.Status;
-            Show(_clipLine, !string.IsNullOrEmpty(status));
-            SetText(_clipText, status);
+            bool saved = !string.IsNullOrEmpty(clip.LastClip) && status.StartsWith("Clip saved");
+            bool saving = status == "Saving clip...";
+            Show(_share, saved || saving);
+            _share?.SetEnabled(saved);
+            SetText(_shareLabel, saving ? "SAVING" : "SHARE");
+
+            string note = !string.IsNullOrEmpty(_shareNote) ? _shareNote
+                        : !saved && !saving && !string.IsNullOrEmpty(status) ? status
+                        : "";
+            Show(_clipText, note.Length > 0);
+            SetText(_clipText, note);
         }
 
         void OnDestroy()
@@ -236,39 +276,50 @@ namespace PoDecath.UI
             }
             _rows.Clear();
             _parts.Clear();
+            _shareNote = "";
+            int finishers = 0;
+            foreach (RaceEvent.RaceResult r in results) if (r.finished) finishers++;
             // Past eight rows the card would need to scroll on a phone; compact rows keep sixteen on one screen.
-            bool compact = results.Count > 8;
+            bool compact = finishers > 8;
 
-            for (int i = 0; i < results.Count; i++)
+            int shown = 0;
+            foreach (RaceEvent.RaceResult r in results)
             {
-                RaceEvent.RaceResult r = results[i];
+                if (!r.finished) continue;
                 var row = new VisualElement();
                 row.AddToClassList("result-row");
                 if (compact) row.AddToClassList("result-row--compact");
-                if (r.finished && r.rank <= 3) row.AddToClassList("result-row--podium");
+                if (r.rank <= 3) row.AddToClassList("result-row--podium");
 
-                // A runner who did not finish is dimmed rather than removed: the board has to show that
-                // they were in the race and what happened to them.
-                Color c = r.finished ? r.color : new Color(r.color.r, r.color.g, r.color.b, 0.55f);
-
-                var rank = new Label(r.finished ? r.rank.ToString() : "-");
+                var rank = new Label(r.rank.ToString());
                 rank.AddToClassList("result-rank");
-                rank.style.color = c;
+                rank.style.color = r.color;
 
+                // The name, and under it what this runner did in the race: the numbers that used to live
+                // only on the diagnostics sheet. Left off compact rows, which have no height for a second line.
+                var who = new VisualElement();
+                who.AddToClassList("result-who");
                 var name = new Label(r.name);
                 name.AddToClassList("result-name");
-                name.style.color = c;
+                name.style.color = r.color;
+                who.Add(name);
+                string sub = compact ? "" : RaceLine(r);
+                if (sub.Length > 0)
+                {
+                    var line = new Label(sub);
+                    line.AddToClassList("result-sub");
+                    who.Add(line);
+                }
 
                 var time = new Label(r.Status);
                 time.AddToClassList("result-time");
-                time.style.color = r.finished ? Color.white : new Color(1f, 0.55f, 0.45f);
 
                 // Decathlon points, filled in by Decorate once the season keeper has scored the race.
                 var points = new Label("");
                 points.AddToClassList("result-points");
 
                 row.Add(rank);
-                row.Add(name);
+                row.Add(who);
                 row.Add(time);
                 row.Add(points);
                 _rows.Add(row);
@@ -277,9 +328,10 @@ namespace PoDecath.UI
                 // Rows arrive one after another rather than all at once, fastest at the top: the eye reads
                 // a podium in order, and this puts the order into the animation instead of only the layout.
                 row.style.opacity = 0f;
-                int delay = 40 + i * 45;
+                int delay = 40 + shown++ * 45;
                 row.schedule.Execute(() => row.style.opacity = 1f).StartingIn(delay);
             }
+            OutLine(results);
 
             SetText(_title, "RESULTS");
             // The event words its own sub-heading: a lap race counts finishers, the long jump counts marks.
@@ -308,6 +360,40 @@ namespace PoDecath.UI
                 _modal.EnableInClassList("modal--out", false);
                 _modal.EnableInClassList("modal--in", true);
             }).StartingIn(16);
+        }
+
+        /// <summary>
+        /// Everybody who did not finish, on one line: each name in its own colour and where it went down.
+        /// A runner who did not finish still has to be on the card, because the board has to show that they
+        /// were in the race and what happened to them; it does not need a full row of "DNF, 0 pts" to say so.
+        /// </summary>
+        void OutLine(List<RaceEvent.RaceResult> results)
+        {
+            if (_dnf == null) return;
+            var sb = new System.Text.StringBuilder();
+            foreach (RaceEvent.RaceResult r in results)
+            {
+                if (r.finished) continue;
+                string what = r.Status.StartsWith("DNF ") ? r.Status.Substring(4) : r.Status;
+                sb.Append(sb.Length == 0 ? "" : "  ·  ")
+                  .Append($"<color=#{ColorUtility.ToHtmlStringRGB(r.color)}>{r.name}</color> {what}");
+            }
+            bool any = sb.Length > 0;
+            Show(_dnf, any);
+            if (any) SetText(_dnf, "<b>OUT</b>  " + sb);
+        }
+
+        /// <summary>This runner's race in one line: its fastest moment, how often it got back up, and the work its joints did.</summary>
+        string RaceLine(RaceEvent.RaceResult r)
+        {
+            RaceEvent.Athlete a = null;
+            if (race != null) foreach (RaceEvent.Athlete x in race.Athletes) if (x.name == r.name) { a = x; break; }
+            if (a == null) return "";
+            var parts = new List<string>(3);
+            if (_topSpeed.TryGetValue(a, out float top) && top > 0.1f) parts.Add($"top {top:F1} m/s");
+            if (a.recoveries > 0) parts.Add(a.recoveries == 1 ? "got up once" : $"got up {a.recoveries}x");
+            if (a.effort != null && a.effort.Joules > 0f) parts.Add($"{a.effort.Joules / 1000f:F1} kJ");
+            return string.Join("  ·  ", parts);
         }
 
         /// <summary>
@@ -399,7 +485,7 @@ namespace PoDecath.UI
         {
             if (!visible)
             {
-                _hidStats = hud != null && hud.StatsOpen;
+                _hidStats = hud != null && hud.StatsOn;
                 _hidHud = hud != null && hud.ScreenVisible;
                 _hidOverlay = overlay != null && overlay.ScreenVisible;
                 // The whole HUD, not just the stats card. A Restart button sitting under a modal scrim is

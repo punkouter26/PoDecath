@@ -443,6 +443,31 @@ wrong again:
   synthesised placeholders back.
 - `AthleteRosterBuilder` skips `Assets/Models/Characters/Mobile/`: those are the phone skins, wired as
   `skinOverrideMobile`, not athletes of their own.
+- **One card along the bottom of a race (2026-09-30).** The commentary caption, the lower third and the
+  HUD's stats strip are one element, `lower-third` in `Broadcast.uxml`. STATS sets `HudView.StatsOn`, and in
+  a scene with a `BroadcastView` that is a line on the card (`lower-dev`), not the HUD's badge strip
+  (`HudView.StatsOpen` is only true in the hands-on scenes, which have no overlay). The results card
+  restores `StatsOn`, not `StatsOpen`.
+- **Locking the cameras onto a runner** is `BroadcastDirector.Pin(athlete)` / `Pinned`: a tap on a name in
+  the running order or on the card. It replaces the leader as `focus` in `LateUpdate` and cuts at once
+  through the same `_viewerChanged` path as the CAM button; an incident still takes the picture. It is a
+  camera choice only and touches nothing physical.
+- The running order shows `orderRowsShort` (4) rows: the leaders, plus whoever is on camera on the last row
+  when they are further back. `+n more` opens `orderRows` (8). Rows animate by slot (`_lastSlot`) and
+  flash by place (`_lastPlace`), which are different things once a row can be for the 7th-placed athlete.
+- `TelemetryOverlay.Page` is `Live` / `Settings`. `Agents` and `Frame` were merged into `Live`; the frame
+  counters are a four-across grid under the athlete lines. Anything scripted against the old names
+  (`ui_shots.sh`) was updated.
+- **Athlete portraits**: `PoDecath/Bake Athlete Portraits` (`PortraitBakery`, also run by
+  `Rebuild Athlete Roster`) renders each skin in a `PreviewRenderUtility` to
+  `Assets/UI/Portraits/<name>.png` and sets `AthleteDefinition.portrait`. Two traps on this roster, both
+  from skinned renderers' stored bounds being unrelated to the body: frame from `BakeMesh` vertices, and set
+  `updateWhenOffscreen` or the camera culls a correctly framed body. And `BakeMesh(mesh, true)` *divides*
+  by a renderer scale that sits on the renderer itself (Grandma, Grandpa and Nick carry 0.01 there): bake
+  with `false` and apply position and rotation only.
+- `ClipShare` (results SHARE): Android copies the GIF into `Pictures/PoDecath` through MediaStore and opens
+  the share sheet (no FileProvider, no manifest change); desktop opens the clips folder. The Android path
+  has not been run on a phone yet.
 
 ## Dropping in a new checkpoint
 
@@ -609,21 +634,16 @@ named so nobody has to rediscover it.
     rig. The MJCF is the authority, and the repair for an overlap is to add one more named pair — never a
     layer-wide ignore, which silently switches off the whole body rather than the one pair.
 
-    **Two gaps against this rule, both in the layer matrix rather than in the rig code.** Neither is a
-    silent fix: both change how a body behaves, and every policy here was trained against a specific
-    contact model, so each is an owner decision.
-    - `RooftopSceneBuilder.BuildScene` runs `Physics.IgnoreLayerCollision(Creature, Creature, true)` at the
-      top of every scene build, and `ProjectSettings/DynamicsManager.asset` has it baked in (layer 8
-      collides with every layer except 8). So today a creature's own parts **do not touch each other at
-      all**, which contradicts the MJCF and makes `ApplyContactExcludes` inert — the exclude list is
-      already implied by the wider ignore. It also contradicts `AthleteSpawner.Awake`'s own comment that
-      self-collision is on. Restoring the MJCF behaviour means deleting that one line *and* clearing the
-      bit in the matrix, then re-measuring.
-    - `AthleteSpawner.IgnoreBetweenAthletes` disables every pair of athletes against every other at spawn.
-      That is deliberate: training only ever sees one body on an empty plane, so no policy has an answer
-      for a shoulder charge, and the symptom of turning it on now would be "the policy got worse when the
-      runners got close" — which reads as a training failure. Enabling it needs a task that trains for
-      contact first.
+    **Both former gaps are closed (2026-09-14 in code, confirmed as owner policy 2026-09-30).**
+    `RooftopSceneBuilder.BuildScene` now calls `Physics.IgnoreLayerCollision(Creature, Creature, false)`,
+    so a creature's own parts collide except the MJCF's excluded pairs, and athletes collide with each
+    other (`AthleteSpawner.collideWithOtherAthletes`, default on; `IgnoreBetweenAthletes` only runs when it
+    is off). Owner, 2026-09-30: "I want realistic collisions. It is ok if they fall down from hitting other
+    players." So contact stays on even though no policy has trained for it. Measured that day on
+    `RooftopRace` (8 runners, 5 lanes, two rows): 4 of 8 fall with contact, every one of them in the
+    lanes that run into another body (4, 5, 7, 8, identical across characters), and 0 of 8 without. Pack
+    falls are expected; the fixes are a working get-up (`RecoveryController`) and a contact-trained
+    policy, never switching contact off.
 
 ### Keeping the editor awake
 
@@ -711,9 +731,9 @@ the file), named `<yyyy-mm-dd>-<topic>.html`, and linked in the reply.
   `<contact><exclude>`, which `MjcfImporter.ApplyContactExcludes` mirrors onto PhysX. PhysX only skips
   parent-child link pairs, and the intermediate hinge links break that adjacency, so pelvis/thigh capsules
   otherwise collide and force the hips to their abduction limits — which is precisely what the exclude list
-  exists to prevent. But `RooftopSceneBuilder` still calls `Physics.IgnoreLayerCollision(Creature, Creature,
-  true)` at the head of every build, so the **layer-wide ignore is what is actually in effect** and the
-  per-pair excludes never get a chance to matter. See house rule 19.
+  exists to prevent. `RooftopSceneBuilder` now clears the old layer-wide ignore at the head of every build
+  (`IgnoreLayerCollision(Creature, Creature, false)`), so the per-pair excludes are what is in effect. See
+  house rule 19.
 - **Never edit scripts while play mode is running.** The Editor's recompile-and-continue keeps serialized
   fields but drops plain C# objects (Inference Engine worker, observation builder). `PolicyRunner` now
   re-initializes itself when that happens, but any measurement taken in that session is suspect.

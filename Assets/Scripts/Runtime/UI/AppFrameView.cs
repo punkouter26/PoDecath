@@ -16,7 +16,7 @@ namespace PoDecath.UI
     /// Two of the five are live. The frame rate is sampled here rather than read off the diagnostics
     /// overlay, because the overlay is closed almost all of the time and a frame counter that only works
     /// while the profiler is open is not a frame counter. And DEBUG wears the worst grade the agent
-    /// telemetry has found, so a policy running with a mis-scaled observation is visible from the corner
+    /// telemetry has found as a dot in its corner, so a policy running with a mis-scaled observation is visible from the corner
     /// of the screen without opening anything — which is the difference between a diagnostic somebody
     /// checks and a diagnostic somebody remembers to check.
     /// </summary>
@@ -47,6 +47,7 @@ namespace PoDecath.UI
 
         Label _title, _fps, _version;
         Button _menu, _debug;
+        VisualElement _debugDot;
 
         TelemetryOverlay _telemetry;
         AgentTelemetry _agents;
@@ -69,9 +70,18 @@ namespace PoDecath.UI
             SetText(_version, VersionLine());
 
             if (_menu != null) _menu.clicked += OnMenu;
-            if (_debug != null) _debug.clicked += OnDebug;
-            // The frame rate is a door as well as a reading: a tap opens the diagnostics straight onto its
-            // FRAME page, which is the one place a phone can see draw calls, memory and the 1% low.
+            if (_debug != null)
+            {
+                _debug.clicked += OnDebug;
+                // The grade is a dot in the button's corner rather than a "!" in its word, so the word stays
+                // one width and the colour does the reporting.
+                _debugDot = new VisualElement { pickingMode = PickingMode.Ignore };
+                _debugDot.AddToClassList("frame-dot");
+                _debug.Add(_debugDot);
+                _debug.AddToClassList("frame-btn--dotted");
+            }
+            // The frame rate is a door as well as a reading: a tap opens the diagnostics, whose LIVE page is
+            // the one place a phone can see draw calls, memory and the 1% low.
             if (_fps != null)
             {
                 _fps.pickingMode = PickingMode.Position;
@@ -127,34 +137,36 @@ namespace PoDecath.UI
             SetText(_fps, Chip(_shownFps));
             if (_fps != null)
             {
-                bool good = _shownFps >= targetFps * 0.95f;
-                bool bad = _shownFps < targetFps * 0.66f;
+                // Grey until there is a reading: a red "--" on the menu read as a fault when nothing was wrong.
+                bool measured = _shownFps > 0f;
+                bool good = measured && _shownFps >= targetFps * 0.95f;
+                bool bad = measured && _shownFps < targetFps * 0.66f;
                 _fps.EnableInClassList("frame-fps--good", good);
-                _fps.EnableInClassList("frame-fps--warn", !good && !bad);
+                _fps.EnableInClassList("frame-fps--warn", measured && !good && !bad);
                 _fps.EnableInClassList("frame-fps--bad", bad);
             }
 
             if (_debug != null)
             {
                 AgentTelemetry.Grade g = _agents != null ? _agents.HeadlineGrade : AgentTelemetry.Grade.Neutral;
-                _debug.EnableInClassList("frame-btn--warn", g == AgentTelemetry.Grade.Warn);
-                _debug.EnableInClassList("frame-btn--bad", g == AgentTelemetry.Grade.Bad);
+                _debugDot?.EnableInClassList("frame-dot--good", g == AgentTelemetry.Grade.Good);
+                _debugDot?.EnableInClassList("frame-dot--warn", g == AgentTelemetry.Grade.Warn);
+                _debugDot?.EnableInClassList("frame-dot--bad", g == AgentTelemetry.Grade.Bad);
                 _debug.EnableInClassList("frame-btn--open", _telemetry != null && _telemetry.ScreenVisible);
-                _debug.text = g == AgentTelemetry.Grade.Bad ? "DEBUG !" : "DEBUG";
             }
         }
 
         /// <summary>
-        /// The device chip: frame rate, frame time and, on a device that reports one, the battery. Frame
-        /// time is the number a phone build is tuned against (a 60 Hz budget is 16.7 ms), and the battery
-        /// is the cheapest thermal proxy there is without a vendor plug-in: a race that costs 3% is a race
-        /// that is cooking the phone.
+        /// The device chip: frame rate and, on a device that reports one, the battery, which is the
+        /// cheapest thermal proxy there is without a vendor plug-in: a race that costs 3% is a race that is
+        /// cooking the phone. The frame time it used to print as well is one tap away, on the LIVE page it
+        /// opens, and without it the chip is half as wide.
         /// </summary>
         static string Chip(float fps)
         {
-            string s = fps > 0f ? $"{fps:F0} FPS  {1000f / fps:F1} ms" : "-- FPS";
+            string s = fps > 0f ? $"{fps:F0} FPS" : "-- FPS";
             float battery = SystemInfo.batteryLevel;
-            if (battery >= 0f) s += $"  {battery * 100f:F0}%";
+            if (battery >= 0f) s += $"  ·  {battery * 100f:F0}%";
             return s;
         }
 
@@ -174,7 +186,7 @@ namespace PoDecath.UI
             Rewire();
             if (_telemetry == null) return;
             if (_telemetry.ScreenVisible) _telemetry.SetScreenVisible(false);
-            else _telemetry.Open(TelemetryOverlay.Page.Frame);
+            else _telemetry.Open(TelemetryOverlay.Page.Live);
         }
 
         void OnMenu()

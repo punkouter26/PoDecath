@@ -60,16 +60,23 @@ shot race
 ev 'PoDecath.EditorTools.UiShots.Call("HudView","ToggleStats")' >/dev/null
 shot race_stats
 ev 'PoDecath.EditorTools.UiShots.Call("HudView","ToggleStats")' >/dev/null
-ev 'PoDecath.EditorTools.UiShots.Call("TelemetryOverlay","Open", PoDecath.Diag.TelemetryOverlay.Page.Agents)' >/dev/null
+# CHAOS pops GUST / SHOVE / SLICK up over the control row.
+ev 'PoDecath.EditorTools.UiShots.Call("HudView","SetChaosOpen", true)' >/dev/null
+step 10
+shot race_chaos
+ev 'PoDecath.EditorTools.UiShots.Call("HudView","SetChaosOpen", false)' >/dev/null
+# A tap on a name locks the cameras onto that runner; "+n more" opens the whole order.
+ev 'PoDecath.EditorTools.UiShots.Call("BroadcastView","PinPlace", 5, true)' >/dev/null
+step 40
+shot race_pinned
+ev 'PoDecath.EditorTools.UiShots.Call("BroadcastView","PinPlace", -1, false)' >/dev/null
+ev 'PoDecath.EditorTools.UiShots.Call("TelemetryOverlay","Open", PoDecath.Diag.TelemetryOverlay.Page.Live)' >/dev/null
 step 30
-shot debug_agents
+shot debug_live
 ev 'PoDecath.EditorTools.UiShots.Call("TelemetryOverlay","Select", 0)' >/dev/null
 step 30
 shot debug_agent_card
 ev 'PoDecath.EditorTools.UiShots.Call("TelemetryOverlay","Select", -1)' >/dev/null
-ev 'PoDecath.EditorTools.UiShots.Call("TelemetryOverlay","Open", PoDecath.Diag.TelemetryOverlay.Page.Frame)' >/dev/null
-step 30
-shot debug_frame
 ev 'PoDecath.EditorTools.UiShots.Call("TelemetryOverlay","SetScreenVisible", false)' >/dev/null
 
 # To the finish and the results card.

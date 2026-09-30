@@ -3,12 +3,17 @@
     The card that comes up once every runner has finished or fallen. Rows are built in ResultsView from
     DashEvent.Results, so a field of two and a field of sixteen both fit without a pre-built row per slot.
 
-    No scrolling: a field past eight rows switches to compact rows (ResultsView adds the compact
+    No scrolling: a field past eight finishers switches to compact rows (ResultsView adds the compact
     modifier class to each row), so sixteen finishers still fit inside the modal on a portrait phone.
+
+    One row per finisher, and one line for everybody who did not finish: four fallers used to be four
+    full rows of "DNF fell at 92 m, 0 pts". The height that saves goes to each finisher's own numbers from
+    the race (top speed, times back up off the deck, work done), which used to live only on the
+    diagnostics sheet.
 
     The replay is the highlight clip of this race, looping full-bleed behind the card, so results and the
     replay are one screen rather than a file name on a line. REPLAY takes the card off it; a tap on the
-    picture puts the card back.
+    picture puts the card back. SHARE hands the saved clip to the phone's share sheet.
 
     Never write a double hyphen inside one of these comments. XML forbids it, the importer throws, and
     the whole file lands as an EMPTY VisualTreeAsset (0.2 kb, against 8 to 16 kb for the other screens),
@@ -35,6 +40,9 @@
 
                 <ui:VisualElement name="rows" class="results-rows" />
 
+                <!-- Everybody who did not finish, on one line: name and where they went down. -->
+                <ui:Label name="dnf" class="results-dnf hidden" text="" />
+
                 <!-- The season table, when this race was a leg of one. Filled by ResultsView from SeasonStore. -->
                 <ui:VisualElement name="season" class="season-panel hidden">
                     <ui:VisualElement class="season-head">
@@ -44,11 +52,8 @@
                     <ui:VisualElement name="season-rows" />
                 </ui:VisualElement>
 
-                <!-- Where the highlight clip went. Hidden until HighlightClip has something to say. -->
-                <ui:VisualElement name="clip" class="clip-line hidden">
-                    <ui:VisualElement class="clip-icon" />
-                    <ui:Label name="clip-text" class="clip-text" text="" />
-                </ui:VisualElement>
+                <!-- What SHARE did, or why there is no clip. Hidden until there is something to say. -->
+                <ui:Label name="clip-text" class="clip-text hidden" text="" />
 
                 <ui:VisualElement class="row results-actions">
                     <ui:Button name="next" class="btn btn--primary btn--tool hidden">
@@ -62,6 +67,10 @@
                     <ui:Button name="watch" class="btn btn--ghost btn--tool hidden">
                         <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/video.png');" />
                         <ui:Label class="btn-label" text="REPLAY" />
+                    </ui:Button>
+                    <ui:Button name="share" class="btn btn--ghost btn--tool hidden">
+                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/share1.png');" />
+                        <ui:Label name="share-label" class="btn-label" text="SHARE" />
                     </ui:Button>
                     <ui:Button name="change" class="btn btn--ghost btn--tool">
                         <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/multiplayer.png');" />

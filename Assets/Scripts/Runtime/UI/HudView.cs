@@ -7,13 +7,14 @@ using PoDecath.Sim;
 namespace PoDecath.UI
 {
     /// <summary>
-    /// The in-race HUD in UI Toolkit: the developer stats card, and the control bar under it.
+    /// The in-race HUD in UI Toolkit: one row of controls along the bottom, the viewer's disturbances in a
+    /// row that CHAOS pops up above it, and the developer stats.
     ///
-    /// In a broadcast scene the card starts put away and the overlay is the picture; the card is what you
-    /// open to judge how a policy is actually running. In the hands-on development scenes it is up from the
-    /// start and the bar carries slow-motion and the camera toggle as well.
+    /// Where there is a broadcast overlay the stats are not drawn here: STATS puts the developer line on the
+    /// overlay's card for whoever is on camera (<see cref="StatsOn"/>), and this HUD's own badge strip is
+    /// for the hands-on development scenes, which have no overlay and leave it up from the start.
     ///
-    /// Text refresh runs at 10 Hz, and stops entirely while the card is closed — there is no point building
+    /// Text refresh runs at 10 Hz, and stops entirely while the strip is closed — there is no point building
     /// strings for something nobody is looking at.
     /// </summary>
     [DefaultExecutionOrder(128)]
@@ -31,34 +32,51 @@ namespace PoDecath.UI
         public BroadcastDirector director;
 
         [Header("Layout")]
-        [Tooltip("Broadcast scenes hide the card until it is asked for; the dev scenes leave it up.")]
+        [Tooltip("Broadcast scenes hide the stats until they are asked for; the dev scenes leave them up.")]
         public bool statsHiddenAtStart = true;
         [Tooltip("Hands-on scenes get slow motion and a camera toggle. A broadcast scene gets neither.")]
         public bool handsOn = false;
         public string menuSceneName = "MAIN";
 
+        [Header("Timing")]
+        [Tooltip("Seconds the CHAOS row stays up after it was opened or last used.")]
+        public float chaosOpenSeconds = 6f;
+        [Tooltip("Seconds RESTART waits for its second tap during a race.")]
+        public float restartConfirmSeconds = 3f;
+
         Label _model, _speed, _distance, _stability, _attempt, _lastResult;
         VisualElement _statsCard;
         Button _restart, _stats, _slowMo, _camera, _menu;
+        Label _restartLabel;
 
-        VisualElement _chaosBar;
-        Button _gust, _shove, _slick, _cam;
+        VisualElement _chaosBar, _chaosPop;
+        Button _chaos, _gust, _shove, _slick, _cam;
         Label _gustLabel, _shoveLabel, _slickLabel, _camLabel;
 
         bool _slow;
+        bool _statsOn;
+        bool _overlayCarriesStats;
+        float _chaosCloseAt = -1f;
+        float _restartArmedUntil = -1f;
         float _nextRefresh;
 
-        /// <summary>Whether the developer card is open. The results modal reads this before hiding it.</summary>
-        public bool StatsOpen => _statsCard != null && !_statsCard.ClassListContains("hidden");
+        /// <summary>
+        /// Whether STATS is on. With a broadcast overlay in the scene that is a line on its card, not this
+        /// HUD's strip; the results card reads it to put back what it put away.
+        /// </summary>
+        public bool StatsOn => _statsOn;
+
+        /// <summary>Whether this HUD's own badge strip is on the screen.</summary>
+        public bool StatsOpen => _statsOn && !_overlayCarriesStats;
 
         /// <summary>
-        /// The top edge of everything this HUD has along the bottom of the screen (the control row, and the
-        /// stats strip when it is open), in panel pixels; NaN before the first layout or while hidden.
+        /// The top edge of everything this HUD has along the bottom of the screen (the control row, the
+        /// CHAOS row when it is up, and the stats strip when it is open), in panel pixels; NaN before the
+        /// first layout or while hidden.
         ///
         /// Every document here shares one PanelSettings, so they are one panel and their world
-        /// coordinates are directly comparable. The broadcast overlay used to guess this height as a
-        /// constant (352 px, "cannot be measured from here"); it can, and it is what the lower third now
-        /// sits on, so opening STATS lifts the lower third instead of drawing the badges over it.
+        /// coordinates are directly comparable. The broadcast card sits on this, so opening CHAOS lifts
+        /// the card instead of drawing the buttons over it.
         /// </summary>
         public float ControlsTop
         {
@@ -69,9 +87,12 @@ namespace PoDecath.UI
                 if (bar == null || float.IsNaN(bar.worldBound.yMin) || bar.worldBound.height < 1f) return float.NaN;
                 float top = bar.worldBound.yMin + bar.resolvedStyle.paddingTop;
                 if (StatsOpen && _statsCard.worldBound.height > 1f) top = Mathf.Min(top, _statsCard.worldBound.yMin);
+                if (ChaosOpen && _chaosPop.worldBound.height > 1f) top = Mathf.Min(top, _chaosPop.worldBound.yMin);
                 return top;
             }
         }
+
+        bool ChaosOpen => _chaosPop != null && !_chaosPop.ClassListContains("hidden");
 
         protected override void Build()
         {
@@ -84,6 +105,7 @@ namespace PoDecath.UI
             _lastResult = Find<Label>("last-result");
 
             _restart = Find<Button>("restart");
+            _restartLabel = Find<Label>("restart-label");
             _stats = Find<Button>("stats");
             _slowMo = Find<Button>("slowmo");
             _camera = Find<Button>("camera");
@@ -95,12 +117,16 @@ namespace PoDecath.UI
             if (_camera != null) _camera.clicked += OnCamera;
             if (_menu != null) _menu.clicked += OnMenu;
 
+            // A broadcast scene has a card for the athlete on camera, and the developer line goes there.
+            _overlayCarriesStats = !handsOn && FindFirstObjectByType<BroadcastView>(FindObjectsInactive.Include) != null;
+
             // Slow motion and the camera toggle are development controls; a broadcast scene has a director
             // and no reason to offer either.
             Show(_slowMo, handsOn);
             Show(_camera, handsOn && cameraRig != null);
             Show(_stats, !handsOn);
-            Show(_statsCard, !statsHiddenAtStart);
+            _statsOn = !statsHiddenAtStart;
+            Show(_statsCard, StatsOpen);
 
             // The frame carries a MENU in the top right of every screen in the game. Where it is present
             // this one is a second button, in a second place, doing the same job -- and until both were
@@ -117,12 +143,15 @@ namespace PoDecath.UI
 
         /// <summary>
         /// The viewer's buttons. The three disturbances go through <see cref="ViewerChaos"/>, which owns the
-        /// physics and the cooldowns; the camera picker cycles the director's viewer camera. Both are
-        /// optional, and the bar is only on the picture when at least one of them is wired.
+        /// physics and the cooldowns, and live in the row CHAOS pops up; the camera picker cycles the
+        /// director's viewer camera. Both are optional, and the group is only on the picture when at least
+        /// one of them is wired.
         /// </summary>
         void BuildChaosBar()
         {
             _chaosBar = Find<VisualElement>("chaos-bar");
+            _chaosPop = Find<VisualElement>("chaos-pop");
+            _chaos = Find<Button>("chaos");
             _gust = Find<Button>("gust");
             _shove = Find<Button>("shove");
             _slick = Find<Button>("slick");
@@ -132,17 +161,31 @@ namespace PoDecath.UI
             _slickLabel = Find<Label>("slick-label");
             _camLabel = Find<Label>("cam-label");
 
-            if (_gust != null) _gust.clicked += () => chaos?.Fire(ViewerChaos.Act.Gust);
-            if (_shove != null) _shove.clicked += () => chaos?.Fire(ViewerChaos.Act.Shove);
-            if (_slick != null) _slick.clicked += () => chaos?.Fire(ViewerChaos.Act.Slick);
+            if (_chaos != null) _chaos.clicked += () => SetChaosOpen(!ChaosOpen);
+            if (_gust != null) _gust.clicked += () => Fire(ViewerChaos.Act.Gust);
+            if (_shove != null) _shove.clicked += () => Fire(ViewerChaos.Act.Shove);
+            if (_slick != null) _slick.clicked += () => Fire(ViewerChaos.Act.Slick);
             if (_cam != null) _cam.clicked += OnViewerCam;
 
             Show(_chaosBar, !handsOn && (chaos != null || director != null));
-            Show(_gust, chaos != null);
-            Show(_shove, chaos != null);
-            Show(_slick, chaos != null);
+            Show(_chaos, chaos != null);
             Show(_cam, director != null);
+            SetChaosOpen(false);
             RefreshChaos();
+        }
+
+        /// <summary>Opens or closes the disturbance row. It closes itself a few seconds after its last use.</summary>
+        public void SetChaosOpen(bool open)
+        {
+            Show(_chaosPop, open && chaos != null);
+            _chaos?.EnableInClassList("btn--on", open && chaos != null);
+            _chaosCloseAt = open ? Time.unscaledTime + chaosOpenSeconds : -1f;
+        }
+
+        void Fire(ViewerChaos.Act act)
+        {
+            chaos?.Fire(act);
+            _chaosCloseAt = Time.unscaledTime + chaosOpenSeconds;
         }
 
         void OnViewerCam()
@@ -178,24 +221,27 @@ namespace PoDecath.UI
         }
 
         /// <summary>
-        /// Opens or closes the developer card. In the broadcast scenes it is the second view of a race, not
+        /// Turns the developer stats on or off. In the broadcast scenes it is the second view of a race, not
         /// the first: the overlay carries the event, and this is the answer to "but how is it actually
         /// doing?".
         /// </summary>
-        public void ToggleStats()
-        {
-            if (_statsCard == null) return;
-            bool show = _statsCard.ClassListContains("hidden");
-            Show(_statsCard, show);
-            if (show) Refresh();
-        }
+        public void ToggleStats() => SetStatsVisible(!_statsOn);
 
         /// <summary>Used by the results card, which puts the HUD away and then puts back what it took.</summary>
-        public void SetStatsVisible(bool visible) => Show(_statsCard, visible);
+        public void SetStatsVisible(bool visible)
+        {
+            _statsOn = visible;
+            Show(_statsCard, StatsOpen);
+            _stats?.EnableInClassList("btn--on", visible);
+            if (StatsOpen) Refresh();
+        }
 
         protected override void Update()
         {
             base.Update();
+            if (_chaosCloseAt > 0f && Time.unscaledTime > _chaosCloseAt) SetChaosOpen(false);
+            if (_restartArmedUntil > 0f && Time.unscaledTime > _restartArmedUntil) ArmRestart(false);
+
             if (Time.unscaledTime < _nextRefresh) return;
             _nextRefresh = Time.unscaledTime + 0.1f;
             RefreshChaos();
@@ -239,9 +285,24 @@ namespace PoDecath.UI
                 : "Last: " + summary);
         }
 
+        /// <summary>
+        /// During a race the first tap arms RESTART ("SURE?") and only a second tap inside a few seconds
+        /// throws the race away. Between races there is nothing to lose, and one tap restarts.
+        /// </summary>
         void OnRestart()
         {
-            if (dash != null) dash.RestartNow();
+            if (dash == null) return;
+            bool live = dash.Current == RaceEvent.Phase.Running || dash.Current == RaceEvent.Phase.Countdown;
+            if (live && _restartArmedUntil < 0f) { ArmRestart(true); return; }
+            ArmRestart(false);
+            dash.RestartNow();
+        }
+
+        void ArmRestart(bool armed)
+        {
+            _restartArmedUntil = armed ? Time.unscaledTime + restartConfirmSeconds : -1f;
+            SetText(_restartLabel, armed ? "SURE?" : "RESTART");
+            _restart?.EnableInClassList("btn--armed", armed);
         }
 
         void SetSlowMo(bool slow)

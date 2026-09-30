@@ -22,5 +22,6 @@ MonoBehaviour:
   boneMap: []
   skinRootEuler: {x: 0, y: 90, z: 0}
   skinScale: 0
+  portrait: {fileID: 2800000, guid: cf2cc9e513430d942820148430397b7c, type: 3}
   customTexture: {fileID: 0}
   customTint: {r: 1, g: 1, b: 1, a: 1}

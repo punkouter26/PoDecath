@@ -36,12 +36,12 @@ namespace PoDecath.Cam
                + "the caller, so this is the amplitude of the biggest shake the game can produce. Watched "
                + "in a full race on 2026-09-14 the old 0.55 read as a faulty camera on some angles; the "
                + "shakes that survive the higher floor below are real wrecks and can be this small.")]
-        public float metresPerSecond = 0.4f;
+        public float metresPerSecond = 0.15f;
 
         [Tooltip("Shakes weaker than this are dropped rather than played, so a field of sixteen scuffing "
                + "hurdles does not leave the camera permanently trembling. Raised from 0.08 after the same "
                + "race watch: routine contacts were firing constantly.")]
-        public float minStrength = 0.18f;
+        public float minStrength = 0.35f;
 
         [Tooltip("Shortest gap between two shakes. Without it a single fall — which is a dozen contacts "
                + "over a few frames — fires a dozen overlapping impulses and reads as a camera fault.")]

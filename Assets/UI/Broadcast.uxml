@@ -2,84 +2,95 @@
 <!--
     The furniture a televised event carries over the picture, top to bottom:
 
-        top strip      the event, where it has got to, the clock
-        left column    the running order
+        top strip      one line: the event and where it has got to, who leads, the clock
+        left column    the running order, short: the top three and whoever is on camera
         right column   the track map (every athlete as a dot on the loop), then the splits board
-        bottom         the commentary caption, then the lower third for whoever is on camera
+        bottom         one card: what the commentary is saying, then whoever is on camera
 
     Only the containers are declared here; the rows in the running order and the splits board are made in
     BroadcastView from a count that depends on the field, and the map is painted with the mesh API.
+
+    One card at the bottom, not three. The caption, the lower third and the HUD stats strip used to be
+    three stacked panels, and two of them printed speed and distance for two different athletes. The card
+    carries the caption line and the athlete on camera; STATS adds the developer line to the same card.
+    Tapping the card locks the cameras onto that athlete, and a tap on a name in the running order locks
+    them onto that one; a second tap on the card lets the director choose again.
 -->
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Theme.uss" />
 
-    <ui:VisualElement name="root" class="root">
+    <ui:VisualElement name="root" class="root" picking-mode="Ignore">
         <!-- bcast-body pads the top clear of the frame's row: without it the stage and the clock were drawn
              underneath the game name and MENU, and the clock was unreadable for the whole race. It is a wrapper
              rather than padding on "safe" because UiRoot writes the safe-area insets onto that element inline. -->
-        <ui:VisualElement name="safe" class="safe">
-        <ui:VisualElement name="body" class="bcast-body">
+        <ui:VisualElement name="safe" class="safe" picking-mode="Ignore">
+        <ui:VisualElement name="body" class="bcast-body" picking-mode="Ignore">
 
-            <!-- Top bar: what the event is, where it has got to, and the clock. -->
-            <ui:VisualElement name="top-bar" class="bcast-top">
-                <ui:VisualElement class="col fill">
-                    <ui:Label name="stage" class="bcast-stage" text="100 M" />
-                    <ui:Label name="lead" class="bcast-lead" text="" />
-                </ui:VisualElement>
-                <ui:Label name="clock" class="bcast-clock" text="0.00" style="min-width: 260px;" />
+            <!-- Top bar, one line: what the event is and where it has got to, who leads, the clock. -->
+            <ui:VisualElement name="top-bar" class="bcast-top" picking-mode="Ignore">
+                <ui:Label name="stage" class="bcast-stage" text="100 M" picking-mode="Ignore" />
+                <ui:Label name="lead" class="bcast-lead" text="" picking-mode="Ignore" />
+                <ui:Label name="clock" class="bcast-clock" text="0.00" picking-mode="Ignore" />
             </ui:VisualElement>
 
             <!-- Running order on the left, map and splits stacked on the right. -->
-            <ui:VisualElement class="row" style="align-items: flex-start;">
+            <ui:VisualElement class="row" style="align-items: flex-start;" picking-mode="Ignore">
                 <ui:VisualElement name="order" class="order">
-                    <ui:Label class="label-micro" text="ORDER" style="margin-left: 8px; margin-bottom: 4px;" />
                     <ui:VisualElement name="order-rows" />
-                    <ui:Label name="overflow" class="label-micro hidden" text="" style="margin-left: 8px;" />
+                    <!-- "+4 more": a tap opens the whole order, a second tap puts it back to four. -->
+                    <ui:Label name="overflow" class="order-more hidden" text="" />
                 </ui:VisualElement>
 
-                <ui:VisualElement name="right" class="bcast-right">
-                    <ui:VisualElement name="track-map" class="bcast-map" />
+                <ui:VisualElement name="right" class="bcast-right" picking-mode="Ignore">
+                    <ui:VisualElement name="track-map" class="bcast-map" picking-mode="Ignore" />
 
-                    <ui:VisualElement name="splits" class="splits">
-                        <ui:Label class="label-micro" text="SPLITS" style="margin-left: 8px; margin-bottom: 4px;" />
-                        <ui:VisualElement name="split-rows" />
+                    <ui:VisualElement name="splits" class="splits" picking-mode="Ignore">
+                        <ui:Label class="label-micro" text="SPLITS" style="margin-left: 8px; margin-bottom: 4px;" picking-mode="Ignore" />
+                        <ui:VisualElement name="split-rows" picking-mode="Ignore" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
 
-            <ui:VisualElement class="spacer" />
+            <ui:VisualElement class="spacer" picking-mode="Ignore" />
 
-            <!--
-                What the commentary is saying. Always drawn, on every platform: most of them have no system
-                voice at all, and a caption is the only part of the commentary that survives the sound
-                being off or a screenshot being taken.
-            -->
-            <ui:VisualElement name="caption" class="caption caption--out">
-                <ui:Label name="caption-text" class="caption-text" text="" />
-            </ui:VisualElement>
-
-            <!-- Lower third: who the gallery has cut to. Wipes in from the left on every cut. -->
+            <!-- The card: the caption, then who the gallery is on. Wipes in from the left on every cut. -->
             <ui:VisualElement name="lower-third" class="lower-third lower-third--out">
-                <ui:Label name="lower-name" class="lower-name" text="" />
-                <ui:Label name="lower-detail" class="lower-detail" text="" />
-
                 <!--
-                    Strain: the featured athlete's joint torque as a fraction of what its drives are
-                    allowed to produce. The fill is the reading; the tick behind it is where fatigue has
-                    got to. Hidden on an athlete with no effort meter.
+                    What the commentary is saying. Always drawn, on every platform: most of them have no
+                    system voice at all, and a caption is the only part of the commentary that survives the
+                    sound being off or a screenshot being taken.
                 -->
-                <ui:VisualElement name="strain" class="strain">
-                    <ui:Label class="label-micro" text="STRAIN" />
-                    <ui:VisualElement name="strain-track" class="strain-track">
-                        <ui:VisualElement name="strain-fill" class="strain-fill" />
+                <ui:Label name="caption-text" class="caption-text hidden" text="" picking-mode="Ignore" />
+
+                <ui:VisualElement name="lower-athlete" picking-mode="Ignore">
+                    <ui:VisualElement class="row" picking-mode="Ignore">
+                        <ui:Label name="lower-name" class="lower-name" text="" picking-mode="Ignore" />
+                        <ui:VisualElement class="spacer" picking-mode="Ignore" />
+                        <ui:Label name="lower-pin" class="lower-pin hidden" text="LOCKED" picking-mode="Ignore" />
                     </ui:VisualElement>
-                    <ui:Label name="strain-value" class="strain-value" text="" />
+                    <ui:Label name="lower-detail" class="lower-detail" text="" picking-mode="Ignore" />
+
+                    <!--
+                        Strain: the featured athlete's joint torque as a fraction of what its drives are
+                        allowed to produce. The fill is the reading; the tick behind it is where fatigue has
+                        got to. Hidden on an athlete with no effort meter.
+                    -->
+                    <ui:VisualElement name="strain" class="strain" picking-mode="Ignore">
+                        <ui:Label class="label-micro" text="STRAIN" picking-mode="Ignore" />
+                        <ui:VisualElement name="strain-track" class="strain-track" picking-mode="Ignore">
+                            <ui:VisualElement name="strain-fill" class="strain-fill" picking-mode="Ignore" />
+                        </ui:VisualElement>
+                        <ui:Label name="strain-value" class="strain-value" text="" picking-mode="Ignore" />
+                    </ui:VisualElement>
+
+                    <!-- STATS: the policy driving this body and how upright it is, on the same card. -->
+                    <ui:Label name="lower-dev" class="lower-dev hidden" text="" picking-mode="Ignore" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
         </ui:VisualElement>
 
         <!-- Outside the safe area on purpose: the countdown is centred on the picture, not on the layout. -->
-        <ui:Label name="countdown" class="countdown countdown--off" text="3" />
+        <ui:Label name="countdown" class="countdown countdown--off" text="3" picking-mode="Ignore" />
     </ui:VisualElement>
 </ui:UXML>

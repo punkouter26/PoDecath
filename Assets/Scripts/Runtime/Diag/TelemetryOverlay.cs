@@ -57,21 +57,26 @@ namespace PoDecath.Diag
 
         VisualElement _panel, _rows, _graph;
         Label _title, _footer;
+        string _exportNote = "";
+        float _exportNoteUntil;
         readonly Dictionary<string, Label> _values = new Dictionary<string, Label>();
 
         // AGENTS page. The cards are kept and rewritten rather than rebuilt, for the same reason the FRAME
         // rows are: a diagnostic that allocates a hundred VisualElements a second is measuring itself.
-        VisualElement _agentsPage, _framePage, _settingsPage, _agentList, _agentDetail, _agentCardHost;
-        Label _headline, _exportNote, _tierNote, _settingsInfo;
-        Button _tabAgents, _tabFrame, _tabSettings, _close, _export, _agentBack;
+        VisualElement _livePage, _frameSection, _settingsPage, _agentList, _agentDetail, _agentCardHost;
+        Label _tierNote, _settingsInfo;
+        Button _tabLive, _tabSettings, _export, _agentBack;
         Button _tierMobile, _tierPc, _fps30, _fps60;
         readonly List<AgentRow> _agentRows = new List<AgentRow>();
         AgentCard _detail;
         int _selected = -1;   // the athlete whose full card is open, or -1 for the list
 
-        /// <summary>The three pages of the sheet.</summary>
-        public enum Page { Agents, Frame, Settings }
-        Page _page = Page.Agents;
+        /// <summary>
+        /// The two pages of the sheet. LIVE is the athletes and, under them, the device; they were two pages
+        /// (AGENTS and FRAME) and the first was half empty.
+        /// </summary>
+        public enum Page { Live, Settings }
+        Page _page = Page.Live;
 
         float[] _frameMs;
         int _frameCount, _frameHead;
@@ -90,27 +95,21 @@ namespace PoDecath.Diag
             _title = Find<Label>("title");
             _footer = Find<Label>("footer");
 
-            _agentsPage = Find<VisualElement>("agents-page");
-            _framePage = Find<VisualElement>("frame-page");
+            _livePage = Find<VisualElement>("live-page");
+            _frameSection = Find<VisualElement>("frame-section");
             _settingsPage = Find<VisualElement>("settings-page");
             _agentList = Find<VisualElement>("agents");
             _agentDetail = Find<VisualElement>("agent-detail");
             _agentCardHost = Find<VisualElement>("agent-card");
             _agentBack = Find<Button>("agent-back");
             _tabSettings = Find<Button>("tab-settings");
-            _headline = Find<Label>("headline");
-            _exportNote = Find<Label>("export-note");
-            _tabAgents = Find<Button>("tab-agents");
-            _tabFrame = Find<Button>("tab-frame");
-            _close = Find<Button>("close");
+            _tabLive = Find<Button>("tab-live");
             _export = Find<Button>("export");
 
-            if (_tabAgents != null) _tabAgents.clicked += () => ShowPage(Page.Agents);
-            if (_tabFrame != null) _tabFrame.clicked += () => ShowPage(Page.Frame);
+            if (_tabLive != null) _tabLive.clicked += () => ShowPage(Page.Live);
             if (_tabSettings != null) _tabSettings.clicked += () => ShowPage(Page.Settings);
             if (_agentBack != null) _agentBack.clicked += () => Select(-1);
             if (_agentCardHost != null) { _detail = new AgentCard(); _agentCardHost.Add(_detail.root); }
-            if (_close != null) _close.clicked += () => SetScreenVisible(false);
             if (_export != null) _export.clicked += OnExport;
 
             _frameMs = new float[Mathf.Max(30, history)];
@@ -119,28 +118,27 @@ namespace PoDecath.Diag
             StartRecorders();
             BuildRows();
             BuildSettings();
-            ShowPage(Page.Agents);
+            ShowPage(Page.Live);
             SetScreenVisible(startOpen);
         }
 
         /// <summary>
-        /// Switches between the two questions. AGENTS is the landing page: this project's frame rate has
-        /// been fine for weeks, and what costs it time is a policy nobody can see the shape of.
+        /// Switches between the live readings and the settings. LIVE is the landing page, athletes first:
+        /// this project's frame rate has been fine for weeks, and what costs it time is a policy nobody can
+        /// see the shape of.
         /// </summary>
         void ShowPage(Page page)
         {
             _page = page;
-            Show(_agentsPage, page == Page.Agents);
-            Show(_framePage, page == Page.Frame);
+            Show(_livePage, page == Page.Live);
             Show(_settingsPage, page == Page.Settings);
-            _tabAgents?.EnableInClassList("tab--on", page == Page.Agents);
-            _tabFrame?.EnableInClassList("tab--on", page == Page.Frame);
+            _tabLive?.EnableInClassList("tab--on", page == Page.Live);
             _tabSettings?.EnableInClassList("tab--on", page == Page.Settings);
             _nextRefresh = 0f;
             if (page == Page.Settings) RefreshSettings();
         }
 
-        /// <summary>Opens the sheet on a given page. The frame's FPS chip opens it straight onto FRAME.</summary>
+        /// <summary>Opens the sheet on a given page.</summary>
         public void Open(Page page)
         {
             ShowPage(page);
@@ -192,11 +190,13 @@ namespace PoDecath.Diag
         void OnExport()
         {
             AgentTelemetry sampler = Sampler();
-            if (sampler == null) { SetText(_exportNote, "Nothing to export: no agent sampler in this scene."); return; }
-            string path = sampler.WriteSessionSummary("manual");
-            SetText(_exportNote, string.IsNullOrEmpty(path)
-                ? "Export failed; see the log."
-                : $"Written to {path}");
+            string path = sampler != null ? sampler.WriteSessionSummary("manual") : null;
+            // Said on the summary line for a few seconds, then the line goes back to the field.
+            _exportNote = sampler == null ? "Nothing to export: no agent sampler in this scene."
+                        : string.IsNullOrEmpty(path) ? "Export failed; see the log."
+                        : $"Written to {path}";
+            _exportNoteUntil = Time.unscaledTime + 6f;
+            _nextRefresh = 0f;
         }
 
         /// <summary>
@@ -268,14 +268,16 @@ namespace PoDecath.Diag
 
         void AddRow(string key)
         {
+            // A cell in a four-across grid, the number over its name, rather than a full-width row: the
+            // counters share the LIVE page with the athletes now, and seventeen rows would not fit under them.
             var row = new VisualElement();
-            row.AddToClassList("telemetry-row");
-            var k = new Label(key);
-            k.AddToClassList("telemetry-key");
+            row.AddToClassList("frame-cell");
             var v = new Label("-");
             v.AddToClassList("telemetry-value");
-            row.Add(k);
+            var k = new Label(key);
+            k.AddToClassList("telemetry-key");
             row.Add(v);
+            row.Add(k);
             _rows.Add(row);
             _values[key] = v;
         }
@@ -321,9 +323,20 @@ namespace PoDecath.Diag
 
         void Refresh()
         {
-            if (_page == Page.Agents) { RefreshAgents(); return; }
-            if (_page == Page.Settings) { RefreshSettings(); return; }
+            if (_page == Page.Settings)
+            {
+                RefreshSettings();
+                SetText(_footer, $"{RenderTier.Current} tier  ·  {QualitySettings.names[QualitySettings.GetQualityLevel()]} quality  ·  "
+                               + $"{Screen.width}x{Screen.height}  ·  {Application.targetFrameRate} fps target  ·  DEBUG or F3 closes");
+                return;
+            }
+            RefreshAgents();
+            RefreshFrame();
+        }
 
+        /// <summary>The device half of the LIVE page: every frame counter, graded against the budget.</summary>
+        void RefreshFrame()
+        {
             float mean = Mean(), low = OnePercentLow();
             float budget = 1000f / Mathf.Max(1f, targetFps);
 
@@ -350,9 +363,6 @@ namespace PoDecath.Diag
             Set("Thermal", ThermalGovernor.Summary, ThermalGovernor.SummaryGrade);
             if (SystemInfo.batteryLevel >= 0f)
                 Set("Battery", $"{SystemInfo.batteryLevel * 100f:F0}%  {SystemInfo.batteryStatus}", SystemInfo.batteryLevel < 0.2f ? "warn" : null);
-
-            SetText(_title, $"TELEMETRY   ·   {RenderTier.Current}   ·   {QualitySettings.names[QualitySettings.GetQualityLevel()]}");
-            SetText(_footer, $"{Screen.width}x{Screen.height}   {Application.targetFrameRate} fps target   DEBUG or F3 closes");
         }
 
         /// <summary>
@@ -491,7 +501,7 @@ namespace PoDecath.Diag
         // ---------------------------------------------------------------- the agents page
 
         /// <summary>
-        /// Rewrites the headline and either the list (one line per athlete) or the one athlete's full card
+        /// Rewrites the summary line and either the list (one line per athlete) or the one athlete's full card
         /// that is open.
         ///
         /// Rows are matched to agents by position and only created when the field grows, so a restart does
@@ -504,8 +514,7 @@ namespace PoDecath.Diag
 
             if (sampler == null)
             {
-                SetText(_headline, "No agent sampler in this scene. Rebuild it from PoDecath/Build Everything.");
-                GradeElement(_headline, "headline", AgentTelemetry.Grade.Neutral);
+                Summary("No agent sampler in this scene. Rebuild it from PoDecath/Build Everything.", AgentTelemetry.Grade.Neutral);
                 for (int i = 0; i < _agentRows.Count; i++) Show(_agentRows[i].root, false);
                 Select(-1);
                 return;
@@ -515,10 +524,20 @@ namespace PoDecath.Diag
             if (_selected >= field.Count) Select(-1);
 
             bool detail = _selected >= 0;
-            Show(_headline, !detail);
             Show(_agentList, !detail);
             Show(_agentDetail, detail);
-            SetText(_title, $"TELEMETRY   ·   {field.Count} athlete(s)   ·   last {sampler.HistorySeconds:F0} s");
+            // One athlete's card is most of the sheet; the frame counters step aside for it and come back
+            // with BACK. Both at once squeezed the card's trend over its own numbers.
+            Show(_frameSection, !detail);
+
+            // The field in one sentence. When the worst finding is one athlete's, the sentence is on that
+            // athlete's card and its line carries a "!"; this only says how many lines to look at.
+            int flagged = 0;
+            foreach (AgentTelemetry.Agent a in field) if (a.grade == AgentTelemetry.Grade.Bad) flagged++;
+            Summary(sampler.HeadlineGrade == AgentTelemetry.Grade.Bad && flagged > 0
+                        ? $"{field.Count} athletes, last {sampler.HistorySeconds:F0} s  ·  {flagged} marked ! need a look: tap one for what to change."
+                        : $"{field.Count} athletes, last {sampler.HistorySeconds:F0} s  ·  {sampler.Headline}",
+                    sampler.HeadlineGrade);
 
             if (detail)
             {
@@ -526,8 +545,7 @@ namespace PoDecath.Diag
                 return;
             }
 
-            SetText(_headline, sampler.Headline);
-            GradeElement(_headline, "headline", sampler.HeadlineGrade);
+            bool compact = field.Count > 8;
 
             while (_agentRows.Count < field.Count)
             {
@@ -541,8 +559,17 @@ namespace PoDecath.Diag
             {
                 bool used = i < field.Count;
                 Show(_agentRows[i].root, used);
+                _agentRows[i].root.EnableInClassList("agent-row--compact", compact);
                 if (used) _agentRows[i].Write(field[i]);
             }
+        }
+
+        /// <summary>The line under the tabs: an export's result for a few seconds, otherwise the field summary.</summary>
+        void Summary(string text, AgentTelemetry.Grade grade)
+        {
+            bool note = Time.unscaledTime < _exportNoteUntil && _exportNote.Length > 0;
+            SetText(_title, note ? _exportNote : text);
+            GradeElement(_title, "sheet-summary", note ? AgentTelemetry.Grade.Neutral : grade);
         }
 
         /// <summary>Opens one athlete's full card, or goes back to the list with -1.</summary>
@@ -559,12 +586,13 @@ namespace PoDecath.Diag
         sealed class AgentRow
         {
             internal readonly Button root;
-            readonly Label _name, _speed, _falls, _upright, _clamped;
+            readonly Label _flag, _name, _speed, _falls, _upright, _clamped;
 
             internal AgentRow(System.Action onTap)
             {
                 root = new Button(onTap);
                 root.AddToClassList("agent-row");
+                _flag = Cell("agent-row-flag");
                 _name = Cell("agent-row-name");
                 _speed = Cell("agent-row-cell");
                 _falls = Cell("agent-row-cell");
@@ -582,6 +610,9 @@ namespace PoDecath.Diag
 
             internal void Write(AgentTelemetry.Agent a)
             {
+                // "!" where the athlete's card has something to say that needs acting on; its sentence is
+                // one tap away rather than across the top of the sheet in three lines.
+                SetText(_flag, a.grade == AgentTelemetry.Grade.Bad ? "!" : "");
                 SetText(_name, a.name);
                 SetText(_speed, $"{a.speed:F1} m/s");
                 SetText(_falls, a.falls == 1 ? "1 fall" : $"{a.falls} falls");

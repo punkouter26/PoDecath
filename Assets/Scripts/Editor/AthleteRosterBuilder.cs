@@ -49,6 +49,8 @@ namespace PoDecath.EditorTools
             List<AthleteDefinition> made = BuildCharacters(policy, report);
             AssetDatabase.SaveAssets();
             Debug.Log($"[PoDecath] Athlete roster: {made.Count} character(s) from {CharactersDir}.\n{report}");
+            // A new athlete gets its face on the setup menu tile in the same step.
+            PortraitBakery.BakeAll();
         }
 
         /// <summary>

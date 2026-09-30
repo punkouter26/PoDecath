@@ -16,6 +16,10 @@ namespace PoDecath.UI
     /// and divides it by the rows the roster needs, so nine athletes, or twelve, fit one portrait screen
     /// without a scroll bar. A menu that has to be scrolled to find START is a menu with a hidden button.
     ///
+    /// A tile is the athlete's face (<see cref="AthleteDefinition.portrait"/>), their name and their best
+    /// mark in the picked event. A tap on it adds a runner; the minus in its corner takes one off; the "i"
+    /// turns it over to show the athlete's record on this device, and a tap on the back turns it round.
+    ///
     /// The grid order interleaves the types round-robin rather than listing each block in turn. The
     /// starting grid is staggered two abreast (the deck is far too narrow to line a full field up in one
     /// row), so a block layout would drop one whole policy into the back rows and make it look beaten from
@@ -33,7 +37,7 @@ namespace PoDecath.UI
         {
             public string label;
             public string sceneName;
-            [Tooltip("One line under the title explaining what the field is about to do.")]
+            [Tooltip("One line under the event chips explaining what the field is about to do.")]
             public string hint;
             [Tooltip("Laps of the rooftop loop. The lap is 100.1 m, so 1 is the 100 m, 4 the 400 m and "
                    + "15 the 1500 m, all the same scene. 0 leaves the scene's own setting alone.")]
@@ -47,21 +51,21 @@ namespace PoDecath.UI
         {
             public AthleteDefinition definition;
             [NonSerialized] public int count;
-            [NonSerialized] public Label countLabel;
-            [NonSerialized] public Button minus, plus;
+            [NonSerialized] public Label countLabel, best;
+            [NonSerialized] public Button minus;
             [NonSerialized] public VisualElement row;
             [NonSerialized] public Label card;
         }
 
         public List<RunnerRow> rows = new List<RunnerRow>();
         [Tooltip("Events on offer, built by PoDecath/Build Race Scenes. The selected one owns the scene "
-               + "START loads and the hint under the title.")]
+               + "START loads and the line under the chips.")]
         public List<EventChoice> events = new List<EventChoice>();
         [Tooltip("Tiles across the field grid. Three fits nine athletes on one portrait screen.")]
         public int columns = 3;
 
         VisualElement _eventHost, _runnerHost;
-        Label _hint, _total;
+        Label _hint, _startDetail;
         Button _start, _all, _none;
         Button _season, _seasonReset;
         Label _seasonLabel, _seasonResetLabel;
@@ -84,7 +88,7 @@ namespace PoDecath.UI
             _eventHost = Find<VisualElement>("events");
             _runnerHost = Find<VisualElement>("runners");
             _hint = Find<Label>("hint");
-            _total = Find<Label>("total");
+            _startDetail = Find<Label>("start-detail");
             _start = Find<Button>("start");
             _all = Find<Button>("all");
             _none = Find<Button>("none");
@@ -137,7 +141,7 @@ namespace PoDecath.UI
             FillTileCards();
         }
 
-        /// <summary>The second line of the hint: where the records are kept and, mid-season, what is next.</summary>
+        /// <summary>The second part of the hint: where the records are kept and, mid-season, what is next.</summary>
         static string SeasonLine()
         {
             string where = SeasonCloud.Linked ? SeasonCloud.StatusLine : "Saved on this device";
@@ -194,17 +198,18 @@ namespace PoDecath.UI
         }
 
         /// <summary>
-        /// Turns a tile over, or back. A tap on a stepper is a stepper, not a flip: the click is ignored when
-        /// it came from inside a button.
+        /// A tap on a tile adds a runner, or turns a tile that is showing its record back round. A tap on
+        /// one of its buttons (the minus, the "i") is that button's, not the tile's.
         /// </summary>
         void OnTileClicked(RunnerRow row, ClickEvent evt)
         {
             for (var e = evt.target as VisualElement; e != null && e != row.row; e = e.parent)
                 if (e is Button) return;
-            Flip(row);
+            if (row.row.ClassListContains("runner-tile--flipped")) { Flip(row); return; }
+            Adjust(row, +1);
         }
 
-        /// <summary>Turns tile <paramref name="index"/> over or back; what a tap does, callable by the UI captures.</summary>
+        /// <summary>Turns tile <paramref name="index"/> over or back; what the "i" does, callable by the UI captures.</summary>
         public void FlipTile(int index)
         {
             if (index >= 0 && index < rows.Count && rows[index].row != null) Flip(rows[index]);
@@ -222,6 +227,15 @@ namespace PoDecath.UI
         {
             foreach (RunnerRow r in rows)
                 if (r.card != null && !r.card.ClassListContains("hidden")) SetText(r.card, CardText(r));
+            FillBests();
+        }
+
+        static SeasonStore.Card CardOf(RunnerRow row)
+        {
+            string name = row.definition != null ? row.definition.displayName : "";
+            foreach (SeasonStore.Card k in SeasonStore.Current.cards)
+                if (k.athlete == name) return k;
+            return null;
         }
 
         /// <summary>
@@ -231,10 +245,7 @@ namespace PoDecath.UI
         /// </summary>
         static string CardText(RunnerRow row)
         {
-            SeasonStore.Card c = null;
-            string name = row.definition != null ? row.definition.displayName : "";
-            foreach (SeasonStore.Card k in SeasonStore.Current.cards)
-                if (k.athlete == name) { c = k; break; }
+            SeasonStore.Card c = CardOf(row);
             if (c == null || c.races == 0) return "No races yet.\nEvery race adds to this card.";
 
             var sb = new System.Text.StringBuilder();
@@ -243,6 +254,19 @@ namespace PoDecath.UI
             foreach (SeasonStore.Best b in c.bests)
                 sb.Append($"\n{ScoringTable.Label(b.evt)} {ScoringTable.Format(b.evt, b.value)} ({b.points})");
             return sb.ToString();
+        }
+
+        /// <summary>Each tile's best mark in the event that is picked, which is the number that decides who to send.</summary>
+        void FillBests()
+        {
+            if (events.Count == 0) return;
+            SeasonEvent evt = Classify(events[_event]);
+            foreach (RunnerRow r in rows)
+            {
+                if (r.best == null) continue;
+                SeasonStore.Best b = CardOf(r)?.BestFor(evt);
+                SetText(r.best, b != null ? $"best {ScoringTable.Format(evt, b.value)}" : "no mark yet");
+            }
         }
 
         void BuildEvents()
@@ -270,7 +294,7 @@ namespace PoDecath.UI
             // default the moment the roster grew past a handful: the split silently decided that six of
             // somebody were in and made the remainder row, whichever happened to be listed first, into
             // the biggest team in the race. One each is the same answer however long the roster gets, and
-            // the steppers are right there for anyone who wants eight Grandmas.
+            // a tap on a tile is right there for anyone who wants eight Grandmas.
             int used = 0;
             for (int i = 0; i < rows.Count; i++)
             {
@@ -282,44 +306,51 @@ namespace PoDecath.UI
                 var tile = new VisualElement();
                 tile.AddToClassList("runner-tile");
                 // The stripe along the top is the athlete's own colour: the one their trail wears on the
-                // deck and their row wears in the results. It is the only thing that tells the field
-                // apart, since the house rule keeps every athlete on the textures their model came with.
+                // deck and their row wears in the results.
                 tile.style.borderTopColor = row.definition.Tint;
 
-                var name = new Label(row.definition.displayName);
-                name.AddToClassList("runner-tile-name");
+                // The face, with the tile's controls in its corners. The record, when the tile is turned
+                // over, covers the face rather than replacing the tile, so the name stays put.
+                var face = new VisualElement();
+                face.AddToClassList("runner-tile-face");
+                if (row.definition.portrait != null) face.style.backgroundImage = new StyleBackground(row.definition.portrait);
 
-                var count = new Label(row.count.ToString());
-                count.AddToClassList("runner-tile-count");
-
-                var steps = new VisualElement();
-                steps.AddToClassList("runner-tile-steps");
-                RunnerRow captured = row;
-                var minus = new Button(() => Adjust(captured, -1)) { text = "-" };
-                minus.AddToClassList("btn");
-                minus.AddToClassList("btn--tile-step");
-                var plus = new Button(() => Adjust(captured, +1)) { text = "+" };
-                plus.AddToClassList("btn");
-                plus.AddToClassList("btn--tile-step");
-                steps.Add(minus);
-                steps.Add(plus);
-
-                // The back of the tile: this athlete's record, shown instead of the count and steppers.
                 var card = new Label("");
                 card.AddToClassList("runner-tile-card");
                 card.AddToClassList("hidden");
 
+                RunnerRow captured = row;
+                var minus = new Button(() => Adjust(captured, -1)) { text = "−" };
+                minus.AddToClassList("runner-tile-chip");
+                minus.AddToClassList("runner-tile-minus");
+
+                var count = new Label(row.count.ToString());
+                count.AddToClassList("runner-tile-count");
+
+                var info = new Button(() => Flip(captured)) { text = "i" };
+                info.AddToClassList("runner-tile-chip");
+                info.AddToClassList("runner-tile-info");
+
+                face.Add(card);
+                face.Add(minus);
+                face.Add(count);
+                face.Add(info);
+
+                var name = new Label(row.definition.displayName);
+                name.AddToClassList("runner-tile-name");
+                var best = new Label("");
+                best.AddToClassList("runner-tile-best");
+
+                tile.Add(face);
                 tile.Add(name);
-                tile.Add(count);
-                tile.Add(card);
-                tile.Add(steps);
+                tile.Add(best);
                 tile.RegisterCallback<ClickEvent>(e => OnTileClicked(captured, e));
                 _runnerHost.Add(tile);
-                row.card = card;
 
+                row.card = card;
                 row.countLabel = count;
+                row.best = best;
                 row.minus = minus;
-                row.plus = plus;
                 row.row = tile;
             }
         }
@@ -349,7 +380,7 @@ namespace PoDecath.UI
             }
         }
 
-        /// <summary>Picks which scene START loads and re-words the hint for it.</summary>
+        /// <summary>Picks which scene START loads, re-words the line under the chips, and shows each tile's best in it.</summary>
         void SelectEvent(int index)
         {
             if (events.Count == 0) return;   // no race scene was built; StartRace says so
@@ -359,6 +390,7 @@ namespace PoDecath.UI
             SetText(_hint, SeasonStore.SeasonActive ? $"{hint}  ·  {SeasonLine()}" : hint);
             for (int i = 0; i < _eventButtons.Count; i++)
                 _eventButtons[i].EnableInClassList("event-btn--selected", i == _event);
+            FillBests();
         }
 
         int Total()
@@ -380,8 +412,8 @@ namespace PoDecath.UI
 
         /// <summary>
         /// Puts the same number in every tile. NONE is allowed to empty the field completely, which the
-        /// steppers are not: it is the start of "clear this and pick two", and START stays greyed out
-        /// until somebody has been picked, so an empty grid can never reach a race scene.
+        /// minus is not: it is the start of "clear this and pick two", and START stays greyed out until
+        /// somebody has been picked, so an empty grid can never reach a race scene.
         /// </summary>
         void SetEveryone(int count)
         {
@@ -402,10 +434,9 @@ namespace PoDecath.UI
             {
                 if (r.countLabel != null) SetText(r.countLabel, r.count.ToString());
                 if (r.minus != null) r.minus.SetEnabled(r.count > 0 && total > 1);
-                if (r.plus != null) r.plus.SetEnabled(total < Max);
                 r.row?.EnableInClassList("runner-tile--out", r.count == 0);
             }
-            SetText(_total, $"Total  {total} / {Max}");
+            SetText(_startDetail, total == 1 ? "1 runner" : $"{total} of {Max} runners");
             if (_start != null) _start.SetEnabled(total >= 1);
         }
 

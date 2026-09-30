@@ -18,9 +18,9 @@ namespace PoDecath.Sim
         public TextAsset defaultMjcf;
         public TextAsset defaultPolicyJson;
         public GameObject defaultSkin;
-        [Tooltip("When true (default, owner decision 2026-09-14) athletes collide with each other and "
-               + "with their own body parts, matching the MJCF the policies were trained against. When "
-               + "false, athletes pass through one another as they did before contact training existed.")]
+        [Tooltip("When true (default, owner decision 2026-09-14, reaffirmed 2026-09-30: realistic "
+               + "collisions, falls from contact are fine) athletes collide with each other and with their "
+               + "own body parts. Leave it on. False makes athletes pass through one another.")]
         public bool collideWithOtherAthletes = true;
         public List<AthleteDefinition> roster = new List<AthleteDefinition>();
         public RaceEvent dash;
@@ -93,12 +93,13 @@ namespace PoDecath.Sim
             // used to force the hips to their abduction limit -- and MjcfImporter mirrors exactly that
             // list onto PhysX per rig. A layer-wide ignore here would undo all of it.
             //
-            // What the layer ignore also did, and what IgnoreBetweenAthletes now does deliberately, is
-            // keep two athletes from colliding with each other. Training only ever sees one body on an
-            // empty plane, so a policy has no idea what to do when shoulder-charged; until there is a
-            // task that trains for it, athletes still pass through one another.
+            // Athletes also collide with each other (collideWithOtherAthletes, on by default). No policy
+            // has trained for contact, so runners who bump go down; the owner wants exactly that
+            // (2026-09-30: realistic collisions, falls from hitting other players are fine).
+            // IgnoreBetweenAthletes only runs when the switch is off.
             var pj = new PolicyJson();
             if (defaultPolicyJson != null) { try { pj = JsonUtility.FromJson<PolicyJson>(defaultPolicyJson.text) ?? pj; } catch { } }
+            _trackOverride = PickTrackPolicy(ref pj);
 
             int number = 0;
             foreach (AthleteDefinition def in BuildSpawnList())
@@ -125,6 +126,49 @@ namespace PoDecath.Sim
         void Start()
         {
             if (dash != null) dash.StartRace();
+        }
+
+        // Owner decision 2026-09-30: two lap policies are in play, the shipped athlete_track and the
+        // 09-30 overnight run athlete_track_q5 (faster alone in MuJoCo, slower and falls more in a PhysX
+        // pack), and each app launch flips a coin between them so both get watched in real races. The
+        // pick holds for the whole launch; RaceLog records which one ran.
+        public const string ShippedTrackPolicy = "athlete_track";
+        public const string AlternateTrackPolicy = "athlete_track_q5";
+        static int s_trackPick = -1;
+        public static string TrackPolicyInUse { get; private set; } = ShippedTrackPolicy;
+        Unity.InferenceEngine.ModelAsset _trackOverride;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetTrackPick()
+        {
+            s_trackPick = -1;
+            TrackPolicyInUse = ShippedTrackPolicy;
+        }
+
+        /// <summary>
+        /// The alternate lap policy when this launch's coin says so, else null. Found by name in the
+        /// PolicyLibrary, so no scene carries a reference to it; its own manifest replaces
+        /// <paramref name="pj"/> (same contract, its own trained clamp figure).
+        /// </summary>
+        static Unity.InferenceEngine.ModelAsset PickTrackPolicy(ref PolicyJson pj)
+        {
+            PolicyLibrary lib = PolicyLibrary.Load();
+            PolicyEntry alt = null;
+            if (lib != null && lib.entries != null)
+                foreach (PolicyEntry e in lib.entries)
+                    if (e != null && e.model != null && e.displayName == AlternateTrackPolicy) { alt = e; break; }
+            if (alt == null) return null;
+
+            // System.Random so the coin never shares a sequence with anything that draws from Unity's.
+            bool first = s_trackPick < 0;
+            if (first) s_trackPick = new System.Random().Next(2);
+            TrackPolicyInUse = s_trackPick == 1 ? AlternateTrackPolicy : ShippedTrackPolicy;
+            if (first) Debug.Log($"[AthleteSpawner] Lap policy this launch: {TrackPolicyInUse} (coin flip between {ShippedTrackPolicy} and {AlternateTrackPolicy}).");
+            if (s_trackPick != 1) return null;
+
+            TextAsset manifest = Resources.Load<TextAsset>(AlternateTrackPolicy + "_policy_config");
+            if (manifest != null) { try { pj = JsonUtility.FromJson<PolicyJson>(manifest.text) ?? pj; } catch { } }
+            return alt.model;
         }
 
         /// <summary>
@@ -386,7 +430,9 @@ namespace PoDecath.Sim
             // Set before Initialize: that is where both workers are built, and building the get-up worker
             // up front is the whole point — the frame an athlete hits the deck must not stall.
             runner.recoveryModel = getUpModel;
-            runner.Initialize(cfg, def.model);
+            Unity.InferenceEngine.ModelAsset model = def.model;
+            if (_trackOverride != null && model != null && model.name == ShippedTrackPolicy) model = _trackOverride;
+            runner.Initialize(cfg, model);
             if (def.model == null) Debug.LogWarning($"[AthleteSpawner] '{def.displayName}' has no ONNX model; it will hold its default pose.", this);
 
             return new RaceEvent.Athlete

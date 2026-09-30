@@ -179,18 +179,30 @@
 /* The overlay starts under the frame's top row, not under the screen's top edge. */
 .bcast-body { flex-grow: 1; padding: var(--gap-2); padding-top: var(--frame-top-clear); }
 
+/* One line: stage, leader, clock. It was two (stage over leader, a 74 px clock beside them) and 150 px
+   tall; the leader now wraps onto a second small line inside the same height instead. */
 .bcast-top {
     flex-direction: row;
     align-items: center;
     background-color: var(--overlay);
     border-radius: var(--radius-sm);
-    padding: var(--gap-2) var(--gap-3);
+    padding: var(--gap-1) var(--gap-3);
     margin-bottom: var(--gap-1);
+    min-height: 80px;
 }
 
-.bcast-stage { font-size: var(--t-title); -unity-font-style: bold; letter-spacing: 3px; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8); }
-.bcast-lead { font-size: var(--t-small); color: var(--ink-dim); text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8); }
-.bcast-clock { font-size: var(--t-clock); -unity-font-style: bold; -unity-text-align: middle-right; text-shadow: 0 2px 5px rgba(0, 0, 0, 0.8); }
+.bcast-stage { font-size: 44px; -unity-font-style: bold; letter-spacing: 2px; flex-shrink: 0; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8); }
+.bcast-lead {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: var(--gap-3);
+    margin-right: var(--gap-2);
+    font-size: 28px;
+    white-space: normal;
+    color: var(--ink-dim);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+.bcast-clock { font-size: 60px; min-width: 200px; flex-shrink: 0; -unity-font-style: bold; -unity-text-align: middle-right; text-shadow: 0 2px 5px rgba(0, 0, 0, 0.8); }
 
 .order {
     background-color: var(--overlay-strip);
@@ -236,6 +248,21 @@
 }
 .order-gap { width: 200px; font-size: var(--t-small); -unity-text-align: middle-right; color: var(--ink-dim); }
 
+/* The athlete the viewer has locked the cameras onto. */
+.order-row--pinned { border-left-width: 4px; border-left-color: var(--warn); }
+
+/* The athlete on camera, shown under the leaders from further back: set apart so the gap reads. */
+.order-row--apart { margin-top: 10px; }
+
+/* "+4 more" / "show fewer": opens the whole order and closes it again. */
+.order-more {
+    font-size: var(--t-micro);
+    letter-spacing: 1px;
+    color: var(--accent);
+    -unity-font-style: bold;
+    padding: 10px var(--gap-1) 6px var(--gap-1);
+}
+
 .splits {
     background-color: var(--overlay-strip);
     border-radius: var(--radius-sm);
@@ -280,6 +307,24 @@
 .lower-name { font-size: var(--t-title); -unity-font-style: bold; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.85); }
 .lower-detail { font-size: var(--t-small); color: var(--ink-dim); }
 
+/* The viewer has locked the cameras onto this athlete (a tap on the card or on a name in the order). */
+.lower-pin {
+    font-size: var(--t-micro);
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    color: var(--warn);
+    border-width: 2px;
+    border-color: var(--warn);
+    border-radius: 6px;
+    padding: 2px var(--gap-1);
+}
+
+/* STATS: the policy and how upright the body is, on the same card. */
+.lower-dev { font-size: var(--t-micro); color: var(--ink-dim); margin-top: var(--gap-1); white-space: normal; }
+
+/* A card that is only saying the caption is a slimmer band. */
+.lower-third--caption-only { padding-top: var(--gap-1); padding-bottom: var(--gap-1); }
+
 /* Strain: joint torque against drive limit, on the athlete the gallery is on. */
 .strain {
     flex-direction: row;
@@ -311,28 +356,19 @@
 
 .strain-value { width: 210px; font-size: var(--t-micro); -unity-text-align: middle-right; color: var(--ink-dim); }
 
-/* ------------------------------------------------------------------ commentary caption */
-
-.caption {
-    align-self: center;
-    max-width: 92%;
-    background-color: var(--overlay);
-    border-radius: var(--radius-sm);
-    padding: var(--gap-1) var(--gap-3);
-    margin-bottom: var(--gap-1);
-    /* Fades rather than wipes: a caption is speech arriving, not a graphic being pushed on. */
-    transition-property: opacity, translate;
-    transition-duration: 0.18s;
-    transition-timing-function: ease-out;
-}
-
-.caption--out { opacity: 0; translate: 0 12px; }
-.caption--in { opacity: 1; translate: 0 0; }
+/* ------------------------------------------------------------------ commentary caption
+ *
+ * The first line of the broadcast card rather than a band of its own above it: one panel along the bottom
+ * of the picture, not three stacked.
+ */
 
 .caption-text {
     font-size: var(--t-small);
-    -unity-text-align: middle-center;
+    -unity-font-style: italic;
+    -unity-text-align: middle-left;
     white-space: normal;
+    color: var(--ink);
+    margin-bottom: 4px;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.85);
 }
 
@@ -404,7 +440,10 @@
 .result-row {
     flex-direction: row;
     align-items: center;
-    height: 80px;
+    /* At least 80, and taller when the name carries its race line under it. */
+    min-height: 80px;
+    padding-top: 6px;
+    padding-bottom: 6px;
     padding-left: var(--gap-2);
     padding-right: var(--gap-2);
     border-radius: 6px;
@@ -413,6 +452,8 @@
 }
 
 .result-row--podium { background-color: var(--row-lead); }
+.result-who { flex-grow: 1; flex-shrink: 1; justify-content: center; }
+.result-sub { font-size: var(--t-micro); color: var(--ink-dim); margin-top: -2px; }
 .result-rank { width: 88px; font-size: var(--t-title); -unity-font-style: bold; }
 .result-name { flex-grow: 1; font-size: var(--t-body); -unity-font-style: bold; }
 .result-time { width: 280px; font-size: var(--t-body); -unity-text-align: middle-right; }
@@ -434,7 +475,10 @@
 }
 
 /* One row of chips, however many events there are: five fit at 28px with the long names wrapping. */
-.event-grid { flex-direction: row; flex-wrap: nowrap; margin-bottom: var(--gap-2); }
+.event-grid { flex-direction: row; flex-wrap: nowrap; margin-bottom: var(--gap-1); }
+
+/* The picked event's own note, under the chips, where the 300 px heading block used to be. */
+.setup-hint { font-size: 28px; color: var(--ink-dim); white-space: normal; margin: 0 4px var(--gap-1) 4px; }
 
 .event-btn {
     flex-grow: 1;
@@ -508,7 +552,6 @@
     margin-bottom: var(--gap-1);
 }
 
-.telemetry-row { flex-direction: row; justify-content: space-between; height: 40px; }
 .telemetry-key { font-size: var(--t-micro); color: var(--ink-dim); }
 .telemetry-value { font-size: var(--t-micro); -unity-font-style: bold; -unity-text-align: middle-right; }
 .telemetry-value--good { color: var(--accent); }
@@ -566,11 +609,13 @@
     color: var(--ink);
 }
 
-/* Fixed width, so the row does not shuffle sideways every time the frame rate crosses a digit. */
+/* Fixed width, so the row does not shuffle sideways every time the frame rate crosses a digit. The frame
+   time went to the LIVE page the chip opens, which took it from 440 px to 300. It is grey until it has a reading. */
 .frame-fps {
     font-size: var(--t-small);
     -unity-font-style: bold;
-    width: 440px;
+    width: 300px;
+    color: var(--ink-dim);
 }
 
 .frame-fps--good { color: var(--accent); }
@@ -595,9 +640,23 @@
 
 /* The debug button reports as well as opens: it wears the worst grade the agent panel has found, so a
    config fault is visible from the corner of the screen without opening anything. */
-.frame-btn--warn { color: var(--warn); }
-.frame-btn--bad { color: var(--danger); }
 .frame-btn--open { background-color: rgba(46, 191, 140, 0.28); }
+
+/* DEBUG's grade: a dot at the right end of the button, grey with nothing to say. The button makes room
+   for it so it never touches the word. */
+.frame-btn--dotted { padding-right: 44px; min-width: 200px; }
+.frame-dot {
+    position: absolute;
+    top: 31px;
+    right: 14px;
+    width: 18px;
+    height: 18px;
+    border-radius: 9px;
+    background-color: var(--ink-faint);
+}
+.frame-dot--good { background-color: var(--accent); }
+.frame-dot--warn { background-color: var(--warn); }
+.frame-dot--bad { background-color: var(--danger); }
 
 /* ------------------------------------------------------------------ diagnostics sheet
  *
@@ -643,21 +702,11 @@
 
 .tab--on { background-color: rgba(46, 191, 140, 0.22); color: var(--ink); }
 
-/* The headline: one sentence naming the worst thing wrong with the field, or saying there is nothing. */
-.headline {
-    font-size: var(--t-small);
-    white-space: normal;
-    border-left-width: 6px;
-    border-left-color: var(--ink-faint);
-    padding: var(--gap-2);
-    background-color: var(--row);
-    border-radius: var(--radius-sm);
-    margin-bottom: var(--gap-2);
-}
-
-.headline--good { border-left-color: var(--accent); }
-.headline--warn { border-left-color: var(--warn); }
-.headline--bad { border-left-color: var(--danger); }
+/* The line under the tabs: the field in a sentence, graded by its colour; an export's result for a moment. */
+.sheet-summary { font-size: 28px; white-space: normal; color: var(--ink-dim); margin-bottom: var(--gap-2); }
+.sheet-summary--good { color: var(--accent); }
+.sheet-summary--warn { color: var(--warn); }
+.sheet-summary--bad { color: var(--danger); }
 
 /* ------------------------------------------------------------------ one agent's card */
 
@@ -739,51 +788,83 @@
     border-radius: var(--radius-sm);
     border-top-width: 8px;
     border-top-color: var(--ink-faint);
-    padding: 8px;
-    align-items: center;
-    justify-content: space-between;
+    overflow: hidden;
 }
 
 .runner-tile--out { opacity: 0.42; }
 
+/* The face fills what the name and the best mark leave; the tile's controls sit in its corners. */
+.runner-tile-face {
+    flex-grow: 1;
+    -unity-background-scale-mode: scale-and-crop;
+}
+
 .runner-tile-name {
     font-size: var(--t-small);
+    -unity-font-style: bold;
     -unity-text-align: middle-center;
     white-space: normal;
-    height: 76px;
+    margin-top: 4px;
 }
 
+.runner-tile-best {
+    font-size: var(--t-micro);
+    color: var(--ink-dim);
+    -unity-text-align: middle-center;
+    margin-bottom: var(--gap-1);
+}
+
+/* How many of this athlete are in the field, top right over the face. */
 .runner-tile-count {
-    font-size: var(--t-display);
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    min-width: 80px;
+    height: 80px;
+    border-radius: 40px;
+    background-color: var(--overlay);
+    font-size: var(--t-title);
     -unity-font-style: bold;
     -unity-text-align: middle-center;
 }
 
-.runner-tile-steps {
-    flex-direction: row;
-    width: 100%;
-}
-
-.btn--tile-step {
-    flex-grow: 1;
-    flex-basis: 0;
-    min-height: 76px;
-    margin: 4px;
+/* The minus (top left) and the "i" (bottom left): round, over the face, each an 80 px target. */
+.runner-tile-chip {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    min-height: 80px;
+    margin: 0;
     padding: 0;
-    font-size: 40px;
-    -unity-font-style: bold;
-    background-color: rgba(255, 255, 255, 0.10);
+    border-radius: 40px;
+    border-width: 0;
+    background-color: var(--overlay);
     color: var(--ink);
+    font-size: 44px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
 }
-
-.btn--tile-step:hover { background-color: rgba(46, 191, 140, 0.30); }
-.btn--tile-step:disabled { opacity: 0.25; }
+.runner-tile-chip:hover { background-color: rgba(46, 191, 140, 0.45); }
+.runner-tile-chip:disabled { opacity: 0.3; }
+.runner-tile-minus { top: 8px; left: 8px; }
+.runner-tile-info { bottom: 8px; left: 8px; font-size: 40px; -unity-font-style: bold-and-italic; }
 
 /* ------------------------------------------------------------------ results without a scroll bar */
 
 .results-rows { flex-grow: 1; justify-content: center; }
 
-.result-row--compact { height: 58px; margin-bottom: 4px; }
+/* Everybody who did not finish, one line (wrapping) under the finishers' rows. */
+.results-dnf {
+    font-size: 28px;
+    color: var(--ink-dim);
+    white-space: normal;
+    padding: var(--gap-1) var(--gap-2);
+    margin-bottom: var(--gap-1);
+    border-radius: 6px;
+    background-color: var(--row);
+}
+
+.result-row--compact { min-height: 58px; height: 58px; padding-top: 0; padding-bottom: 0; margin-bottom: 4px; }
 .result-row--compact .result-rank { font-size: var(--t-small); width: 64px; }
 .result-row--compact .result-name { font-size: var(--t-small); }
 .result-row--compact .result-time { font-size: var(--t-small); width: 220px; }
@@ -794,7 +875,7 @@
  * seven fit across 1080 px at 104 px tall. This was two stacked bars, 352 px of a 1920 px screen.
  */
 
-.chaos-group { flex-direction: row; flex-grow: 4; flex-basis: 0; }
+.chaos-group { flex-direction: row; flex-grow: 2; flex-basis: 0; }
 .chaos-group .btn { flex-grow: 1; flex-basis: 0; margin-left: 4px; margin-right: 4px; }
 
 .btn--tool {
@@ -814,6 +895,15 @@
 .control-bar .btn--ghost, .chaos-group .btn { background-color: var(--overlay); }
 
 .btn--tool .btn-icon { width: 48px; height: 48px; margin-right: 0; margin-bottom: 4px; }
+
+/* GUST / SHOVE / SLICK, in a row CHAOS pops up over the control row. */
+.chaos-pop { flex-direction: row; padding: 0 var(--gap-2); margin-bottom: 4px; }
+.chaos-pop .btn { flex-grow: 1; flex-basis: 0; margin-left: 4px; margin-right: 4px; background-color: var(--overlay); border-width: 2px; border-color: var(--warn); }
+
+/* A toggle that is on (CHAOS open, STATS on), and RESTART waiting for its second tap. Two classes each,
+   so they win over the overlay ground the control row gives every ghost button. */
+.control-bar .btn--on { background-color: rgb(22, 104, 78); border-width: 2px; border-color: var(--accent); }
+.control-bar .btn--armed { background-color: rgb(120, 92, 30); border-width: 2px; border-color: var(--warn); }
 .btn--tool .btn-label { font-size: var(--t-micro); letter-spacing: 1px; }
 .btn-icon--dark { -unity-background-image-tint-color: rgb(6, 20, 15); }
 .btn-label--dark { color: rgb(6, 20, 15); }
@@ -912,18 +1002,8 @@
 .season-name { flex-grow: 1; font-size: var(--t-small); -unity-font-style: bold; }
 .season-total { width: 170px; font-size: var(--t-small); -unity-text-align: middle-right; }
 
-.clip-line { flex-direction: row; align-items: center; margin-top: var(--gap-2); }
-
-.clip-icon {
-    width: 36px;
-    height: 36px;
-    margin-right: var(--gap-1);
-    background-image: url('project://database/Assets/UI/Icons/share1.png');
-    -unity-background-image-tint-color: var(--ink-dim);
-    -unity-background-scale-mode: scale-to-fit;
-}
-
-.clip-text { font-size: var(--t-micro); color: var(--ink-dim); white-space: normal; flex-shrink: 1; }
+/* What SHARE did, or why there is no clip on this device. */
+.clip-text { font-size: var(--t-micro); color: var(--ink-dim); white-space: normal; margin-top: var(--gap-1); }
 
 
 /* ------------------------------------------------------------------ results: replay and actions */
@@ -938,7 +1018,7 @@
 
 /* With a replay behind it the scrim lets the race through; REPLAY takes the card away altogether and a tap
    on the picture brings it back. */
-.modal-scrim--replay { background-color: rgba(5, 7, 12, 0.62); }
+.modal-scrim--replay { background-color: rgba(5, 7, 12, 0.8); }
 .modal-scrim--watch { display: none; }
 
 .results-actions { margin-top: var(--gap-2); }
@@ -948,18 +1028,24 @@
 
 .setup-actions { margin-top: var(--gap-1); }
 .setup-actions .btn--tool { flex-grow: 1; flex-basis: 0; margin-right: var(--gap-1); }
-.setup-start { flex-grow: 2; flex-basis: 0; min-height: 104px; font-size: 40px; }
+.setup-start { flex-grow: 2; flex-basis: 0; min-height: 104px; flex-direction: column; align-items: center; justify-content: center; padding: 4px; }
+.setup-start-word { font-size: 40px; -unity-font-style: bold; color: rgb(6, 20, 15); }
+.setup-start-detail { font-size: var(--t-micro); color: rgb(6, 20, 15); }
 
-/* A tile turned over to show the athlete's record: the count and the steppers go, the card text comes. */
+/* A tile turned over to show the athlete's record: the card covers the face, the count and the minus go,
+   the "i" stays to turn it back. */
 .runner-tile-card {
+    position: absolute;
+    /* Two pixels past the face on every side: flush, the photo's edge showed as a sliver round the card. */
+    left: -2px; right: -2px; top: -2px; bottom: -2px;
+    padding: 8px 8px 88px 8px;
     font-size: var(--t-micro);
     color: var(--ink);
     white-space: normal;
     -unity-text-align: middle-center;
-    flex-grow: 1;
+    background-color: rgb(24, 44, 44);
 }
-.runner-tile--flipped { background-color: rgba(46, 191, 140, 0.12); }
-.runner-tile--flipped .runner-tile-count, .runner-tile--flipped .runner-tile-steps { display: none; }
+.runner-tile--flipped .runner-tile-count, .runner-tile--flipped .runner-tile-minus { display: none; }
 
 /* ------------------------------------------------------------------ diagnostics: no scroll, three pages */
 
@@ -968,7 +1054,10 @@
 .sheet { top: var(--frame-row); bottom: var(--frame-row); border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius); }
 .sheet-scrim { top: var(--frame-row); bottom: var(--frame-row); }
 .sheet-body { flex-grow: 1; flex-shrink: 1; overflow: hidden; }
-.sheet-head .btn--chip { min-width: 160px; }
+.sheet-head .sheet-tabs { flex-grow: 1; margin-bottom: 0; }
+.sheet-head .btn--chip { margin-left: var(--gap-1); }
+.btn--icon-only { width: 96px; min-width: 96px; padding: 0; align-items: center; justify-content: center; }
+.btn--icon-only .btn-icon { margin: 0; }
 
 /* One athlete per line on the AGENTS list; tapping one opens its full card. */
 .agent-row {
@@ -987,6 +1076,17 @@
 .agent-row--bad { border-left-color: var(--danger); }
 .agent-row-name { flex-grow: 1; flex-shrink: 1; font-size: var(--t-small); -unity-font-style: bold; -unity-text-align: middle-left; overflow: hidden; }
 .agent-row-cell { width: 150px; font-size: var(--t-micro); -unity-text-align: middle-right; color: var(--ink-dim); }
+/* "!" on a line whose card has something that needs acting on. */
+.agent-row-flag { width: 28px; font-size: var(--t-small); -unity-font-style: bold; color: var(--danger); -unity-text-align: middle-left; }
+/* Past eight athletes the lines go compact, so sixteen leave room for the frame grid under them. */
+.agent-row--compact { min-height: 50px; padding-top: 0; padding-bottom: 0; margin-bottom: 2px; }
+
+/* The device half of the LIVE page: the frame-time graph, then every counter four across. */
+.frame-section { margin-top: var(--gap-2); }
+.frame-grid { flex-direction: row; flex-wrap: wrap; margin-top: var(--gap-1); }
+.frame-cell { width: 25%; padding: 6px 4px; }
+.frame-cell .telemetry-value { font-size: 30px; -unity-text-align: middle-left; white-space: normal; }
+.frame-cell .telemetry-key { white-space: normal; }
 .agent-back { align-self: flex-start; margin-left: 0; margin-bottom: var(--gap-2); }
 
 .settings-row { margin-left: -4px; margin-right: -4px; }

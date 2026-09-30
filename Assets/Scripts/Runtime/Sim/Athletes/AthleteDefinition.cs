@@ -45,6 +45,9 @@ namespace PoDecath.Sim
         [Tooltip("Uniform scale for the skin. 0 (default) fits it to the rig automatically by matching hip "
                + "height, which is what lets models authored at different heights share one physics body.")]
         public float skinScale = 0f;
+        [Tooltip("Head-and-shoulders picture for this athlete's tile on the setup menu. Written by "
+               + "PoDecath/Bake Athlete Portraits from the skin itself; no picture leaves the tile as a name.")]
+        public Texture2D portrait;
         [Tooltip("Custom texture for CustomRL athletes.")]
         public Texture2D customTexture;
         [Tooltip("Tint override for the UI. Ignored for ReferenceRL (green).")]

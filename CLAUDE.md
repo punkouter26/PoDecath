@@ -71,11 +71,12 @@ Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the te
     `MjcfImporter.ApplyContactExcludes`. Never paper over an overlap with a layer-wide ignore, because
     that switches off the entire body instead of the one pair.
 
-    **Two gaps, both owner decisions** (the detail is in `AGENTS.md` house rule 19):
-    `RooftopSceneBuilder` still applies `Physics.IgnoreLayerCollision(Creature, Creature, true)` on every
-    build, so a creature's own parts do not collide and the exclude list is inert; and
-    `AthleteSpawner.IgnoreBetweenAthletes` deliberately lets athletes pass through one another, because
-    training only ever shows a policy one body on an empty plane.
+    **Athletes collide with each other, realistically, and may fall from it** (owner decision,
+    2026-09-30: "I want realistic collisions. It is ok if they fall down from hitting other players").
+    `AthleteSpawner.collideWithOtherAthletes` stays on and the Creature layer collides with itself
+    (`RooftopSceneBuilder` clears the old layer-wide ignore on every build). Do not switch contact off to
+    cut the fall count; the answer to pack falls is recovery or contact training, not ghosts. Measured on
+    the 8-runner race that day: 4 of 8 fall with contact, 0 of 8 without.
 
 ### Editor and reports
 

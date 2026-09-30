@@ -46,5 +46,6 @@ MonoBehaviour:
     bone: CC_Base_R_Forearm
   skinRootEuler: {x: 0, y: 86.84457, z: 0}
   skinScale: 0
+  portrait: {fileID: 2800000, guid: 66fea87ecfe7b71488ab368b9daef1b5, type: 3}
   customTexture: {fileID: 0}
   customTint: {r: 0.95, g: 0.45, b: 0.1, a: 1}

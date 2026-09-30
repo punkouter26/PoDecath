@@ -301,6 +301,35 @@ rule, the loop exits on the plateau clause.
 
 **Loop stopped 04:12, 2026-09-15** (plateau clause, ~3 h ahead of the 07:15 budget cap).
 
+## Section 8 — Overnight batch Q: speed from scratch (2026-09-29 23:14 → 09-30 07:18)
+
+Report with charts: `DOCS/reports/2026-09-30-overnight-speed-training.html`. Scripts: `training/run_q.ps1`,
+`training/run_q_extend.ps1`. Host is now an **RTX 2060 6 GB** (~60k sps at 4096 envs on the target task); `.venv`
+and every checkpoint were missing and were rebuilt/retrained from zero.
+
+| Stage | Rounds | End speed | Result |
+|---|---|---|---|
+| q1_walk (batch O recipe) | 0-699 | 0.92 m/s | walks by ~iteration 350 |
+| q2_firm (batch P recipe) | 699-1720 | 0.93 m/s | steady, falls 2-7 % |
+| q3_speed (target, adaptive 1.0→5.5) | 1720-10326 | 0.97 m/s | peaked 1.65, then curriculum locked at the 1.0 floor |
+| q4_lap (track, adaptive 2.5→5.0) | 10326-14631 | 2.3 m/s | same lock at the 2.5 floor |
+| q5_lap_more (track, 11 min) | 14631-14935 | 2.67 m/s | still climbing at the cut |
+
+Gate (`eval_lap.py`, 10 × 256, deterministic): **q5 = 2.76 m/s, 100 % clean, 36.3 s lap, pitch/roll 5.9/4.5°** —
+0/10 at 3.6. Beats the shipped crowd_v80 (~2.2) but not lap_v80/x2 (3.34-3.44). Nothing published.
+
+**Finding — the adaptive speed curriculum is broken under full domain randomisation.** It raises the target on
+fall rate alone (< 5 %) with no check that the athlete keeps up, so q3's target hit 5.5 while speed was 1.65. Then the
+DR ramp (0.15 → 1.0 over 2,000 rounds) pushes the fall floor to 15-24 % *at walking pace*, above `--speed-fall-high`,
+so the target backs off to `--target-speed` and `< 5 %` is never seen again. q5 climbed only because a resume restarts
+the DR ramp at 0.15. Fix before the next run: gate the raise on `|v - target| < ~0.3` and set the fall thresholds
+relative to the DR floor (e.g. 0.12 / 0.25). Resume from `checkpoints/run_track/q5_lap_more/latest.pt`.
+
+**Published 2026-09-30 (owner decision, "good enough for now"):** q5_lap_more iter 14936 is now
+`Assets/Policies/athlete_track.onnx`, replacing crowd_v80, and its manifest is `Assets/Models/athlete_policy_config.json`
+(contract unchanged: obs 80, action_scale 0.167, gait 0.8 s; adds `train_target_clamp` 0.047). It was not trained
+with the crowd pacemaker, so athlete-to-athlete bumping is untested. Not yet watched in a PhysX race.
+
 ## Section 7 — The shipped Android build: HUD frame verified, two telemetry defects found (2026-09-15, ~20:30)
 
 **What was checked.** `training/deploy_android.ps1` ends by writing three screenshots to

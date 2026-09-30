@@ -176,6 +176,7 @@ namespace PoDecath.Diag
             sb.AppendFormat(ci, "\"written\":\"{0:o}\",", DateTime.Now);
             sb.AppendFormat(ci, "\"scene\":\"{0}\",", Esc(gameObject.scene.name));
             sb.AppendFormat(ci, "\"event\":\"{0}\",", Esc(race.GetType().Name));
+            sb.AppendFormat(ci, "\"track_policy\":\"{0}\",", Esc(AthleteSpawner.TrackPolicyInUse));
             sb.AppendFormat(ci, "\"laps\":{0},", laps);
             sb.AppendFormat(ci, "\"distance_m\":{0:F1},", race.raceDistance);
             sb.AppendFormat(ci, "\"race_seconds\":{0:F2},", race.RaceTime);

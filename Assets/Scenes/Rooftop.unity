@@ -11899,8 +11899,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Cam.CameraShake
   range: 34
   duration: 0.22
-  metresPerSecond: 0.4
-  minStrength: 0.18
+  metresPerSecond: 0.15
+  minStrength: 0.35
   minInterval: 0.12
 --- !u!4 &234496972
 Transform:
@@ -116292,8 +116292,8 @@ MonoBehaviour:
     Enabled: 0
     DefaultMode: 2
   DefaultBlend:
-    Style: 1
-    Time: 0.6
+    Style: 0
+    Time: 0
     CustomCurve:
       serializedVersion: 2
       m_Curve: []

@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     The diagnostics sheet, opened by DEBUG in the bottom-left of the frame, by tapping the frame rate in the
-    top-centre (straight onto FRAME), or F3 on a desktop.
+    top-centre, or F3 on a desktop. DEBUG (or the frame rate, or F3) closes it again.
 
-    Three pages:
+    Two pages:
 
-      AGENTS    are the policies doing what they were trained to? One line per athlete; tap a line for that
-                athlete's full card (which ONNX is driving it, nine numbers, ninety seconds of trend, and
-                one sentence saying what to change), BACK for the list.
-      FRAME     is the device keeping up? Frame time, draw calls, memory, GC.
-      SETTINGS  the quality tier and the frame-rate target. These lived on a separate evaluation screen
-                whose third control, the checkpoint picker, was read by nothing at all.
+      LIVE      the athletes, one line each, and under them the device: the frame-time graph and every
+                frame counter in a grid. Tap an athlete's line for its full card (which ONNX is driving it,
+                twelve numbers, ninety seconds of trend, and one sentence saying what to change), BACK for
+                the list. A line with something wrong on it carries a "!" and its colour; the sentence is on
+                its card. These were two pages, AGENTS and FRAME, and AGENTS was half empty.
+      SETTINGS  the quality tier and the frame-rate target.
 
-    Nothing here scrolls. The AGENTS page was one full card per athlete in a scroll view, 8457 px of content
-    in a 1500 px sheet for a field of eight; a list with one card open at a time is the same information
-    without a scroll bar.
+    Nothing here scrolls. Past eight athletes the lines go compact, so sixteen still leave room for the
+    frame grid.
 
     The sheet and its scrim stop at the frame's rows top and bottom, so MENU, DEBUG, the frame rate and the
     version stay on the picture and DEBUG closes what it opened.
@@ -28,36 +27,31 @@
             <ui:VisualElement name="panel" class="sheet">
 
                 <ui:VisualElement class="sheet-head">
-                    <ui:Label name="title" class="label-micro" text="TELEMETRY" style="flex-grow: 1;" />
-                    <ui:Button name="export" class="btn btn--ghost btn--chip" text="EXPORT" />
-                    <ui:Button name="close" class="btn btn--ghost btn--chip" text="CLOSE" />
+                    <ui:VisualElement class="sheet-tabs">
+                        <ui:Button name="tab-live" class="tab tab--on" text="LIVE" />
+                        <ui:Button name="tab-settings" class="tab" text="SETTINGS" />
+                    </ui:VisualElement>
+                    <ui:Button name="export" class="btn btn--ghost btn--chip btn--icon-only">
+                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/share1.png');" />
+                    </ui:Button>
                 </ui:VisualElement>
 
-                <!-- Where the last export landed. Empty until EXPORT is pressed, because a permanent file
-                     path across the top of a diagnostics panel is furniture, not information. -->
-                <ui:Label name="export-note" class="agent-legend" text="" style="white-space: normal;" />
-
-                <ui:VisualElement class="sheet-tabs">
-                    <ui:Button name="tab-agents" class="tab tab--on" text="AGENTS" />
-                    <ui:Button name="tab-frame" class="tab" text="FRAME" />
-                    <ui:Button name="tab-settings" class="tab" text="SETTINGS" />
-                </ui:VisualElement>
+                <!-- The field in one sentence (or, when one athlete is at fault, how many); where an export went. -->
+                <ui:Label name="title" class="sheet-summary" text="" />
 
                 <ui:VisualElement name="body" class="sheet-body">
 
-                    <ui:VisualElement name="agents-page">
-                        <ui:Label name="headline" class="headline" text="" />
+                    <ui:VisualElement name="live-page">
                         <ui:VisualElement name="agents" />
                         <ui:VisualElement name="agent-detail" class="hidden">
                             <ui:Button name="agent-back" class="btn btn--ghost btn--chip agent-back" text="BACK TO THE FIELD" />
                             <ui:VisualElement name="agent-card" />
                         </ui:VisualElement>
-                    </ui:VisualElement>
 
-                    <ui:VisualElement name="frame-page" class="hidden">
-                        <ui:VisualElement name="rows" />
-                        <ui:VisualElement name="graph" class="telemetry-graph" />
-                        <ui:Label name="footer" class="telemetry-key" text="" style="margin-top: 8px; white-space: normal;" />
+                        <ui:VisualElement name="frame-section" class="frame-section">
+                            <ui:VisualElement name="graph" class="telemetry-graph" />
+                            <ui:VisualElement name="rows" class="frame-grid" />
+                        </ui:VisualElement>
                     </ui:VisualElement>
 
                     <ui:VisualElement name="settings-page" class="hidden">
@@ -75,6 +69,7 @@
                         </ui:VisualElement>
 
                         <ui:Label name="settings-info" class="agent-legend" text="" style="margin-top: 24px; white-space: normal;" />
+                        <ui:Label name="footer" class="agent-legend" text="" style="margin-top: 8px; white-space: normal;" />
                     </ui:VisualElement>
 
                 </ui:VisualElement>

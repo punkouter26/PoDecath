@@ -290,7 +290,10 @@ namespace PoDecath.EditorTools
             cam.nearClipPlane = 0.1f; cam.farClipPlane = 1500f;
             camGo.AddComponent<AudioListener>();
             var brain = camGo.AddComponent<CinemachineBrain>();
-            brain.DefaultBlend = new CinemachineBlendDefinition(CinemachineBlendDefinition.Styles.EaseInOut, 0.6f);
+            // A clean cut between shots, as on TV. A blend swings the picture through the angle between two
+            // cameras, and measured on a race that was 8 of the 11 seconds it spent turning faster than 30 deg/s
+            // (owner asked for slow, steady movement, 2026-09-30).
+            brain.DefaultBlend = new CinemachineBlendDefinition(CinemachineBlendDefinition.Styles.Cut, 0f);
             camGo.transform.position = track.straightStart + Vector3.up * 3f - dir * 6f;
 
             CinemachineCamera chase = MakeCam("CM Chase", new Vector3(-4.5f, 2.2f, 0f), BindingMode.LockToTargetWithWorldUp, 50f, new Vector2(0f, -0.1f));

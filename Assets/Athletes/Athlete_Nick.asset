@@ -46,5 +46,6 @@ MonoBehaviour:
     bone: RightForeArm
   skinRootEuler: {x: 0, y: 91.92128, z: 0}
   skinScale: 0
+  portrait: {fileID: 2800000, guid: 5ea62c6c3c67b5d41a6e0299d8cee695, type: 3}
   customTexture: {fileID: 0}
   customTint: {r: 0.95, g: 0.25, b: 0.55, a: 1}

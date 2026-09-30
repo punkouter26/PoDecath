@@ -32,3 +32,6 @@ MonoBehaviour:
   - displayName: athlete_track
     model: {fileID: 5022602860645237092, guid: a8269c2479fa3ae4aa1406384be837e1, type: 3}
     config: {fileID: 11400000, guid: 4106a2f92c9597b4d896132b8cd14629, type: 2}
+  - displayName: athlete_track_q5
+    model: {fileID: 5022602860645237092, guid: f75ff7b3299dfbc4797ce9fe54ea74bb, type: 3}
+    config: {fileID: 11400000, guid: 4106a2f92c9597b4d896132b8cd14629, type: 2}

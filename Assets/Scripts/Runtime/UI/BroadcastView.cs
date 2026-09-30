@@ -8,15 +8,19 @@ using PoDecath.Sim;
 namespace PoDecath.UI
 {
     /// <summary>
-    /// The broadcast overlay, in UI Toolkit: clock and stage along the top, the running order down the
-    /// left, splits beside it, a lower third that wipes in on every cut, and the countdown over the middle
-    /// of the picture.
+    /// The broadcast overlay, in UI Toolkit: stage, leader and clock on one line along the top, a short
+    /// running order down the left, the map and splits beside it, one card along the bottom for the caption
+    /// and whoever is on camera, and the countdown over the middle of the picture.
     ///
     /// None of it is new information — <see cref="RaceEvent"/> already knows the order, the gaps and the
     /// clock, and <see cref="BroadcastDirector"/> already knows who is on air. What is new is that it
     /// moves. A running order that silently swaps two rows tells you nothing; one where the row that
     /// gained a place slides up and flashes green tells you a pass just happened, which is the single
     /// thing a viewer most wants to see and the thing a static table cannot say.
+    ///
+    /// Two of its pieces are controls as well as readings. A name in the running order, or the card at the
+    /// bottom, locks the cameras onto that athlete (<see cref="BroadcastDirector.Pin"/>); the card again lets
+    /// the director choose. And the "+n more" under the order opens the whole field and closes it again.
     ///
     /// Motion is done with USS transitions rather than coroutines: a class is added, the style system
     /// animates the property, and nothing here has to run a timer.
@@ -31,9 +35,10 @@ namespace PoDecath.UI
         public RaceEvent race;
         [Tooltip("Optional. Without it the lower third never appears; everything else still works.")]
         public BroadcastDirector director;
-        [Tooltip("Optional. Without it the caption band stays off the picture and nothing else changes.")]
+        [Tooltip("Optional. Without it the caption line stays off the card and nothing else changes.")]
         public Commentary commentary;
-        [Tooltip("The HUD whose controls the lower third sits on. Found in the scene if left empty.")]
+        [Tooltip("The HUD whose controls the card sits on, and whose STATS button adds the developer line to "
+               + "it. Found in the scene if left empty.")]
         public HudView hud;
 
         [Header("Strain")]
@@ -42,17 +47,22 @@ namespace PoDecath.UI
         [Range(0.2f, 1f)] public float strainFullScale = 0.55f;
 
         [Header("Size")]
-        [Tooltip("Rows in the running order strip. A deeper field gets a '+n more' line under it.")]
+        [Tooltip("Rows in the running order when it is opened out. A deeper field gets a '+n more' line under it.")]
         public int orderRows = 8;
+        [Tooltip("Rows in the running order as it normally stands: the leaders, and the last row for whoever "
+               + "is on camera when they are further back.")]
+        public int orderRowsShort = 4;
         [Tooltip("Splits kept on the board. The most recent few, oldest at the top.")]
         public int splitRows = 3;
 
-        Label _stage, _lead, _clock, _overflow, _lowerName, _lowerDetail, _countdown;
-        VisualElement _lowerThird, _splitsPanel, _orderHost, _splitHost;
-        VisualElement _caption, _strain, _strainFill;
+        Label _stage, _lead, _clock, _overflow, _lowerName, _lowerDetail, _lowerPin, _lowerDev, _countdown;
+        VisualElement _lowerThird, _lowerAthlete, _splitsPanel, _orderHost, _splitHost;
+        VisualElement _strain, _strainFill;
         VisualElement _map;
         Label _captionText, _strainValue;
         string _shownCaption = "";
+        bool _expanded;
+        bool _statsWere;
 
         /// <summary>One row of the running order, kept so it can be re-used and animated rather than rebuilt.</summary>
         class Row
@@ -60,7 +70,6 @@ namespace PoDecath.UI
             public VisualElement element;
             public Label rank, name, gap;
             public RaceEvent.Athlete athlete;
-            public int place = -1;
             public float flash;      // seconds left on the gained/lost highlight
             public bool gained;
         }
@@ -69,6 +78,9 @@ namespace PoDecath.UI
         const float RowPitch = 54f;
 
         readonly List<Row> _rows = new List<Row>();
+        readonly List<RaceEvent.Athlete> _shown = new List<RaceEvent.Athlete>();
+        readonly Dictionary<RaceEvent.Athlete, int> _lastPlace = new Dictionary<RaceEvent.Athlete, int>();
+        readonly Dictionary<RaceEvent.Athlete, int> _lastSlot = new Dictionary<RaceEvent.Athlete, int>();
         readonly List<Label> _splitLabels = new List<Label>();
         readonly List<string> _splits = new List<string>();
         int _splitsTaken;
@@ -86,19 +98,24 @@ namespace PoDecath.UI
             _clock = Find<Label>("clock");
             _overflow = Find<Label>("overflow");
             _lowerThird = Find<VisualElement>("lower-third");
+            _lowerAthlete = Find<VisualElement>("lower-athlete");
             _lowerName = Find<Label>("lower-name");
             _lowerDetail = Find<Label>("lower-detail");
+            _lowerPin = Find<Label>("lower-pin");
+            _lowerDev = Find<Label>("lower-dev");
             _countdown = Find<Label>("countdown");
             _splitsPanel = Find<VisualElement>("splits");
             _orderHost = Find<VisualElement>("order-rows");
             _splitHost = Find<VisualElement>("split-rows");
-            _caption = Find<VisualElement>("caption");
             _captionText = Find<Label>("caption-text");
             _strain = Find<VisualElement>("strain");
             _strainFill = Find<VisualElement>("strain-fill");
             _strainValue = Find<Label>("strain-value");
             _map = Find<VisualElement>("track-map");
             if (_map != null) _map.generateVisualContent += DrawMap;
+
+            _overflow?.RegisterCallback<ClickEvent>(_ => { _expanded = !_expanded; _nextRefresh = 0f; });
+            _lowerThird?.RegisterCallback<ClickEvent>(_ => OnCardTapped());
 
             BuildRows();
             BuildSplits();
@@ -131,7 +148,10 @@ namespace PoDecath.UI
                 element.Add(name);
                 element.Add(gap);
                 _orderHost.Add(element);
-                _rows.Add(new Row { element = element, rank = rank, name = name, gap = gap });
+                var row = new Row { element = element, rank = rank, name = name, gap = gap };
+                // A name is a way to follow that runner: the cameras lock on, and the card says so.
+                element.RegisterCallback<ClickEvent>(_ => { if (row.athlete != null) Pin(row.athlete); });
+                _rows.Add(row);
             }
         }
 
@@ -159,13 +179,17 @@ namespace PoDecath.UI
                 _lastAttempt = race.Attempt;
                 _splits.Clear();
                 _splitsTaken = 0;
-                foreach (Row r in _rows) { r.place = -1; r.athlete = null; }
+                _lastPlace.Clear();
+                _lastSlot.Clear();
+                foreach (Row r in _rows) r.athlete = null;
             }
 
+            if (hud == null) hud = FindFirstObjectByType<HudView>();
+            // STATS answers on the frame it is pressed, not on the next tenth of a second.
+            if (StatsOn != _statsWere) { _statsWere = StatsOn; _nextRefresh = 0f; }
             Countdown();
             SitOnControls();
-            LowerThirdVisibility();
-            CaptionBand();
+            Card();
             DecayFlashes();
 
             if (Time.unscaledTime < _nextRefresh) return;
@@ -174,15 +198,14 @@ namespace PoDecath.UI
         }
 
         /// <summary>
-        /// Rests the caption and the lower third on top of the HUD's controls, measured, rather than on a
-        /// margin guessed from what the control bar used to be. Every document shares one PanelSettings, so
-        /// the HUD's world rect is in this panel's coordinates. Falls back to the stylesheet's margin when
-        /// there is no HUD or it has not been laid out yet.
+        /// Rests the card on top of the HUD's controls, measured, rather than on a margin guessed from what
+        /// the control bar used to be. Every document shares one PanelSettings, so the HUD's world rect is in
+        /// this panel's coordinates. Falls back to the stylesheet's margin when there is no HUD or it has
+        /// not been laid out yet.
         /// </summary>
         void SitOnControls()
         {
             if (_lowerThird == null) return;
-            if (hud == null) hud = FindFirstObjectByType<HudView>();
             float top = hud != null ? hud.ControlsTop : float.NaN;
             VisualElement safe = Root?.Q<VisualElement>("body");
             if (float.IsNaN(top) || safe == null) { _lowerThird.style.marginBottom = StyleKeyword.Null; return; }
@@ -208,8 +231,8 @@ namespace PoDecath.UI
         }
 
         /// <summary>
-        /// The strain bar under the lower third: how hard the athlete on camera is pulling, as a fraction
-        /// of what its drives are configured to allow.
+        /// The strain bar on the card: how hard the athlete on camera is pulling, as a fraction of what its
+        /// drives are configured to allow.
         ///
         /// Scaled against <see cref="strainFullScale"/> rather than against 1, because a mean saturation
         /// of 1 would mean every joint in the body pinned at its torque limit simultaneously — which does
@@ -220,7 +243,7 @@ namespace PoDecath.UI
         void Strain()
         {
             if (_strain == null || _strainFill == null) return;
-            RaceEvent.Athlete a = director != null ? director.Featured : race.Reference;
+            RaceEvent.Athlete a = OnCard;
             EffortMeter meter = a != null ? a.effort : null;
 
             Show(_strain, meter != null);
@@ -239,27 +262,9 @@ namespace PoDecath.UI
         }
 
         /// <summary>
-        /// The commentary caption. Driven off <see cref="Commentary.Caption"/> rather than off its event,
-        /// so a line said while this screen was hidden behind the results card does not leave the band
-        /// stuck on when it comes back.
+        /// One line along the top: the stage, who leads and by how much, and the clock. The lead line wraps
+        /// onto a second small line rather than being cut off, so a long name never pushes the clock over.
         /// </summary>
-        void CaptionBand()
-        {
-            if (_caption == null) return;
-            string line = commentary != null ? commentary.Caption : "";
-            bool show = !string.IsNullOrEmpty(line);
-
-            if (show && line != _shownCaption)
-            {
-                _shownCaption = line;
-                SetText(_captionText, line);
-            }
-            else if (!show) _shownCaption = "";
-
-            _caption.EnableInClassList("caption--in", show);
-            _caption.EnableInClassList("caption--out", !show);
-        }
-
         void TopBar(List<RaceEvent.Athlete> order, RaceEvent.Athlete leader)
         {
             SetText(_stage, Stage(leader));
@@ -271,28 +276,28 @@ namespace PoDecath.UI
 
             if (Jump != null)
             {
-                SetText(_lead, leader.finished ? $"{leader.name} leads with {leader.distance:F2} m" : $"{leader.name} leads", leader.color);
+                SetText(_lead, leader.finished ? $"{leader.name} leads, {leader.distance:F2} m" : $"{leader.name} leads", leader.color);
                 return;
             }
             RaceEvent.Athlete second = order.Count > 1 ? order[1] : null;
             if (second == null) { SetText(_lead, leader.name, leader.color); return; }
             if (leader.finished && second.finished) { SetText(_lead, $"{leader.name} by {second.time - leader.time:F2} s", leader.color); return; }
             float gap = leader.distance - second.distance;
-            SetText(_lead, gap < 0.6f ? $"{leader.name} — nothing in it" : $"{leader.name} by {gap:F1} m", leader.color);
+            SetText(_lead, gap < 0.6f ? $"{leader.name}, nothing in it" : $"{leader.name} by {gap:F1} m", leader.color);
         }
 
         /// <summary>Where the event has got to, in the words the event itself would use.</summary>
         string Stage(RaceEvent.Athlete leader)
         {
             LongJumpEvent jump = Jump;
-            if (jump != null) return $"ROUND {jump.Round} / {Mathf.Max(1, jump.attemptsEach)}";
+            if (jump != null) return $"ROUND {jump.Round}/{Mathf.Max(1, jump.attemptsEach)}";
 
             LapEvent lap = Lap;
             if (lap == null || lap.path == null) return $"{race.raceDistance:F0} M";
             if (lap.laps <= 1) return $"{race.raceDistance:F0} M";
             float covered = leader != null ? Mathf.Max(0f, leader.distance) : 0f;
             int onLap = Mathf.Clamp(Mathf.FloorToInt(covered / lap.path.LapLength) + 1, 1, lap.laps);
-            return onLap == lap.laps ? $"LAP {onLap} / {lap.laps}  ·  LAST" : $"LAP {onLap} / {lap.laps}";
+            return onLap == lap.laps ? "LAST LAP" : $"LAP {onLap}/{lap.laps}";
         }
 
         string Clock()
@@ -337,59 +342,80 @@ namespace PoDecath.UI
         }
 
         /// <summary>
-        /// Paints the running order and animates any change in it. A row that has moved up is translated
-        /// from where it used to be and released, so the style system slides it into place; the direction
-        /// it moved decides which colour it flashes.
+        /// Who gets a row. Opened out, the top of the order. Normally the leaders and, on the last row,
+        /// whoever is on camera when they are further back than that: the row a viewer looks for is the one
+        /// for the athlete they are watching, and the map beside it already shows where everyone else is.
+        /// </summary>
+        void PickShown(List<RaceEvent.Athlete> order)
+        {
+            _shown.Clear();
+            int rows = Mathf.Min(_rows.Count, _expanded ? orderRows : orderRowsShort);
+            if (order.Count <= rows) { _shown.AddRange(order); return; }
+            RaceEvent.Athlete onCamera = OnCard;
+            bool extra = !_expanded && onCamera != null && order.IndexOf(onCamera) >= rows - 1;
+            int top = extra ? rows - 1 : rows;
+            for (int i = 0; i < top; i++) _shown.Add(order[i]);
+            if (extra) _shown.Add(onCamera);
+        }
+
+        /// <summary>
+        /// Paints the running order and animates any change in it. A row whose athlete has moved to another
+        /// row is translated from where it used to be and released, so the style system slides it into
+        /// place; a change of place, up or down, decides which colour it flashes.
         /// </summary>
         void OrderStrip(List<RaceEvent.Athlete> order, RaceEvent.Athlete leader)
         {
+            PickShown(order);
+            RaceEvent.Athlete pinned = director != null ? director.Pinned : null;
+
             for (int i = 0; i < _rows.Count; i++)
             {
                 Row row = _rows[i];
-                bool used = i < order.Count;
+                bool used = i < _shown.Count;
                 Show(row.element, used);
-                if (!used) { row.athlete = null; row.place = -1; continue; }
+                if (!used) { row.athlete = null; continue; }
 
-                RaceEvent.Athlete a = order[i];
-                int wasPlace = row.athlete == a ? row.place : PlaceOf(a);
+                RaceEvent.Athlete a = _shown[i];
+                int place = order.IndexOf(a);
 
-                SetText(row.rank, (i + 1).ToString());
+                SetText(row.rank, (place + 1).ToString());
                 SetText(row.name, a.name, a.color);
-                SetText(row.gap, Gap(a, leader, i));
+                SetText(row.gap, Gap(a, leader, place));
                 row.gap.style.color = a.fell ? new Color(1f, 0.5f, 0.42f)
                                     : a.recovering ? new Color(1f, 0.78f, 0.33f)   // amber: in trouble, not out
                                     : a.finished ? Color.white
                                     : new Color(0.72f, 0.76f, 0.82f);
-                row.element.EnableInClassList("order-row--lead", i == 0);
+                row.element.EnableInClassList("order-row--lead", place == 0);
+                row.element.EnableInClassList("order-row--pinned", a == pinned);
+                // The row after a gap in the order (the athlete on camera, further back) is set apart.
+                row.element.EnableInClassList("order-row--apart", i > 0 && place != order.IndexOf(_shown[i - 1]) + 1);
 
-                if (wasPlace >= 0 && wasPlace != i)
+                if (_lastSlot.TryGetValue(a, out int wasSlot) && wasSlot != i)
                 {
-                    // Start it where it was and let the transition carry it to where it is now. The pitch
-                    // is the row height plus its gap in the stylesheet; a row that moved two places starts
-                    // two rows away.
-                    float from = (wasPlace - i) * RowPitch;
-                    row.element.style.translate = new StyleTranslate(new Translate(0f, from));
+                    // Start it where it was and let the transition carry it to where it is now.
+                    row.element.style.translate = new StyleTranslate(new Translate(0f, (wasSlot - i) * RowPitch));
                     row.element.schedule.Execute(() => row.element.style.translate = new StyleTranslate(new Translate(0f, 0f))).StartingIn(0);
-                    row.gained = i < wasPlace;
+                }
+                if (_lastPlace.TryGetValue(a, out int wasPlace) && wasPlace != place)
+                {
+                    row.gained = place < wasPlace;
                     row.flash = 0.9f;
                     row.element.EnableInClassList("order-row--gained", row.gained);
                     row.element.EnableInClassList("order-row--lost", !row.gained);
                 }
-
                 row.athlete = a;
-                row.place = i;
             }
 
-            if (_overflow == null) return;
-            int hidden = Mathf.Max(0, order.Count - _rows.Count);
-            Show(_overflow, hidden > 0);
-            if (hidden > 0) SetText(_overflow, $"+{hidden} more");
-        }
+            _lastSlot.Clear();
+            for (int i = 0; i < _shown.Count; i++) _lastSlot[_shown[i]] = i;
+            _lastPlace.Clear();
+            for (int i = 0; i < order.Count; i++) _lastPlace[order[i]] = i;
 
-        int PlaceOf(RaceEvent.Athlete a)
-        {
-            foreach (Row r in _rows) if (r.athlete == a) return r.place;
-            return -1;
+            if (_overflow == null) return;
+            int hidden = order.Count - _shown.Count;
+            bool canOpen = order.Count > orderRowsShort;
+            Show(_overflow, canOpen);
+            if (canOpen) SetText(_overflow, _expanded ? "show fewer" : $"+{hidden} more");
         }
 
         void DecayFlashes()
@@ -536,26 +562,79 @@ namespace PoDecath.UI
             painter.Fill();
         }
 
-        // ---------------------------------------------------------------- lower third
+        // ---------------------------------------------------------------- the card
 
-        bool Showing => director != null && director.OnIndividual && director.Featured != null
-                        && race.Current != RaceEvent.Phase.Idle;
+        /// <summary>The athlete the card is about: whoever the gallery is on, or the reference when there is no director.</summary>
+        RaceEvent.Athlete OnCard => director != null ? director.Featured : race != null ? race.Reference : null;
 
-        void LowerThirdVisibility()
+        bool StatsOn => hud != null && hud.StatsOn;
+
+        /// <summary>
+        /// The athlete half of the card is up while the gallery is on one athlete, while the viewer has
+        /// locked the cameras onto one, and while STATS is on (the developer line needs somebody to be
+        /// about). The card itself is up whenever either half has something to say.
+        /// </summary>
+        bool AthleteShowing => OnCard != null && race.Current != RaceEvent.Phase.Idle
+                               && (director == null || director.OnIndividual || director.Pinned != null || StatsOn);
+
+        /// <summary>
+        /// The caption line and the athlete on camera, one card. The caption is driven off
+        /// <see cref="Commentary.Caption"/> rather than off its event, so a line said while this screen was
+        /// hidden behind the results card does not leave the card stuck on when it comes back.
+        /// </summary>
+        void Card()
         {
             if (_lowerThird == null) return;
-            bool show = Showing;
+            string line = commentary != null ? commentary.Caption : "";
+            bool caption = !string.IsNullOrEmpty(line);
+            if (caption && line != _shownCaption) { _shownCaption = line; SetText(_captionText, line); }
+            else if (!caption) _shownCaption = "";
+            Show(_captionText, caption);
+
+            bool athlete = AthleteShowing;
+            Show(_lowerAthlete, athlete);
+            bool show = caption || athlete;
             _lowerThird.EnableInClassList("lower-third--in", show);
             _lowerThird.EnableInClassList("lower-third--out", !show);
+            _lowerThird.EnableInClassList("lower-third--caption-only", caption && !athlete);
+        }
+
+        /// <summary>A tap on the card locks the cameras onto its athlete; a tap while locked hands them back.</summary>
+        void OnCardTapped()
+        {
+            if (director == null) return;
+            if (director.Pinned != null) { director.Pin(null); _nextRefresh = 0f; return; }
+            if (OnCard != null) Pin(OnCard);
+        }
+
+        /// <summary>
+        /// Locks the cameras onto whoever is <paramref name="place"/> in the order (0 is the leader, -1 hands
+        /// them back) and opens the order out or not; what a tap on a name and on "+n more" do, callable by
+        /// the UI captures.
+        /// </summary>
+        public void PinPlace(int place, bool expanded)
+        {
+            _expanded = expanded;
+            List<RaceEvent.Athlete> order = race != null ? race.LiveOrder() : null;
+            if (director != null) director.Pin(order != null && place >= 0 && place < order.Count ? order[place] : null);
+            _nextRefresh = 0f;
+        }
+
+        void Pin(RaceEvent.Athlete a)
+        {
+            if (director == null) return;
+            director.Pin(director.Pinned == a ? null : a);
+            _nextRefresh = 0f;
         }
 
         void LowerThirdText(List<RaceEvent.Athlete> order)
         {
-            if (_lowerName == null || director == null) return;
-            RaceEvent.Athlete a = director.Featured;
-            if (a == null) return;
+            RaceEvent.Athlete a = OnCard;
+            if (_lowerName == null || a == null) return;
 
             SetText(_lowerName, a.name, a.color);
+            Show(_lowerPin, director != null && director.Pinned == a);
+            DevLine(a);
             if (_lowerDetail == null) return;
 
             if (Jump != null)
@@ -577,6 +656,25 @@ namespace PoDecath.UI
                 string ups = a.recoveries > 0 ? $"  ·  {a.recoveries} up" : "";
                 SetText(_lowerDetail, $"{where}  ·  {a.speed:F1} m/s  ·  {a.distance:F0} / {race.raceDistance:F0} m{ups}");
             }
+        }
+
+        /// <summary>
+        /// STATS on the card: which policy is driving this body, what the event is doing, how upright the
+        /// body is now (the same 0 to 100% the fall detector grades against) and the attempt. These were a
+        /// second panel above the controls for the reference athlete only, while the card above it was
+        /// about somebody else.
+        /// </summary>
+        void DevLine(RaceEvent.Athlete a)
+        {
+            bool on = StatsOn;
+            Show(_lowerDev, on);
+            if (!on || _lowerDev == null) return;
+            string model = a.runner != null ? a.runner.ModelName : "no policy";
+            string phase = a.fell ? "FELL" : a.recovering ? "GETTING UP" : race.Status;
+            string up = a.IsRL
+                ? $"{Mathf.Clamp01((a.rig.UprightDot - race.fallUprightDot) / (1f - race.fallUprightDot)) * 100f:F0}% up"
+                : "-";
+            SetText(_lowerDev, $"{model}  ·  {phase}  ·  {up}  ·  #{race.Attempt + 1}");
         }
 
         // ---------------------------------------------------------------- countdown

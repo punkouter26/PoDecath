@@ -206,7 +206,7 @@ namespace PoDecath.EditorTools
             cm.Priority = 10;
             var comp = go.AddComponent<CinemachineRotationComposer>();
             comp.Composition.ScreenPosition = new Vector2(0f, -0.02f);
-            comp.Damping = new Vector2(0.35f, 0.35f);   // a little lag, like a real operator
+            comp.Damping = new Vector2(0.9f, 0.9f);     // an operator panning smoothly, not snapping (owner, 2026-09-30)
             // Every shot in the gallery can feel an impact. Cinemachine scales the shake by each camera's
             // own distance from the impulse, so the stadium wide barely twitches at a fall that rocks the
             // rail camera — which is what a real gallery looks like and costs nothing extra to get.

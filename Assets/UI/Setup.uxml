@@ -9,10 +9,14 @@
     (three across) sized in code to the height that is left, so nothing here scrolls: a menu that has to be
     scrolled to find START is a menu with a hidden button.
 
-    The athlete cards are the tiles themselves: tap a tile (not its steppers) and it turns over to show
-    that athlete's record on this device, tap it again and it turns back. There used to be a CARDS button
-    and a sheet over the whole screen for the same numbers. The season controls and the field presets share
-    START's row, one icon over one word each, so the whole bottom of the menu is one row.
+    No heading block. "EVENT SETUP", a sentence under it and an EVENT label took 300 px to say what the
+    highlighted chip already says; one line under the chips carries the event's own note, and START carries
+    the rest ("8 runners").
+
+    Each tile is the athlete's face (PoDecath/Bake Athlete Portraits), their name, and their best mark in
+    the picked event. Tap the tile to add one runner; the minus in the corner takes one off; the count sits
+    in the other corner. The "i" turns the tile over to show that athlete's record on this device, and a
+    tap on the back turns it round again.
 -->
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Theme.uss" />
@@ -21,18 +25,9 @@
         <ui:VisualElement name="safe" class="safe">
             <ui:VisualElement class="setup">
 
-                <!-- No game name here. AppFrame prints it in the top left of every screen, so this was
-                     the second copy of it, directly underneath the first. -->
-                <ui:Label name="title" class="label-display" text="EVENT SETUP" />
-                <ui:Label name="hint" class="label-small muted" text="" style="margin-bottom: 16px; white-space: normal;" />
-
-                <ui:Label class="label-micro" text="EVENT" style="margin-bottom: 8px;" />
                 <ui:VisualElement name="events" class="event-grid" />
+                <ui:Label name="hint" class="setup-hint" text="" />
 
-                <ui:VisualElement class="row" style="margin-bottom: 8px;">
-                    <ui:Label class="label-micro" text="FIELD  ·  TAP A TILE FOR ITS RECORD" style="flex-grow: 1;" />
-                    <ui:Label name="total" class="label-small muted" text="Total 0 / 16" />
-                </ui:VisualElement>
                 <ui:VisualElement name="runners" class="runner-grid" />
 
                 <ui:VisualElement class="row setup-actions">
@@ -53,7 +48,10 @@
                         <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/cross.png');" />
                         <ui:Label name="season-reset-label" class="btn-label" text="END" />
                     </ui:Button>
-                    <ui:Button name="start" class="btn btn--primary setup-start" text="START" />
+                    <ui:Button name="start" class="btn btn--primary setup-start">
+                        <ui:Label class="setup-start-word" text="START" />
+                        <ui:Label name="start-detail" class="setup-start-detail" text="" />
+                    </ui:Button>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

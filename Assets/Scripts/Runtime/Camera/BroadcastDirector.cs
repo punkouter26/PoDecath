@@ -13,7 +13,7 @@ namespace PoDecath.Cam
     ///
     /// The director owns the camera positions (Cinemachine only aims them), so the moving shots can be
     /// parked on the arc length of the track rather than hand-placed. Shots are held for
-    /// <see cref="minShotSeconds"/> so the cut rate stays watchable; a fall or a finisher cuts immediately,
+    /// <see cref="minShotSeconds"/> so the cut rate stays watchable; a fall or a finisher cuts after a short hold,
     /// the way a live gallery abandons its planned shot for an incident.
     ///
     /// "Leader" means the leader of the race still being run: once a runner crosses the line the camera
@@ -78,8 +78,9 @@ namespace PoDecath.Cam
                + "rather than shaking like a physics link.")]
         public CinemachineCamera headCam;
         [Tooltip("Seconds between head-cam visits in the automatic gallery; they alternate with the hero "
-               + "shot. 0 keeps the head cam for the viewer's button only.")]
-        public float headEvery = 22f;
+               + "shot. 0 keeps the head cam for the viewer's button only, which is the default since the "
+               + "owner asked for a slow, steady picture (2026-09-30): a camera bobbing on a runner's head is neither.")]
+        public float headEvery = 0f;
         public float headSeconds = 2.4f;
         [Tooltip("Time constant of the head cam's position smoothing. Short enough to keep the stride in "
                + "the picture, long enough to take the millimetre jitter of a 200 Hz contact out of it.")]
@@ -88,15 +89,23 @@ namespace PoDecath.Cam
         public Vector2 droneWindow = new Vector2(0.07f, 0.17f);
 
         [Header("Cutting")]
+        // Owner, 2026-09-30: "keep camera movement and rotation slow and steady so it's not annoying to
+        // watch an event". The holds, glides and blend below were all roughly halved in speed that day.
         [Tooltip("Shortest time a shot is held before the director is allowed to cut again.")]
-        public float minShotSeconds = 2.6f;
+        public float minShotSeconds = 6f;
         [Tooltip("Shortest hold when the race is at full tension. A gallery cuts faster as a race gets "
                + "closer; this is what it speeds up to.")]
-        public float urgentShotSeconds = 1.3f;
+        public float urgentShotSeconds = 4f;
+        [Tooltip("Shortest hold even an incident or a finisher respects before it takes the picture. Without "
+               + "it a pack race with six falls cut to the wide shot six times in fifteen seconds.")]
+        public float forcedCutMinHold = 2.5f;
         [Tooltip("How long the wide shot stays on a fall before the running order resumes.")]
-        public float incidentSeconds = 3f;
+        public float incidentSeconds = 5f;
 
         [Header("Anticipation")]
+        [Tooltip("Cut to a runner about to fall before it does. Off by default since 2026-09-30: in a pack "
+               + "it swung the picture from runner to runner several times a lap.")]
+        public bool anticipate = false;
         [Tooltip("Fall risk above which the gallery abandons its planned shot for whoever is in trouble — "
                + "before they are down, not after. Needs a DramaMeter; 0 turns it off.")]
         [Range(0f, 1f)] public float anticipateRisk = 0.72f;
@@ -138,10 +147,10 @@ namespace PoDecath.Cam
         [Header("Movement smoothing")]
         [Tooltip("How fast the moving dollies glide along the track, per second. Without it a lead change "
                + "teleports both cameras to the new leader — the jerkiest thing in the old gallery.")]
-        public float dollyGlide = 2.5f;
-        [Tooltip("How fast the aim swings to a new subject, per second. A third-of-a-second swing makes a "
-               + "lead change legible instead of violent.")]
-        public float aimGlide = 6f;
+        public float dollyGlide = 1.0f;
+        [Tooltip("How fast the aim swings to a new subject, per second. At 1.5 a lead change pans across "
+               + "in about two seconds rather than whipping round in a third of one.")]
+        public float aimGlide = 1.5f;
         [Tooltip("Seconds of the leader's own speed added ahead of the dollies, so the runner sits still "
                + "in frame instead of drifting through it.")]
         public float leadLookahead = 0.3f;
@@ -156,8 +165,9 @@ namespace PoDecath.Cam
         public bool framingNudge = true;
 
         [Header("Special shots")]
-        [Tooltip("Seconds between hero-shot visits, on straights only. 0 disables the hero shot.")]
-        public float heroEvery = 14f;
+        [Tooltip("Seconds between hero-shot visits, on straights only. 0 disables the hero shot, the default "
+               + "since 2026-09-30: an ankle-height camera 3 m from a passing runner has to whip round to follow it.")]
+        public float heroEvery = 0f;
         [Tooltip("How long the hero shot stays on air once cut to.")]
         public float heroSeconds = 1.8f;
         [Tooltip("Distance ahead of the leader the hero camera sits.")]
@@ -177,7 +187,7 @@ namespace PoDecath.Cam
         public float finishReverseAfter = 2.6f;
         [Tooltip("Degrees per second the grid shot drifts round the field during the countdown. A still "
                + "opening on a screen that is otherwise all motion reads as stuck.")]
-        public float startDriftDegPerSec = 7f;
+        public float startDriftDegPerSec = 3f;
 
         [Header("Framing check")]
         [Tooltip("Layers that count as blocking the view of an athlete. Leave the athletes' own layer out "
@@ -225,6 +235,22 @@ namespace PoDecath.Cam
         /// overlay reads it rather than working the leader out a second time.
         /// </summary>
         public RaceEvent.Athlete Featured { get; private set; }
+
+        /// <summary>
+        /// The athlete the viewer has locked the cameras onto from the overlay (a tap on a name in the
+        /// running order, or on the card), or null to let the gallery choose. A locked athlete is who the
+        /// moving cameras follow and who the card is about; a fall elsewhere still takes the picture for
+        /// the incident, and it comes back afterwards.
+        /// </summary>
+        public RaceEvent.Athlete Pinned { get; private set; }
+
+        /// <summary>Locks the cameras onto <paramref name="athlete"/>, or hands them back with null. Cuts at once, like the CAM button.</summary>
+        public void Pin(RaceEvent.Athlete athlete)
+        {
+            if (athlete == Pinned) return;
+            Pinned = athlete;
+            _viewerChanged = true;
+        }
 
         /// <summary>True when the shot on air is framed on one athlete rather than on the whole field.</summary>
         public bool OnIndividual => Current != Shot.Wide && Current != Shot.StartLine && Current != Shot.Drone;
@@ -391,7 +417,10 @@ namespace PoDecath.Cam
 
             // Who the moving cameras follow. Normally the leader; while an anticipated incident is running,
             // whoever is about to be in it.
-            RaceEvent.Athlete focus = Anticipate(leader, ref cutNow) ?? leader;
+            // The viewer's lock outranks both, as long as that athlete is still in this race.
+            RaceEvent.Athlete focus = Pinned != null && race.Athletes.Contains(Pinned)
+                ? Pinned
+                : Anticipate(leader, ref cutNow) ?? leader;
 
             // The aim glides to whoever is on camera rather than teleporting: a lead change swings the
             // aimed cameras through a fraction of a second instead of yanking all of them at once.
@@ -417,10 +446,9 @@ namespace PoDecath.Cam
             }
             float focusS = _focusS;
 
-            // Leaving a bend is the director's cue: the high outside shot has done its job, so hand off
-            // to the lead dolly on the beat instead of waiting out the hold.
+            // Leaving a bend used to force a cut to the lead dolly on the beat. It no longer does: the hold
+            // decides, so the bend shot is not cut short just because the leader came off it.
             bool inBendNow = InBend(focusS);
-            if (_wasInBend && !inBendNow) cutNow = true;
             _wasInBend = inBendNow;
 
             // The hero shot visits on a timer, on straights only: a deck-level camera at ankle height
@@ -461,8 +489,12 @@ namespace PoDecath.Cam
             // The viewer's button outranks the gallery, incidents included: somebody who asked for the
             // head cam wants to be in the fall, not watching it from the stadium wide.
             if (ViewerPick(out Shot pick)) want = pick;
-            if (_viewerChanged) { cutNow = true; _viewerChanged = false; }
+            bool viewerCut = _viewerChanged;
+            _viewerChanged = false;
             _shotAge += Time.deltaTime;
+            // The viewer's button is obeyed at once; an incident or a finisher waits out a short hold so a
+            // string of falls cannot turn the picture into a strobe; everything else waits out the full hold.
+            cutNow = viewerCut || (cutNow && _shotAge >= forcedCutMinHold);
             if (want != Current && (cutNow || _shotAge >= HoldSeconds))
             {
                 // Planned cuts land on a footstrike — the stride clock the policy already runs — so the
@@ -532,7 +564,7 @@ namespace PoDecath.Cam
                 _watching = null;
             }
 
-            if (drama == null || anticipateRisk <= 0f) return null;
+            if (!anticipate || drama == null || anticipateRisk <= 0f) return null;
             RaceEvent.Athlete risky = drama.MostAtRisk;
             if (risky == null || drama.WorstRisk < anticipateRisk) return null;
             if (risky == leader) return null;           // already on camera

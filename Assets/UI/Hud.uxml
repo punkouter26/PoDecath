@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     The in-race HUD: one row of controls along the bottom, and the developer stats as a strip of badges
-    directly above it that a broadcast scene keeps put away behind the STATS button.
+    directly above it.
 
-    One row, not two. The viewer's disturbances and the camera picker used to be a second bar stacked on the
-    control bar, which held 352 px of a 1920 px portrait screen for seven buttons. Every button here is an
-    icon over one word, so all of them fit across 1080 px in a single 104 px row.
+    One row, four buttons. The viewer's three disturbances (GUST, SHOVE, SLICK) sit behind one CHAOS button
+    and pop up in a row of their own above it when it is pressed, so the row carries four targets a thumb
+    can hit rather than six. RESTART is a plain button, not the green one, and asks for a second tap: it
+    was the brightest thing on the screen in the middle of a race, and one stray touch threw the race away.
 
-    The stats are badges, not a card: four numbers that change every tenth of a second read faster as four
-    chips in a line than as a four-row table, and a line is a quarter of the height.
+    The stats are badges, not a card. In a broadcast scene they are not shown here at all: STATS puts the
+    developer line on the broadcast card for whoever is on camera, which is the athlete the viewer is
+    already looking at. The strip is only for the hands-on development scenes, which have no overlay.
 -->
 <ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Theme.uss" />
@@ -29,24 +31,31 @@
                 <ui:Label name="last-result" class="badge-model" text="" picking-mode="Ignore" />
             </ui:VisualElement>
 
+            <!-- The disturbances, popped up by CHAOS. The words count down while each is cooling off. -->
+            <ui:VisualElement name="chaos-pop" class="chaos-pop hidden">
+                <ui:Button name="gust" class="btn btn--tool">
+                    <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/fastForward.png');" />
+                    <ui:Label name="gust-label" class="btn-label" text="GUST" />
+                </ui:Button>
+                <ui:Button name="shove" class="btn btn--tool">
+                    <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/exclamation.png');" />
+                    <ui:Label name="shove-label" class="btn-label" text="SHOVE" />
+                </ui:Button>
+                <ui:Button name="slick" class="btn btn--tool">
+                    <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/warning.png');" />
+                    <ui:Label name="slick-label" class="btn-label" text="SLICK" />
+                </ui:Button>
+            </ui:VisualElement>
+
             <!--
                 The viewer's hand on the race (only in the broadcast scenes: HudView shows the group when a
-                ViewerChaos or a director is wired), then the race's own controls. The disturbance words count
-                down while each is cooling off.
+                ViewerChaos or a director is wired), then the race's own controls.
             -->
             <ui:VisualElement name="control-bar" class="control-bar">
                 <ui:VisualElement name="chaos-bar" class="chaos-group hidden">
-                    <ui:Button name="gust" class="btn btn--tool">
-                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/fastForward.png');" />
-                        <ui:Label name="gust-label" class="btn-label" text="GUST" />
-                    </ui:Button>
-                    <ui:Button name="shove" class="btn btn--tool">
-                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/exclamation.png');" />
-                        <ui:Label name="shove-label" class="btn-label" text="SHOVE" />
-                    </ui:Button>
-                    <ui:Button name="slick" class="btn btn--tool">
+                    <ui:Button name="chaos" class="btn btn--tool">
                         <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/warning.png');" />
-                        <ui:Label name="slick-label" class="btn-label" text="SLICK" />
+                        <ui:Label name="chaos-label" class="btn-label" text="CHAOS" />
                     </ui:Button>
                     <ui:Button name="cam" class="btn btn--tool">
                         <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/movie.png');" />
@@ -54,9 +63,9 @@
                     </ui:Button>
                 </ui:VisualElement>
 
-                <ui:Button name="restart" class="btn btn--primary btn--tool">
-                    <ui:VisualElement class="btn-icon btn-icon--dark" style="background-image: url('project://database/Assets/UI/Icons/return.png');" />
-                    <ui:Label class="btn-label btn-label--dark" text="RESTART" />
+                <ui:Button name="restart" class="btn btn--ghost btn--tool">
+                    <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/return.png');" />
+                    <ui:Label name="restart-label" class="btn-label" text="RESTART" />
                 </ui:Button>
                 <ui:Button name="stats" class="btn btn--ghost btn--tool">
                     <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/barsVertical.png');" />
