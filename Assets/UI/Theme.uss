@@ -261,7 +261,7 @@
        measured from here — one 88 px button plus the bar's own padding, plus room to breathe. Without it
        the lower third is drawn underneath the buttons and half a name shows. The bar now also pads
        itself clear of the frame, so this has to clear both. */
-    margin-bottom: 248px;
+    margin-bottom: 352px;   /* 248 for the control bar, plus 104 for the chaos bar above it */
     /* Wipes in from the left rather than fading: it is a graphic being pushed on, not a ghost. */
     transition-property: opacity, translate;
     transition-duration: 0.24s;
@@ -780,3 +780,115 @@
 .result-row--compact .result-rank { font-size: var(--t-small); width: 64px; }
 .result-row--compact .result-name { font-size: var(--t-small); }
 .result-row--compact .result-time { font-size: var(--t-small); width: 220px; }
+
+/* ------------------------------------------------------------------ viewer chaos bar (HUD) */
+
+/* Sits directly on top of the control bar, same gutters, so the two read as one block of controls. */
+.chaos-bar {
+    flex-direction: row;
+    align-items: center;
+    padding-left: var(--gap-2);
+    padding-right: var(--gap-2);
+    margin-bottom: -8px;    /* USS has no calc(): tucks the row onto the control bar's top padding */
+}
+
+.chaos-bar .btn { flex-grow: 1; margin-left: var(--gap-1); margin-right: var(--gap-1); }
+
+/* A button that is an icon over a word rather than a word alone. */
+.btn--icon {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding-left: var(--gap-1);
+    padding-right: var(--gap-1);
+}
+
+.btn-icon {
+    width: 44px;
+    height: 44px;
+    margin-right: var(--gap-1);
+    -unity-background-scale-mode: scale-to-fit;
+    flex-shrink: 0;
+}
+
+.btn-label { font-size: var(--t-small); -unity-font-style: bold; color: var(--ink); }
+.btn:disabled .btn-label { color: var(--ink-faint); }
+
+/* ------------------------------------------------------------------ results: points, season, clip */
+
+.result-points {
+    width: 150px;
+    font-size: var(--t-small);
+    -unity-text-align: middle-right;
+    color: var(--accent);
+    -unity-font-style: bold;
+}
+
+.result-row--compact .result-points { width: 120px; font-size: var(--t-micro); }
+
+/* The personal-best badge beside a name: a small star. */
+.pb-badge {
+    width: 34px;
+    height: 34px;
+    margin-left: var(--gap-1);
+    background-image: url('project://database/Assets/UI/Icons/star.png');
+    -unity-background-image-tint-color: var(--warn);
+    -unity-background-scale-mode: scale-to-fit;
+    flex-shrink: 0;
+}
+
+.season-panel {
+    margin-top: var(--gap-2);
+    padding: var(--gap-2);
+    border-radius: var(--radius-sm);
+    background-color: var(--row);
+}
+
+.season-head { flex-direction: row; align-items: center; margin-bottom: var(--gap-1); }
+
+.season-icon {
+    width: 40px;
+    height: 40px;
+    margin-right: var(--gap-1);
+    background-image: url('project://database/Assets/UI/Icons/trophy.png');
+    -unity-background-image-tint-color: var(--warn);
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.season-title { font-size: var(--t-small); -unity-font-style: bold; flex-grow: 1; }
+.season-line { flex-direction: row; height: 44px; align-items: center; }
+.season-rank { width: 56px; font-size: var(--t-small); color: var(--ink-dim); }
+.season-name { flex-grow: 1; font-size: var(--t-small); -unity-font-style: bold; }
+.season-total { width: 170px; font-size: var(--t-small); -unity-text-align: middle-right; }
+
+.clip-line { flex-direction: row; align-items: center; margin-top: var(--gap-2); }
+
+.clip-icon {
+    width: 36px;
+    height: 36px;
+    margin-right: var(--gap-1);
+    background-image: url('project://database/Assets/UI/Icons/share1.png');
+    -unity-background-image-tint-color: var(--ink-dim);
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.clip-text { font-size: var(--t-micro); color: var(--ink-dim); white-space: normal; flex-shrink: 1; }
+
+/* ------------------------------------------------------------------ setup: season and athlete cards */
+
+.setup-extra { flex-direction: row; align-items: center; margin-top: var(--gap-1); }
+.setup-extra .btn { flex-grow: 1; margin-right: var(--gap-1); }
+
+.cards-list { flex-grow: 1; flex-shrink: 1; overflow: hidden; }
+
+.athlete-card {
+    padding: var(--gap-2);
+    margin-bottom: var(--gap-1);
+    border-radius: var(--radius-sm);
+    background-color: var(--row);
+    border-left-width: 8px;
+}
+
+.athlete-card-name { font-size: var(--t-body); -unity-font-style: bold; }
+.athlete-card-line { font-size: var(--t-micro); color: var(--ink-dim); white-space: normal; }
+.athlete-card-bests { font-size: var(--t-micro); color: var(--ink); white-space: normal; margin-top: 4px; }

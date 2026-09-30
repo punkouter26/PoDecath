@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f54e11617309c3645a75a7de6a03e5de, type: 3}
+  m_Name: ScoringTable
+  m_EditorClassIdentifier: Assembly-CSharp::PoDecath.Sim.ScoringTable
+  official: 0
+  entries:
+  - evt: 0
+    track: 1
+    A: 25.4347
+    B: 18
+    C: 1.81
+    humanScale: 0.486
+    calibratedOn: reference lap 24.2 s -> 11.76 s (700 pts)
+  - evt: 1
+    track: 0
+    A: 0.14354
+    B: 220
+    C: 1.4
+    humanScale: 2.5
+    calibratedOn: reference mark ~2.6 m -> 6.51 m (700 pts); guess until a take-off policy exists
+  - evt: 2
+    track: 1
+    A: 1.53775
+    B: 82
+    C: 1.81
+    humanScale: 0.526
+    calibratedOn: 4 x 25 s laps = 100 s -> 52.6 s (700 pts); not yet measured
+  - evt: 3
+    track: 1
+    A: 5.74352
+    B: 28.5
+    C: 1.92
+    humanScale: 0.41
+    calibratedOn: ~40 s lap through hurdles -> 16.3 s (700 pts); a guess
+  - evt: 4
+    track: 1
+    A: 0.03768
+    B: 480
+    C: 1.85
+    humanScale: 0.739
+    calibratedOn: 15 x 25 s laps = 375 s -> 277 s (700 pts); not yet measured

@@ -23,7 +23,23 @@
 
                 <ui:VisualElement name="rows" class="results-rows" />
 
+                <!-- The season table, when this race was a leg of one. Filled by ResultsView from SeasonStore. -->
+                <ui:VisualElement name="season" class="season-panel hidden">
+                    <ui:VisualElement class="season-head">
+                        <ui:VisualElement class="season-icon" />
+                        <ui:Label name="season-title" class="season-title" text="SEASON" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="season-rows" />
+                </ui:VisualElement>
+
+                <!-- Where the highlight clip went. Hidden until HighlightClip has something to say. -->
+                <ui:VisualElement name="clip" class="clip-line hidden">
+                    <ui:VisualElement class="clip-icon" />
+                    <ui:Label name="clip-text" class="clip-text" text="" />
+                </ui:VisualElement>
+
                 <ui:VisualElement class="row" style="margin-top: 16px;">
+                    <ui:Button name="next" class="btn btn--primary hidden" text="NEXT EVENT" style="flex-grow: 1; margin-right: 8px;" />
                     <ui:Button name="again" class="btn btn--primary" text="RACE AGAIN" style="flex-grow: 1; margin-right: 8px;" />
                     <ui:Button name="change" class="btn btn--ghost" text="CHANGE FIELD" style="flex-grow: 1; margin-left: 8px;" />
                 </ui:VisualElement>

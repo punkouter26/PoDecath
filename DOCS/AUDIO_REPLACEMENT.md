@@ -61,6 +61,28 @@ sting is heard for half a second at a time.
 does not undo a replacement. Deleting a generated file that the bank still points at leaves that slot
 silent, with a warning naming it.
 
+## Importing a whole pack in one go (2026-09-29)
+
+`PoDecath/Audio/Import Sound Pack...` fills the bank from a folder of WAV files. It was written for the
+**Sonniss GDC Game Audio Bundle** (free, royalty-free, commercial use allowed, no attribution required;
+download the zips from sonniss.com/gameaudiogdc and unzip them anywhere), and works on any folder whose
+files have descriptive names.
+
+1. Run the menu item, pick the folder, choose **Dry run** first. It writes
+   `training/logs/soundpack_import.json`: which file it would put in which slot, and which slots found
+   nothing.
+2. Run it again and choose **Import**. Each pick is converted to what this page asks for (mono for
+   placed sounds, 44.1 kHz, 16-bit, leading silence trimmed, cut to length with a fade, the four loops
+   cross-faded into themselves, peak at -3 dBFS), written to `Assets/Audio/Real/`, and wired onto the
+   bank. `Assets/Audio/Real/SOURCES.txt` records where every file came from.
+3. Listen, and drag a different clip onto any slot you do not like. The baked set is untouched.
+
+From the command line: write `{"folder": "D:/Sonniss", "dryRun": true}` to
+`training/logs/soundpack.json` and run `unity command menu --path "PoDecath/Audio/Import Sound Pack (config)"`.
+Tested on 2026-09-29 against a generated pack (48 kHz 24-bit stereo, 250-400 ms of silence before
+each hit, decoys such as a pistol reload and a door bell): 14 slots filled, both decoys rejected,
+silence trimmed to 2 ms, peaks at -3.0 dBFS. It has not yet been run on the real bundle.
+
 ## Where to get them
 
 The project has no sample library and none is bundled. Freesound (CC0 filter) and the BBC Sound

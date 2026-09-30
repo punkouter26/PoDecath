@@ -229,7 +229,7 @@ namespace PoDecath.EditorTools
         /// A particle material on URP's unlit particle shader. Alpha blended by default; additive for the
         /// things that are light rather than matter, which is sparks and the athlete trails.
         /// </summary>
-        static Material Particle(string name, Texture2D tex, bool additive, bool softParticles)
+        internal static Material Particle(string name, Texture2D tex, bool additive, bool softParticles)
         {
             string path = $"{MaterialsDir}/{name}.mat";
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);

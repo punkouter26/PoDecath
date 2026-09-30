@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
+using PoDecath.Fx;
 using PoDecath.Sim;
 
 namespace PoDecath.UI
@@ -27,11 +28,19 @@ namespace PoDecath.UI
         [Tooltip("Also put away: the broadcast overlay, which is a live picture over a finished race.")]
         public BroadcastView overlay;
         public string setupSceneName = "MAIN";
+        [Tooltip("Optional. Points, personal bests and the season table come from here.")]
+        public SeasonKeeper season;
+        [Tooltip("Optional. Says where the highlight clip of this race was saved.")]
+        public HighlightClip clip;
 
-        VisualElement _rootEl, _modal, _rows;
-        Label _title, _subtitle;
-        Button _again, _change;
+        VisualElement _rootEl, _modal, _rows, _seasonPanel, _seasonRows, _clipLine;
+        Label _title, _subtitle, _seasonTitle, _clipText;
+        Button _again, _change, _next;
         bool _hidStats, _hidHud, _hidOverlay;
+
+        /// <summary>The parts of a row the season decoration fills in once the points are known.</summary>
+        struct RowParts { public VisualElement row; public Label points; }
+        readonly Dictionary<string, RowParts> _parts = new Dictionary<string, RowParts>();
 
         protected override void Build()
         {
@@ -42,16 +51,36 @@ namespace PoDecath.UI
             _subtitle = Find<Label>("subtitle");
             _again = Find<Button>("again");
             _change = Find<Button>("change");
+            _next = Find<Button>("next");
+            _seasonPanel = Find<VisualElement>("season");
+            _seasonRows = Find<VisualElement>("season-rows");
+            _seasonTitle = Find<Label>("season-title");
+            _clipLine = Find<VisualElement>("clip");
+            _clipText = Find<Label>("clip-text");
 
             if (_again != null) _again.clicked += RaceAgain;
             if (_change != null) _change.clicked += ChangeRunners;
+            if (_next != null) _next.clicked += NextEvent;
             if (race != null) race.RaceComplete += Show;
+            if (season != null) season.Scored += Decorate;
             Hide();
         }
 
         void OnDisable()
         {
             if (race != null) race.RaceComplete -= Show;
+            if (season != null) season.Scored -= Decorate;
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+            // The clip is encoded on a worker thread after the card is already up, so its line is polled
+            // rather than set once: "Saving clip..." turns into the file name when the write finishes.
+            if (_clipLine == null || clip == null || !ScreenVisible) return;
+            string status = clip.Status;
+            Show(_clipLine, !string.IsNullOrEmpty(status));
+            SetText(_clipText, status);
         }
 
         public void Show(List<RaceEvent.RaceResult> results)
@@ -67,6 +96,7 @@ namespace PoDecath.UI
                 return;
             }
             _rows.Clear();
+            _parts.Clear();
             // Past eight rows the card would need to scroll on a phone; compact rows keep sixteen on one screen.
             bool compact = results.Count > 8;
 
@@ -94,10 +124,16 @@ namespace PoDecath.UI
                 time.AddToClassList("result-time");
                 time.style.color = r.finished ? Color.white : new Color(1f, 0.55f, 0.45f);
 
+                // Decathlon points, filled in by Decorate once the season keeper has scored the race.
+                var points = new Label("");
+                points.AddToClassList("result-points");
+
                 row.Add(rank);
                 row.Add(name);
                 row.Add(time);
+                row.Add(points);
                 _rows.Add(row);
+                _parts[r.name] = new RowParts { row = row, points = points };
 
                 // Rows arrive one after another rather than all at once, fastest at the top: the eye reads
                 // a podium in order, and this puts the order into the animation instead of only the layout.
@@ -109,6 +145,11 @@ namespace PoDecath.UI
             SetText(_title, "RESULTS");
             // The event words its own sub-heading: a lap race counts finishers, the long jump counts marks.
             if (race != null) SetText(_subtitle, race.ResultsSubtitle(results));
+
+            Show(_seasonPanel, false);
+            Show(_next, false);
+            Show(_again, true);
+            if (season != null && race != null && season.ScoredAttempt == race.Attempt) Decorate();
 
             Backdrop(false);
             Show(_rootEl, true);
@@ -127,6 +168,74 @@ namespace PoDecath.UI
                 _modal.EnableInClassList("modal--out", false);
                 _modal.EnableInClassList("modal--in", true);
             }).StartingIn(16);
+        }
+
+        /// <summary>
+        /// Points and personal bests on each row, then the season table and the NEXT EVENT button when this
+        /// race was a season leg. Runs when the keeper reports in, which may be before or after the card
+        /// was built: both subscribe to the same event, and nothing decides which hears it first.
+        /// </summary>
+        void Decorate()
+        {
+            if (season == null) return;
+            foreach (KeyValuePair<string, SeasonKeeper.Award> kv in season.Awards)
+            {
+                if (!_parts.TryGetValue(kv.Key, out RowParts parts)) continue;
+                SetText(parts.points, $"{kv.Value.points} pts");
+                if (kv.Value.personalBest && parts.row.Q(className: "pb-badge") == null)
+                {
+                    var badge = new VisualElement { tooltip = kv.Value.firstMark ? "first mark" : "personal best" };
+                    badge.AddToClassList("pb-badge");
+                    // After the name, so the star sits against it rather than drifting to the time column.
+                    parts.row.Insert(2, badge);
+                }
+            }
+            SeasonTable();
+        }
+
+        void SeasonTable()
+        {
+            if (_seasonPanel == null || season == null || !season.ScoredForSeason) return;
+            SeasonStore.Season s = SeasonStore.Current.season;
+            List<SeasonStore.Standing> table = SeasonStore.Table();
+            bool over = s.Finished;
+            string next = !over && s.next < s.legs.Count ? s.legs[s.next].label : "";
+            SetText(_seasonTitle, over
+                ? $"SEASON OVER  ·  champion {s.champion}"
+                : $"SEASON  ·  {s.next} of {s.legs.Count} done  ·  next {next}");
+
+            _seasonRows?.Clear();
+            // Top five, or three when the board above is already in compact rows.
+            int shown = Mathf.Min(table.Count, _parts.Count > 8 ? 3 : 5);
+            for (int i = 0; i < shown; i++)
+            {
+                SeasonStore.Standing st = table[i];
+                var line = new VisualElement();
+                line.AddToClassList("season-line");
+                var rank = new Label((i + 1).ToString());
+                rank.AddToClassList("season-rank");
+                var who = new Label(st.name);
+                who.AddToClassList("season-name");
+                who.style.color = st.Colour;
+                var total = new Label($"{st.total} pts");
+                total.AddToClassList("season-total");
+                line.Add(rank); line.Add(who); line.Add(total);
+                _seasonRows?.Add(line);
+            }
+            Show(_seasonPanel, true);
+
+            // During a season the next event is the point of the card, so NEXT takes the place of RACE AGAIN.
+            // A race run again after the season has moved on is a free race and would not be scored anyway.
+            bool hasNext = SeasonStore.NextLeg != null;
+            Show(_next, hasNext);
+            Show(_again, !hasNext);
+            if (_next != null && hasNext) _next.text = $"NEXT: {next}";
+        }
+
+        void NextEvent()
+        {
+            Hide();
+            SeasonKeeper.NextLeg();
         }
 
         public void Hide()

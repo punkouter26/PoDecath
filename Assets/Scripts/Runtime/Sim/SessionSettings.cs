@@ -21,6 +21,13 @@ namespace PoDecath.Sim
         /// <summary>Whether the picked event puts hurdles on the straights.</summary>
         public static bool Hurdles = false;
 
+        /// <summary>
+        /// True while the scene being loaded is the next leg of a season, so its <see cref="SeasonKeeper"/>
+        /// writes the result into the standings. Cleared once the leg is scored, so RACE AGAIN on the same
+        /// scene is a free race rather than a second go at the same leg.
+        /// </summary>
+        public static bool SeasonRace = false;
+
         /// <summary>Chosen on the event picker and read by the race scene as it loads.</summary>
         public static void SetEvent(int laps, bool hurdles)
         {

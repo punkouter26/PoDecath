@@ -391,7 +391,7 @@ namespace PoDecath.Sim
 
             return new RaceEvent.Athlete
             {
-                name = def.displayName, kind = def.kind, color = def.Tint, go = res.root, rig = res.rig,
+                name = def.displayName, definitionName = def.displayName, kind = def.kind, color = def.Tint, go = res.root, rig = res.rig,
                 runner = runner, command = cmd, follower = follower, spawnHeight = cfg.spawnHeight,
             };
         }

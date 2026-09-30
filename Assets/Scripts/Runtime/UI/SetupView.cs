@@ -62,6 +62,10 @@ namespace PoDecath.UI
         VisualElement _eventHost, _runnerHost;
         Label _hint, _total;
         Button _start, _all, _none;
+        Button _cards, _season, _seasonReset, _cardsClose;
+        Label _seasonLabel, _cardsHint;
+        VisualElement _cardsSheet, _cardsList;
+        bool _confirmEnd;
         readonly List<Button> _eventButtons = new List<Button>();
         int _event;
 
@@ -95,8 +99,163 @@ namespace PoDecath.UI
             if (_all != null) _all.clicked += () => SetEveryone(1);
             if (_none != null) _none.clicked += () => SetEveryone(0);
 
+            BuildSeason();
             SelectEvent(0);
             Refresh();
+        }
+
+        // ---------------------------------------------------------------- season and cards
+
+        void BuildSeason()
+        {
+            _cards = Find<Button>("cards");
+            _season = Find<Button>("season");
+            _seasonLabel = Find<Label>("season-label");
+            _cardsSheet = Find<VisualElement>("cards-sheet");
+            _cardsList = Find<VisualElement>("cards-list");
+            _cardsHint = Find<Label>("cards-hint");
+            _seasonReset = Find<Button>("season-reset");
+            _cardsClose = Find<Button>("cards-close");
+
+            if (_cards != null) _cards.clicked += OpenCards;
+            if (_cardsClose != null) _cardsClose.clicked += () => Show(_cardsSheet, false);
+            if (_season != null) _season.clicked += OnSeason;
+            if (_seasonReset != null) _seasonReset.clicked += OnEndSeason;
+
+            SeasonStore.Load();
+            RefreshSeason();
+        }
+
+        void Start()
+        {
+            // A newer season from another device replaces this one's; the button and cards follow it. From
+            // Start, not from Build (which runs in OnEnable): see SeasonCloud.Connect.
+            SeasonCloud.Pull(adopted => { if (adopted) RefreshSeason(); });
+        }
+
+        static string CloudLine()
+        {
+            string where = SeasonCloud.Linked ? SeasonCloud.StatusLine : "Saved on this device";
+            return $"{where}  ·  {SeasonStore.Current.cards.Count} athlete card(s)";
+        }
+
+        void RefreshSeason()
+        {
+            SeasonStore.Season s = SeasonStore.Current.season;
+            if (SeasonStore.SeasonActive)
+                SetText(_seasonLabel, $"CONTINUE SEASON  {s.next + 1}/{s.legs.Count}  {s.legs[s.next].label}");
+            else
+                SetText(_seasonLabel, "START SEASON");
+            Show(_seasonReset, SeasonStore.SeasonActive);
+        }
+
+        /// <summary>
+        /// Starts a season with the field as picked, over every event this menu offers, in decathlon order;
+        /// or, with one already running, sends its own field to its next event. The picked field is ignored
+        /// when continuing: a season is one field from first event to last.
+        /// </summary>
+        void OnSeason()
+        {
+            if (SeasonStore.SeasonActive)
+            {
+                SeasonKeeper.Launch(SeasonStore.NextLeg);
+                return;
+            }
+            var legs = new List<SeasonStore.Leg>();
+            foreach (EventChoice e in events)
+                legs.Add(new SeasonStore.Leg { label = e.label, scene = e.sceneName, laps = e.laps, hurdles = e.hurdles, evt = Classify(e) });
+            // Decathlon order: 100 m, long jump, 400 m on day one; hurdles and 1500 m on day two. The enum
+            // is declared in that order, so a stable sort on it is the whole of the ordering.
+            legs.Sort((a, b) => a.evt.CompareTo(b.evt));
+            if (legs.Count == 0 || Total() < 1) return;
+            SeasonStore.StartSeason(legs, BuildGridOrder());
+            SeasonKeeper.Launch(legs[0]);
+        }
+
+        static SeasonEvent Classify(EventChoice e)
+        {
+            if (!string.IsNullOrEmpty(e.sceneName) && e.sceneName.Contains("LongJump")) return SeasonEvent.LongJump;
+            if (e.hurdles) return SeasonEvent.Hurdles;
+            if (e.laps >= 10) return SeasonEvent.Run1500;
+            if (e.laps >= 3) return SeasonEvent.Run400;
+            return SeasonEvent.Sprint100;
+        }
+
+        /// <summary>Asks once before throwing a season away: the second tap within the sheet ends it.</summary>
+        void OnEndSeason()
+        {
+            if (!_confirmEnd)
+            {
+                _confirmEnd = true;
+                if (_seasonReset != null) _seasonReset.text = "TAP AGAIN TO END";
+                return;
+            }
+            _confirmEnd = false;
+            if (_seasonReset != null) _seasonReset.text = "END SEASON";
+            SeasonStore.EndSeason();
+            RefreshSeason();
+            FillCards();
+        }
+
+        void OpenCards()
+        {
+            _confirmEnd = false;
+            if (_seasonReset != null) _seasonReset.text = "END SEASON";
+            FillCards();
+            Show(_cardsSheet, true);
+        }
+
+        /// <summary>
+        /// One card per athlete that has raced on this device, best single-event score first. Each card is
+        /// the athlete's record in plain numbers: races, wins, falls, the fastest it has been measured going,
+        /// the work its joints have done, and its best mark in every event with the points it was worth.
+        /// </summary>
+        void FillCards()
+        {
+            if (_cardsList == null) return;
+            _cardsList.Clear();
+            var cards = new List<SeasonStore.Card>(SeasonStore.Current.cards);
+            cards.Sort((a, b) => b.bestPoints.CompareTo(a.bestPoints));
+            SetText(_cardsHint, cards.Count == 0
+                ? "No races yet. Every race adds to these, season or not."
+                : CloudLine());
+
+            // Each card is about 170 px tall; show as many as the sheet has room for rather than scrolling.
+            int max = Mathf.Min(cards.Count, 7);
+            for (int i = 0; i < max; i++)
+            {
+                SeasonStore.Card c = cards[i];
+                var card = new VisualElement();
+                card.AddToClassList("athlete-card");
+                card.style.borderLeftColor = c.Colour;
+
+                var name = new Label(c.athlete);
+                name.AddToClassList("athlete-card-name");
+                name.style.color = c.Colour;
+                var line = new Label($"{c.races} races  ·  {c.wins} wins  ·  {c.podiums} podiums  ·  {c.falls} falls  ·  got up {c.recoveries}"
+                                   + $"  ·  top {c.topSpeed:F1} m/s  ·  {c.joules / 1000f:F0} kJ of work");
+                line.AddToClassList("athlete-card-line");
+
+                var bests = new System.Text.StringBuilder();
+                foreach (SeasonStore.Best b in c.bests)
+                {
+                    if (bests.Length > 0) bests.Append("   ");
+                    bests.Append($"{ScoringTable.Label(b.evt)} {ScoringTable.Format(b.evt, b.value)} ({b.points})");
+                }
+                var best = new Label(bests.Length > 0 ? "Bests: " + bests : "No marks yet");
+                best.AddToClassList("athlete-card-bests");
+
+                card.Add(name);
+                card.Add(line);
+                card.Add(best);
+                _cardsList.Add(card);
+            }
+            if (cards.Count > max)
+            {
+                var more = new Label($"+{cards.Count - max} more");
+                more.AddToClassList("label-micro");
+                _cardsList.Add(more);
+            }
         }
 
         void BuildEvents()
@@ -266,6 +425,7 @@ namespace PoDecath.UI
             // the loop, and this is what tells it which one it is about to be.
             EventChoice chosen = events[_event];
             SessionSettings.SetEvent(chosen.laps, chosen.hurdles);
+            SessionSettings.SeasonRace = false;   // a race picked here is a free race, season or not
             SessionSettings.ApplyQuality();
             Time.timeScale = 1f;
             SceneManager.LoadScene(SceneName);

@@ -85,6 +85,8 @@ namespace PoDecath.EditorTools
             dir.heroCam = ShotCam("CM Shot Hero", 55f);
             dir.cableCam = ShotCam("CM Shot Cable", 40f);
             dir.reverseCam = ShotCam("CM Shot Reverse", 46f);
+            // The moving shots: a drone and a trackside rail on splines round the loop, and the head cam.
+            ShowBuilder.AddMovingShots(dir, path, ShotCam);
 
             // The director's line-of-sight check must not count an athlete's own body as the thing
             // blocking the view of it.
@@ -111,6 +113,9 @@ namespace PoDecath.EditorTools
                 // place -- SetupScenePath -- keeps them in step.
                 results.setupSceneName = System.IO.Path.GetFileNameWithoutExtension(SetupScenePath);
             }
+
+            // Points, athlete cards and the season on the card; the highlight clip saved under it.
+            ShowBuilder.AddSeasonAndClip(dash, results);
 
             AddFrameAndTelemetry(dash);
             return dir;

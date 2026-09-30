@@ -90,11 +90,41 @@ namespace PoDecath.Audio
         LapEvent Lap => race as LapEvent;
         LongJumpEvent Jump => race as LongJumpEvent;
 
-        void Start() => HookHurdles();
+        ViewerChaos _chaos;
+
+        void Start()
+        {
+            HookHurdles();
+            // The viewer's buttons. Found rather than wired, the same way the hurdles are.
+            _chaos = FindFirstObjectByType<ViewerChaos>();
+            if (_chaos != null) _chaos.Fired += OnChaos;
+        }
 
         void OnDestroy()
         {
             foreach (Hurdle h in _hurdles) if (h != null) h.KnockedOver -= OnHurdleKnocked;
+            if (_chaos != null) _chaos.Fired -= OnChaos;
+        }
+
+        /// <summary>
+        /// Calls the viewer's interventions. Above the running colour, below a fall: if the gust puts
+        /// somebody down, the fall is the bigger story and takes the slot.
+        /// </summary>
+        void OnChaos(ViewerChaos.Act act, RaceEvent.Athlete who)
+        {
+            if (race == null || race.Current != RaceEvent.Phase.Running) return;
+            switch (act)
+            {
+                case ViewerChaos.Act.Gust:
+                    Offer("A gust right across the roof. They're fighting for their line.", 84, "chaos", 2f);
+                    break;
+                case ViewerChaos.Act.Shove:
+                    Offer(who != null ? $"{who.name} gets a shove. Can it stay up?" : "A shove from the crowd!", 84, "chaos", 2f);
+                    break;
+                case ViewerChaos.Act.Slick:
+                    Offer("Water on the track ahead. Careful now.", 80, "chaos", 2f);
+                    break;
+            }
         }
 
         /// <summary>

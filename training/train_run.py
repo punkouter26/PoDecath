@@ -7,6 +7,8 @@ Usage (from training/):
 House rules applied here:
   * TensorBoard is launched automatically (http://localhost:6006) when training starts.
   * Stale TensorBoard runs for this task are removed first unless --keep-old-runs is passed.
+  * Every --video-every-iters iterations the checkpoint is filmed in MuJoCo (tools/rollout_video.py) and
+    the clip appears in TensorBoard's IMAGES tab, so the gait can be watched next to the curves.
 """
 from __future__ import annotations
 
@@ -58,6 +60,20 @@ def clean_old_runs(tb_root: str, task: str) -> None:
         if os.path.isdir(p) and name.startswith(task):
             shutil.rmtree(p, ignore_errors=True)
             print(f"[tensorboard] removed obsolete run {name}")
+
+
+def film_checkpoint(ck: str, tb_dir: str, step: int, task: str, run_name: str) -> None:
+    """Films a saved checkpoint in the background (tools/rollout_video.py) so TensorBoard shows the gait
+    beside the curves. Fire and forget: a failed clip is logged to its own file and never stops training."""
+    log_path = os.path.join(HERE, "logs", f"{run_name}.video.log")
+    try:
+        with open(log_path, "a", encoding="utf-8") as log:
+            subprocess.Popen([sys.executable, os.path.join(HERE, "tools", "rollout_video.py"),
+                              "--ckpt", ck, "--tb-dir", tb_dir, "--step", str(step), "--task", task],
+                             stdout=log, stderr=subprocess.STDOUT, cwd=HERE,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception as e:  # pragma: no cover
+        print(f"[video] could not start the filming process: {e}", flush=True)
 
 
 def write_policy_manifest(env, args, run_name: str, path: str) -> None:
@@ -230,6 +246,10 @@ def main() -> None:
                     help="weight on raw forward progress. Has to beat the 0.79/step that alive + "
                          "upright + heading pay for standing still, or standing still wins.")
     ap.add_argument("--keep-old-runs", action="store_true")
+    ap.add_argument("--video-every-iters", type=int, default=200,
+                    help="film the checkpoint every this many iterations (at the next save) with "
+                         "tools/rollout_video.py and put the clip in TensorBoard's IMAGES tab under "
+                         "rollout/<task>. Runs in its own CPU process; 0 turns it off.")
     ap.add_argument("--no-tensorboard", action="store_true")
     # Experiments export to scratch, NOT over the game's shipped policies.
     #
@@ -346,6 +366,7 @@ def main() -> None:
                        + sorted(k for k in env.get_stats() if k.startswith("rt_")))
 
     obs = env.reset()
+    last_video = start_iter // args.video_every_iters if args.video_every_iters > 0 else 0
     total_steps = start_iter * args.steps * args.num_envs
     t_start = time.time()
     print(f"obs_dim={env.obs_dim} act_dim={env.A} envs={args.num_envs} control_dt={env.dt:.3f}s")
@@ -448,6 +469,12 @@ def main() -> None:
                 shutil.copyfile(onnx_path, os.path.join(pub, onnx_name))
                 dest += f" and Assets/Policies/{onnx_name}"
             print(f"saved {ck} and exported ONNX -> {dest}", flush=True)
+            # Filmed on the save that lands on or after each --video-every-iters boundary, and always at
+            # the end, so a run's last clip is of the policy it actually finished with.
+            ve = args.video_every_iters
+            if ve > 0 and ((it + 1) // ve > last_video or it + 1 == args.iters or out_of_time):
+                last_video = (it + 1) // ve
+                film_checkpoint(ck, tb_dir, it + 1, args.task, run_name)
         if out_of_time:
             print(f"[max-hours] reached {args.max_hours:g} h at iteration {it + 1}; stopping cleanly "
                   f"after {(time.time() - t_start) / 3600:.2f} h", flush=True)

@@ -35,6 +35,30 @@
                 <ui:Label name="last-result" class="label-micro" text="" style="margin-top: 8px;" />
             </ui:VisualElement>
 
+            <!--
+                The viewer's hand on the race: three physical disturbances and the camera picker. Only in the
+                broadcast scenes (HudView shows it when a ViewerChaos or a director is wired). Each button is an
+                icon over a word; the word counts down while the button is cooling off.
+            -->
+            <ui:VisualElement name="chaos-bar" class="chaos-bar hidden">
+                <ui:Button name="gust" class="btn btn--icon">
+                    <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/fastForward.png');" />
+                    <ui:Label name="gust-label" class="btn-label" text="GUST" />
+                </ui:Button>
+                <ui:Button name="shove" class="btn btn--icon">
+                    <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/exclamation.png');" />
+                    <ui:Label name="shove-label" class="btn-label" text="SHOVE" />
+                </ui:Button>
+                <ui:Button name="slick" class="btn btn--icon">
+                    <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/warning.png');" />
+                    <ui:Label name="slick-label" class="btn-label" text="SLICK" />
+                </ui:Button>
+                <ui:Button name="cam" class="btn btn--icon">
+                    <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/movie.png');" />
+                    <ui:Label name="cam-label" class="btn-label" text="AUTO" />
+                </ui:Button>
+            </ui:VisualElement>
+
             <ui:VisualElement name="control-bar" class="control-bar">
                 <ui:Button name="restart" class="btn btn--primary" text="RESTART" />
                 <ui:Button name="stats" class="btn btn--ghost" text="STATS" />

@@ -386,6 +386,9 @@ namespace PoDecath.EditorTools
 
             BroadcastDirector director = fieldMode ? RaceUiBuilder.BuildBroadcastAndResults(dash, path, camRig, hud, pit) : null;
             if (!fieldMode) RaceUiBuilder.AddFrameAndTelemetry(dash);   // the dev scenes get the frame and panel too
+            // The viewer's GUST / SHOVE / SLICK buttons and the camera picker, in the broadcast scenes only.
+            // The loop is passed only where the race is on it; the long jump's wet patch goes on the runway.
+            if (fieldMode) ShowBuilder.AddViewerChaos(dash, lapMode ? path : null, pit, hud, director);
 
             // Focus follows the gallery. Without this the depth of field in the PC profile is authored at a
             // fixed 12 m, which is right for one shot in seven; with it, a close-up racks onto the athlete

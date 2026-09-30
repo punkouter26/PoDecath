@@ -84,10 +84,67 @@ when it changes. In order:
 5. `PoDecath/Sweep All Scenes` — and compare its triangle counts to the ones in `DOCS/README.md` before
    believing the building is still under budget.
 
+## Game-ready checks (2026-09-29)
+
+Every model was audited against the usual export checklist; the full result, with before/after renders, is
+`DOCS/reports/2026-09-29-model-realism-pass.html`. What matters for the next export:
+
+- **Do not apply rotations or scale on the building.** 314 objects share 28 meshes (107 wing windows are
+  one mesh); the rotations are instance placements, and applying them turns 28 meshes into 314.
+- `training/tools/game_ready.py` is the building pass to run on a fresh export: flag and flagpole pivots to
+  their foot and hoist (they sat 33 m and 22 m below), inverted-face repair, and weighted normals on the
+  hard-surface parts. On the 2026-09-04 export the weighted normals changed under 2 % of pixels, so that
+  export was left as it was; run the pass when the building is re-exported for another reason.
+- `training/tools/athlete_glb_fix.py` patches a rigged athlete glb without re-exporting it (mesh, skeleton
+  and textures stay byte-identical): no-map materials that glTF defaults to solid metal, emissive set to the
+  model's own base colour, doubled specular, more than four bones per vertex, flat-shaded normals, and
+  `--ao` bakes an occlusion map. Run it on every new AI-generated athlete before it goes in the roster.
+- `training/tools/model_audit.py` reports all of the above for any glb/fbx; `render_preview.py` makes
+  matching before/after stills.
+
+## Unity scene -> new .blend (2026-09-29)
+
+A Unity scene can be rebuilt as a new, stand-alone Blender file (it never touches the owner's .blend):
+
+1. With the editor open: `unity command eval_file --file training/tools/unity_scene_export.cs --timeout 600000`
+   (edit `SCENE` at the top for another scene). It opens the scene alongside the current one without saving
+   it, exports the generated geometry, sun and camera with glTFast to `Blender/source/<Scene>_generated.glb`,
+   and writes `<Scene>_scene.json`: which model files are placed where, the sky, ambient, fog and the global
+   Volume's grading. If the result says the export is "still running", it finishes on its own a few seconds
+   later; close the scene afterwards (`EditorSceneManager.CloseScene`).
+2. `blender-launcher --background --python training/tools/unity_scene_to_blend.py -- Blender/source/<Scene>_scene.json Blender/<Scene>.blend`
+
+The White House comes from `WhiteHouse.glb` at full detail (its LOD copies are skipped); the sky is the
+scene's own HDR, turned to Unity's orientation; fog is Unity's linear fog as a mist step in the compositor
+(renders show it, the viewport does not); grading is Neutral tonemapping plus the Volume's contrast and
+saturation. Not carried over: bloom, vignette, baked lightmaps, and anything spawned at runtime (athletes,
+hurdles, crowd). `Blender/RooftopRace.blend` (125 MB, textures packed) was made this way; it is not in git.
+
+## The city around the grounds (2026-09-29)
+
+`Assets/Models/Surroundings.glb` is the city ring made in Blender from the placeholder blocks
+`SurroundingsBuilder` used to generate: limestone, brick and glass facades with windows, roofs with plant
+bulkheads, the obelisk in marble with its change of stone at 46 m, and a street-and-block ground ring from
+410 m out (grass down the Mall) so nothing past the lawn stands on air. 5,372 triangles, 1.5 MB, seven
+materials, each Base Colour + ORM + normal. `SurroundingsBuilder` places it at the city centre when the file
+exists (static, no shadows, no probes, kept out of the light bake) and falls back to the old boxes when not;
+the treeline is still generated.
+
+To change it: edit the `*_Procedural` materials or the numbers in `training/tools/improve_surroundings.py`,
+then run it on the pre-city scene (`Blender/source/RooftopRace_before_city.blend`, a copy of what
+`unity_scene_to_blend.py` produced) and reimport; the four rooftop scenes pick the model up without a
+rebuild, since they hold it as a prefab instance:
+
+    copy Blender/source/RooftopRace_before_city.blend -> Blender/RooftopRace.blend
+    blender-launcher --background --python training/tools/improve_surroundings.py -- Blender/RooftopRace.blend Assets/Models/Surroundings.glb
+
+The script refuses to export if any face points down or any exported normal disagrees with its face (a
+downward-facing ground is culled from above and simply vanishes in Unity; Blender's render shows both sides
+and hides the problem). Before/after stills come from `training/tools/unity_scene_shots.cs`.
+
 ## Where Blender is
 
-At the time of writing (2026-09-14) Blender is **not installed on this machine**: `blender.exe` is not in
-Program Files, Steam, the Store or the user profile, though `%APPDATA%\Blender Foundation\Blender\5.0`
-and `5.2` show it was. Install 4.2 LTS or later from blender.org (the scripts use `modifiers.move` and
-the glTF exporter's `export_image_format`, both fine from 4.x). The Blender MCP add-on this project's
-tooling can drive (`mcp__blender__*`) also needs Blender open with the add-on enabled.
+Blender 5.2.2 LTS is installed from the Microsoft Store (2026-09-29). Its `blender.exe` cannot be started
+from its install folder; run it as `blender-launcher` (the app alias in `%LOCALAPPDATA%\Microsoft\WindowsApps`).
+The launcher does not pass Blender's printed output back to the terminal, which is why every script here
+also writes a log under `training/logs/`. The Blender MCP add-on (`mcp__blender__*`) is not installed.

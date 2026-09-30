@@ -35,6 +35,32 @@
                     <ui:Button name="all" class="btn btn--ghost" text="ONE EACH" style="flex-grow: 1; margin-right: 8px;" />
                     <ui:Button name="start" class="btn btn--primary" text="START" style="flex-grow: 2; min-height: 104px; font-size: 40px;" />
                 </ui:VisualElement>
+
+                <!-- A season runs every event in decathlon order with this field and keeps a points table;
+                     the cards are every athlete's record on this device. -->
+                <ui:VisualElement class="setup-extra">
+                    <ui:Button name="cards" class="btn btn--ghost btn--icon">
+                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/leaderboardsSimple.png');" />
+                        <ui:Label class="btn-label" text="CARDS" />
+                    </ui:Button>
+                    <ui:Button name="season" class="btn btn--ghost btn--icon" style="flex-grow: 2;">
+                        <ui:VisualElement class="btn-icon" style="background-image: url('project://database/Assets/UI/Icons/trophy.png');" />
+                        <ui:Label name="season-label" class="btn-label" text="START SEASON" />
+                    </ui:Button>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- The athlete cards: one per roster entry, filled by SetupView from SeasonStore. -->
+        <ui:VisualElement name="cards-sheet" class="modal-scrim hidden">
+            <ui:VisualElement class="modal" style="max-height: 86%;">
+                <ui:Label class="label-title" text="ATHLETE CARDS" />
+                <ui:Label name="cards-hint" class="label-small muted" text="" style="margin-bottom: 16px; white-space: normal;" />
+                <ui:VisualElement name="cards-list" class="cards-list" />
+                <ui:VisualElement class="row" style="margin-top: 16px;">
+                    <ui:Button name="season-reset" class="btn btn--ghost" text="END SEASON" style="flex-grow: 1; margin-right: 8px;" />
+                    <ui:Button name="cards-close" class="btn btn--primary" text="CLOSE" style="flex-grow: 1; margin-left: 8px;" />
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

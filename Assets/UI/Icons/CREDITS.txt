@@ -1,0 +1,8 @@
+Game Icons by Kenney Vleugels (www.kenney.nl), CC0 1.0 (public domain).
+https://kenney.nl/assets/game-icons  -  White/2x set, downloaded 2026-09-29.
+
+fastForward   GUST button          exclamation   SHOVE button
+warning       SLICK button         movie         camera picker, highlight clip
+trophy        season standings     medal1        podium / points
+star          personal best        leaderboardsSimple  athlete cards
+share1        saved clip

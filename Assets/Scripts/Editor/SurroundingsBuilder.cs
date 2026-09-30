@@ -18,20 +18,57 @@ namespace PoDecath.EditorTools
     {
         const int Seed = 1600;
 
+        /// <summary>
+        /// The dressed city made in Blender from these same blocks (training/tools/improve_surroundings.py):
+        /// facades, roofs, rooftop plant, the obelisk's marble and a street ring under it all, authored
+        /// relative to the centre on the ground. When it is missing the flat-colour placeholders are built.
+        /// </summary>
+        const string CityModelPath = "Assets/Models/Surroundings.glb";
+
         public static GameObject Build(Bounds building, float groundY, VfxBank vfx)
         {
             var root = new GameObject("Surroundings");
             Vector3 centre = new Vector3(building.center.x, groundY, building.center.z);
 
-            Material a = Dress("Skyline_A", new Color(0.58f, 0.57f, 0.56f));
-            Material b = Dress("Skyline_B", new Color(0.66f, 0.64f, 0.62f));
-            Material c = Dress("Skyline_C", new Color(0.5f, 0.51f, 0.54f));
-            Skyline(root.transform, centre, a, b, c);
-            Obelisk(root.transform, centre, Dress("Skyline_Marble", new Color(0.86f, 0.85f, 0.8f)));
+            var city = AssetDatabase.LoadAssetAtPath<GameObject>(CityModelPath);
+            if (city == null)
+            {
+                Material a = Dress("Skyline_A", new Color(0.58f, 0.57f, 0.56f));
+                Material b = Dress("Skyline_B", new Color(0.66f, 0.64f, 0.62f));
+                Material c = Dress("Skyline_C", new Color(0.5f, 0.51f, 0.54f));
+                Skyline(root.transform, centre, a, b, c);
+                Obelisk(root.transform, centre, Dress("Skyline_Marble", new Color(0.86f, 0.85f, 0.8f)));
+            }
             if (vfx != null && vfx.treeline != null) Treeline(root.transform, centre, vfx.treeline);
 
             foreach (Transform t in root.GetComponentsInChildren<Transform>(true)) t.gameObject.isStatic = true;
+            if (city != null) City(root.transform, centre, city);
             return root;
+        }
+
+        /// <summary>
+        /// The Blender city, placed at the centre. Same treatment as the placeholders it replaces: static,
+        /// no shadows cast or received, no probes. It is also kept out of the light bake: a two-kilometre
+        /// ring would take most of the lightmap atlas for scenery that sits in the fog.
+        /// </summary>
+        static void City(Transform parent, Vector3 centre, GameObject model)
+        {
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(model);
+            go.name = "City";
+            go.transform.SetParent(parent, false);
+            go.transform.position = centre;
+            const StaticEditorFlags flags = StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccludeeStatic
+                                          | StaticEditorFlags.ReflectionProbeStatic;
+            foreach (Transform t in go.GetComponentsInChildren<Transform>(true))
+                GameObjectUtility.SetStaticEditorFlags(t.gameObject, flags);
+            foreach (MeshRenderer mr in go.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                mr.receiveShadows = false;
+                mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+                mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+                mr.receiveGI = ReceiveGI.LightProbes;
+            }
         }
 
         static Material Dress(string name, Color colour)

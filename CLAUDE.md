@@ -77,6 +77,17 @@ Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the te
     `AthleteSpawner.IgnoreBetweenAthletes` deliberately lets athletes pass through one another, because
     training only ever shows a policy one body on an empty plane.
 
+### Editor and reports
+
+21. **Keep the editor from stalling:** Preferences "No Throttling", Player "Run In Background" on,
+    and pipeline auto-tick on (`unity command set_autotick --enable true --persist true`). Set them via
+    CLI/MCP; details in `AGENTS.md` house rule 20.
+22. **UI change -> before/after HTML.** Screenshot the old UI before editing and the new UI after,
+    side by side with the changes annotated, as an HTML file in `DOCS/reports/`.
+23. **30+ minute training -> chart explainer HTML.** Screenshot the three most consequential
+    TensorBoard charts, review them, and explain each at three levels (toddler / child / adult) in an
+    HTML file in `DOCS/reports/`.
+
 ## Hard constraints
 
 - No Unity ML-Agents. Policies are trained externally (MuJoCo / Newton) and run through Unity

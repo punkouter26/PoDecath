@@ -81,6 +81,20 @@ default; each one costs nothing until something uses it.
 | `com.unity.cloud.ktx` | 3.7.0 | registry | Compressed glTF textures. Added alongside the other two because textures, not triangles, are most of the 122 MB `WhiteHouse.glb`. |
 | `com.kyrylokuzyk.primetween` | 1.3.3 | OpenUPM | Tweening for the broadcast graphics (name strips, split tickers, replay wipes). Chosen over DOTween Free and LeanTween because it is the only one of the three that installs as a real package with a pinned version, and because it allocates nothing per tween, which matters on the zero-GC path this project already keeps. MIT. |
 
+Added on 2026-09-29:
+
+| Package / asset | Version | Source | What it is for |
+|---|---|---|---|
+| `com.unity.services.leaderboards` | 2.3.4 | registry | One board per event plus a season board (`SeasonCloud.BoardId`). Posts points with the athlete's name as metadata. |
+| `com.unity.services.cloudsave` | 3.4.1 | registry | Mirrors `podecath_season.json` so cards and the season follow the player to another device. Pulls `com.unity.services.authentication` (anonymous sign-in) and `core`. |
+| Kenney Particle Pack 1.1, Game Icons | CC0 | kenney.nl | Four sprites in `Assets/Textures/Kenney/` (gust streaks, shove burst, puddle edge) and nine white icons in `Assets/UI/Icons/`. `CREDITS.txt` beside each. |
+
+**UGS does nothing until the owner links the project** (Project Settings > Services), turns on
+Authentication, Cloud Save and Leaderboards in the Unity Cloud dashboard, and creates the six boards
+named in `SeasonCloud` (sorted high to low). Until then `Application.cloudProjectId` is empty,
+`SeasonCloud` does not even try, and the season lives in the device file alone. That is the intended
+fallback, not an error.
+
 glTFast does not depend on Draco, meshopt or KTX. It detects them through `versionDefines` in
 `glTFast.asmdef` and lights up the matching extensions when they are present, which is why installing
 them is the whole of the wiring. Nothing re-compresses itself: the `.glb` has to be exported with those
@@ -118,6 +132,34 @@ start depending on which mirror replied first.
 - **Mixamo animations** for finishers and celebrations need an Adobe sign-in, so they cannot be fetched
   from here. They would also need an `Animator` on the athlete skin, which is currently driven bone by
   bone from the physics rig by `SkinBinder`; the two need a hand-off rule before any clip can play.
+
+## The show layer (2026-09-29)
+
+Built into the broadcast scenes by `ShowBuilder`, called from `RaceUiBuilder` and `RooftopSceneBuilder`.
+
+- **`ViewerChaos` is the one presentation component allowed to push on a body, and only from outside.**
+  Gust = aerodynamic drag on every link by mass share; shove = one impulse at the `torso` link of
+  mass x 0.9 m/s; slick = a static `BoxCollider` 3 mm proud of the deck with a Minimum-combine
+  material, on the default layer so every body part collides with it (house rule 20). It never
+  touches a drive, a gain, a limit or `PolicyRunner` - the rule in *The broadcast layer reads the
+  physics* still holds. All numbers are Earth-sized (house rule 14) and in its inspector.
+- **The head cam has no head link to ride.** The MJCF head is a geom on `torso`, so the eye is
+  measured off that link (0.62 m up its axis, 0.14 m forward). Renamed links break it silently.
+- **Spline shots follow; every other shot is placed.** The director places the ten fixed jobs and
+  the head cam itself; the drone and rail use `CinemachineSplineDolly` with `NearestPointToTarget`, so
+  they are the only cameras with `Follow` set.
+- **Season scoring is keyed on `RaceEvent.Athlete.definitionName`** (new: the roster name without
+  the grid number) for cards, and on the numbered name for season standings, because a season is one
+  fixed field. `SessionSettings.SeasonRace` marks a scene load as a season leg and is cleared once
+  scored, so RACE AGAIN is a free race.
+- **`HighlightClip` reads the ring directly while encoding**, so it does not record again until the
+  encode finishes. The screen grab is `ScreenCapture.CaptureScreenshotIntoRenderTexture`, flipped in
+  the downscale blit when `graphicsUVStartsAtTop`.
+- **Real audio** comes in through `PoDecath/Audio/Import Sound Pack...` (`SoundPackImporter`), see
+  `DOCS/AUDIO_REPLACEMENT.md`.
+- **Training clips in TensorBoard:** `train_run.py --video-every-iters N` (default 200, 0 = off) films
+  each checkpoint with `tools/rollout_video.py` in a separate CPU process; clips land in the IMAGES
+  tab as `rollout/<task>` and as GIFs in `training/logs/videos/<run>/`. Needs Pillow in the venv.
 
 ## Coordinate conversion
 
@@ -457,7 +499,8 @@ named so nobody has to rediscover it.
    ML-Agents is not used and must not be added. A second trainer, its twin athlete and its
    comparison tool were **deleted on 2026-09-14** (owner decision). Do not reintroduce them, and
    do not add a second trainer "for cross-checking": that call has been made and reversed once
-   already.
+   already. (The owner's generic rule list says to drop the MuJoCo/Isaac Lab rules in apps that use
+   ML-Agents; this app does not, so they all apply.)
 6. **Ask for the skinned mesh first.** Do not start training until the owner has supplied the model.
    The rig comes *out of that model*: `training/rig_to_mjcf.py` reads the glb bone hierarchy into
    `training/models/athlete.xml` (21 DoF). Rig descriptions live in `training/rigs/*.json`. Unity
@@ -550,6 +593,37 @@ named so nobody has to rediscover it.
       for a shoulder charge, and the symptom of turning it on now would be "the policy got worse when the
       runners got close" — which reads as a training failure. Enabling it needs a task that trains for
       contact first.
+
+### Keeping the editor awake
+
+20. **The editor must not stall in the background.** Three settings, all set through the Unity CLI/MCP
+    rather than by hand-editing `ProjectSettings/`:
+    - *Preferences > General > Interaction Mode = No Throttling* (a per-machine editor preference —
+      `InteractionMode = 1` in the registry, not in the repo).
+    - *Player > Resolution and Presentation > Run In Background* on (`runInBackground: 1` in
+      `ProjectSettings/ProjectSettings.asset`). Set with
+      `unity command eval --code "UnityEditor.PlayerSettings.runInBackground = true;"` — the pipeline's
+      `set_player_settings` does not accept this key. Unity only writes it to disk outside Play mode, so
+      check the file after leaving Play mode and commit it.
+    - Pipeline auto-tick: `unity command set_autotick --enable true --persist true`.
+
+    State on 2026-09-29: No Throttling and auto-tick already on; Run In Background switched on in the
+    live editor that day.
+
+### Reports for the owner
+
+Both reports are single self-contained HTML files under `DOCS/reports/` (images embedded or next to
+the file), named `<yyyy-mm-dd>-<topic>.html`, and linked in the reply.
+
+21. **UI changes get a before/after picture.** Whenever a change touches the UI, capture the old UI
+    *before* editing and the new UI after (`unity command capture_game_view` / `screenshot`, or the
+    phone's own screenshot for UI Toolkit menus — see *The presentation layer*), place them side by
+    side, and annotate what changed (boxes/arrows plus a one-line label per change).
+22. **Long training gets a chart explainer.** After any training run of 30+ minutes, screenshot the
+    three most consequential TensorBoard charts (usually episode reward, episode length, and the
+    task's key metric — pick whatever actually tells the story of that run), review them, and explain
+    each at three levels: **toddler** (one sentence), **child** (a short paragraph), **adult** (what
+    the numbers say and what to do next).
 
 ## Phase 1 game direction (2026-09-04)
 

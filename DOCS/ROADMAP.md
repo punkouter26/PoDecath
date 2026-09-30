@@ -18,7 +18,10 @@ scaffolded as a placeholder so later phases plug into the same athlete, event an
 | 9 | Javelin | throw (placeholder) | placeholder | placeholder |
 | 10 | 1500 m | `run_track`, 15 laps | `LapEvent`, `laps` = 15 from the event picker | playable; a fall now hands the body to the get-up policy rather than ending the race, and is only a DNF if the recovery gives up |
 
-Scoring: IAAF decathlon tables to be added as a `ScoringTable` ScriptableObject.
+Scoring: done 2026-09-29. `Assets/Resources/ScoringTable.asset` holds the World Athletics constants for
+the five events with a scene, plus one human-equivalent factor per event (the athletes run at about half
+human pace, so the raw tables give zero). Tick `official` to score raw. Every factor except the 100 m's is
+a first guess to be set from logged races.
 
 ## Athlete behaviours
 

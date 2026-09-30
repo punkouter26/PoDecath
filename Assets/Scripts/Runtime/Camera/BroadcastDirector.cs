@@ -28,7 +28,13 @@ namespace PoDecath.Cam
     [DefaultExecutionOrder(100)]
     public class BroadcastDirector : MonoBehaviour
     {
-        public enum Shot { StartLine, OffTheGun, Rail, Bend, Wide, HeadOn, Finish, Hero, Cable, Reverse }
+        public enum Shot { StartLine, OffTheGun, Rail, Bend, Wide, HeadOn, Finish, Hero, Cable, Reverse, Drone, HeadCam, TrackRail }
+
+        /// <summary>
+        /// What the viewer has asked to watch. AUTO is the gallery as it always was; the other three pin the
+        /// picture on one of the new moving shots until the viewer asks for something else.
+        /// </summary>
+        public enum ViewerCam { Auto, Drone, Head, Rail }
 
         [Header("Wiring")]
         public RaceEvent race;
@@ -59,6 +65,27 @@ namespace PoDecath.Cam
         public CinemachineCamera cableCam;
         [Tooltip("Reverse angle: behind the line, looking back at the field once the race is decided.")]
         public CinemachineCamera reverseCam;
+
+        [Header("Moving shots (spline and head)")]
+        [Tooltip("High and wide, gliding round a ring well outside the roof on a spline dolly that keeps "
+               + "itself level with the leader. The shot that shows the race is on a roof.")]
+        public CinemachineCamera droneCam;
+        [Tooltip("A camera on a real rail: a spline just outside the barrier, dollying with the leader at "
+               + "shoulder height. Used on the back straight, where the lead dolly would be running at the "
+               + "sun.")]
+        public CinemachineCamera trackRailCam;
+        [Tooltip("Rides the featured athlete's head. Softened a little so it bobs like a runner's view "
+               + "rather than shaking like a physics link.")]
+        public CinemachineCamera headCam;
+        [Tooltip("Seconds between head-cam visits in the automatic gallery; they alternate with the hero "
+               + "shot. 0 keeps the head cam for the viewer's button only.")]
+        public float headEvery = 22f;
+        public float headSeconds = 2.4f;
+        [Tooltip("Time constant of the head cam's position smoothing. Short enough to keep the stride in "
+               + "the picture, long enough to take the millimetre jitter of a 200 Hz contact out of it.")]
+        public float headSmoothing = 0.06f;
+        [Tooltip("Fraction of the race the drone opens on, just after the tight shot off the gun.")]
+        public Vector2 droneWindow = new Vector2(0.07f, 0.17f);
 
         [Header("Cutting")]
         [Tooltip("Shortest time a shot is held before the director is allowed to cut again.")]
@@ -169,6 +196,29 @@ namespace PoDecath.Cam
         public Shot Current { get; private set; } = Shot.StartLine;
         public string CurrentName => Current.ToString();
 
+        /// <summary>The viewer's camera choice. Set by the HUD's camera button.</summary>
+        public ViewerCam Viewer { get; private set; } = ViewerCam.Auto;
+
+        /// <summary>Steps to the next viewer camera, skipping any whose shot was not built.</summary>
+        public ViewerCam CycleViewerCam()
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                Viewer = (ViewerCam)(((int)Viewer + 1) % 4);
+                if (Viewer == ViewerCam.Auto || CamFor(ShotFor(Viewer)) != null) break;
+            }
+            _viewerChanged = true;
+            return Viewer;
+        }
+
+        bool _viewerChanged;
+        float _headTimer, _headLeft;
+        Transform _headLook;
+        Vector3 _headPos, _headFwd;
+        bool _snapHead = true;
+        RaceEvent.Athlete _headOf;
+        ArticulationBody _headLink;
+
         /// <summary>
         /// Who the gallery is on: the leader, or whoever has just gone down while the incident is being
         /// shown, or the competitor on the runway. This is what a lower third would carry, so the broadcast
@@ -177,7 +227,7 @@ namespace PoDecath.Cam
         public RaceEvent.Athlete Featured { get; private set; }
 
         /// <summary>True when the shot on air is framed on one athlete rather than on the whole field.</summary>
-        public bool OnIndividual => Current != Shot.Wide && Current != Shot.StartLine;
+        public bool OnIndividual => Current != Shot.Wide && Current != Shot.StartLine && Current != Shot.Drone;
 
         Transform _leaderSubject, _fieldSubject;
         float _shotAge;
@@ -208,6 +258,84 @@ namespace PoDecath.Cam
             Aim(offTheGunCam, _leaderSubject); Aim(railCam, _leaderSubject); Aim(bendCam, _leaderSubject);
             Aim(headOnCam, _leaderSubject); Aim(finishCam, _leaderSubject);
             Aim(heroCam, _leaderSubject); Aim(cableCam, _leaderSubject); Aim(reverseCam, _leaderSubject);
+
+            // The two spline shots are the exception to "the director places, Cinemachine aims": their
+            // dolly finds its own place on the spline, nearest the subject, so they follow it as well.
+            Aim(droneCam, _leaderSubject); Aim(trackRailCam, _leaderSubject);
+            if (droneCam != null) droneCam.Follow = _leaderSubject;
+            if (trackRailCam != null) trackRailCam.Follow = _leaderSubject;
+
+            // The head cam looks at a point a few metres ahead of the eyes, so it is the runner's own view
+            // down the track rather than a camera staring at the back of its own head.
+            _headLook = new GameObject("BroadcastSubject_HeadLook").transform;
+            _headLook.SetParent(transform, false);
+            Aim(headCam, _headLook);
+            _headTimer = headEvery * 0.8f;
+        }
+
+        static Shot ShotFor(ViewerCam v) => v switch
+        {
+            ViewerCam.Drone => Shot.Drone,
+            ViewerCam.Head => Shot.HeadCam,
+            ViewerCam.Rail => Shot.TrackRail,
+            _ => Shot.Rail,
+        };
+
+        CinemachineCamera CamFor(Shot s) => s switch
+        {
+            Shot.StartLine => startLineCam, Shot.OffTheGun => offTheGunCam, Shot.Rail => railCam,
+            Shot.Bend => bendCam, Shot.Wide => wideCam, Shot.HeadOn => headOnCam, Shot.Finish => finishCam,
+            Shot.Hero => heroCam, Shot.Cable => cableCam, Shot.Reverse => reverseCam, Shot.Drone => droneCam,
+            Shot.HeadCam => headCam, Shot.TrackRail => trackRailCam,
+            _ => null,
+        };
+
+        /// <summary>
+        /// The viewer's pick, when there is one and it can be honoured. Returns false to leave the gallery
+        /// to itself: on AUTO, before anything is on the grid, and for a shot the scene never built.
+        /// </summary>
+        bool ViewerPick(out Shot shot)
+        {
+            shot = ShotFor(Viewer);
+            return Viewer != ViewerCam.Auto && race.Current != RaceEvent.Phase.Idle && CamFor(shot) != null;
+        }
+
+        /// <summary>
+        /// Puts the head camera at the featured athlete's eyes. The physics rig has no head link (the MJCF
+        /// head is a geom on the torso), so the eyes are measured off the torso: 0.62 m up its own axis,
+        /// 0.28 m forward of it, which on the 1.84 m reference body is in front of the face even with the
+        /// forward lean of a sprint. In front, on purpose: a camera inside the skull renders the inside of
+        /// the skin, and at 0.14 m the first test showed exactly that, as a bright blob at the bottom of
+        /// the frame. The lens's near plane (0.2 m, set by the builder) takes care of the rest of the head.
+        /// </summary>
+        void PlaceHeadCam(RaceEvent.Athlete who)
+        {
+            if (headCam == null || who == null || !who.IsRL) return;
+            if (who != _headOf)
+            {
+                _headOf = who;
+                _headLink = null;
+                foreach (ArticulationBody b in who.rig.GetComponentsInChildren<ArticulationBody>())
+                    if (b.name == "torso") { _headLink = b; break; }
+                _snapHead = true;
+            }
+            Transform t = _headLink != null ? _headLink.transform : who.rig.root.transform;
+            Vector3 up = t.rotation * Vector3.up;                   // external Z is Unity Y on this rig
+            Vector3 fwd = who.rig.BaseForward; fwd.y = 0f;
+            if (fwd.sqrMagnitude < 1e-4f) fwd = Vector3.right;
+            fwd.Normalize();
+            Vector3 eye = t.position + up * 0.62f + fwd * 0.28f;
+
+            float k = headSmoothing > 0f ? 1f - Mathf.Exp(-Time.deltaTime / headSmoothing) : 1f;
+            if (_snapHead) { _headPos = eye; _headFwd = fwd; _snapHead = false; }
+            else
+            {
+                _headPos = Vector3.Lerp(_headPos, eye, k);
+                // Heading swings slower than position: a runner's eyes hold the line through the arm swing.
+                _headFwd = Vector3.Slerp(_headFwd, fwd, k * 0.35f);
+            }
+            headCam.transform.position = _headPos;
+            _headLook.position = _headPos + _headFwd * 8f + Vector3.down * 0.9f;
         }
 
         static void Aim(CinemachineCamera cam, Transform subject)
@@ -237,6 +365,9 @@ namespace PoDecath.Cam
                 _finishedAge = 0f;
                 _narrow = _widen = 0f;
                 _wasInBend = false;
+                _headTimer = headEvery * 0.8f;
+                _headLeft = 0f;
+                _snapHead = true;
             }
 
             RaceEvent.Athlete leader = Leader(out RaceEvent.Athlete faller, out int fallen, out int finished);
@@ -306,12 +437,31 @@ namespace PoDecath.Cam
             }
             if (_heroLeft > 0f) _heroLeft -= Time.deltaTime;
 
+            // The head cam visits on its own, slower clock, never on top of a hero visit: two deck-level
+            // close-ups back to back is one too many.
+            if (headCam != null && headEvery > 0f && race.Current == RaceEvent.Phase.Running)
+            {
+                _headTimer -= Time.deltaTime;
+                if (_headTimer <= 0f && !inBendNow && focus != null && _heroLeft <= 0f)
+                {
+                    _headLeft = headSeconds;
+                    _headTimer = headEvery;
+                    cutNow = true;
+                }
+            }
+            if (_headLeft > 0f) _headLeft -= Time.deltaTime;
+
             if (race.Current == RaceEvent.Phase.Finished) _finishedAge += Time.deltaTime;
             else _finishedAge = 0f;
 
             PlaceCameras(focusS, focus);
+            PlaceHeadCam(Featured ?? focus);
 
             Shot want = Choose(focus, finished, focusS);
+            // The viewer's button outranks the gallery, incidents included: somebody who asked for the
+            // head cam wants to be in the fall, not watching it from the stadium wide.
+            if (ViewerPick(out Shot pick)) want = pick;
+            if (_viewerChanged) { cutNow = true; _viewerChanged = false; }
             _shotAge += Time.deltaTime;
             if (want != Current && (cutNow || _shotAge >= HoldSeconds))
             {
@@ -406,9 +556,13 @@ namespace PoDecath.Cam
             if (f < 0.07f) return Shot.OffTheGun;            // away from the line
             if (finished > 0 || f > 0.94f) return Shot.Finish;
             if (_heroLeft > 0f && heroCam != null) return Shot.Hero;
+            if (_headLeft > 0f && headCam != null) return Shot.HeadCam;
             if (f > cableWindow.y) return Shot.HeadOn;       // home straight: low, tight, at the leader
             if (f >= cableWindow.x && cableCam != null) return Shot.Cable;
+            // The drone opens the race once the field is away: the whole roof, the field strung out on it.
+            if (f >= droneWindow.x && f < droneWindow.y && droneCam != null) return Shot.Drone;
             if (InBend(leaderS)) return Shot.Bend;
+            if (trackRailCam != null && OnBackStraight(leaderS)) return Shot.TrackRail;
             return Shot.Rail;                                // the default job: in front of the leader, pack behind in shot
         }
 
@@ -511,6 +665,9 @@ namespace PoDecath.Cam
             SetPriority(heroCam, Shot.Hero);
             SetPriority(cableCam, Shot.Cable);
             SetPriority(reverseCam, Shot.Reverse);
+            SetPriority(droneCam, Shot.Drone);
+            SetPriority(headCam, Shot.HeadCam);
+            SetPriority(trackRailCam, Shot.TrackRail);
         }
 
         void SetPriority(CinemachineCamera cam, Shot shot)
@@ -542,7 +699,10 @@ namespace PoDecath.Cam
             float x = who != null ? pit.Along(Subject(who)) : pit.runwayStartX;
 
             PlaceJumpCameras(x);
+            PlaceHeadCam(who);
             Shot want = ChooseJump(jump, x);
+            if (ViewerPick(out Shot pick)) want = pick;
+            if (_viewerChanged) { cutNow = true; _viewerChanged = false; }
             if (want != Current && (cutNow || _shotAge >= HoldSeconds))
             {
                 Current = want;
@@ -634,6 +794,14 @@ namespace PoDecath.Cam
             if (a.follower != null) return a.follower.S;
             Vector3 p = a.IsRL ? a.rig.BasePosition : (a.go != null ? a.go.transform.position : Vector3.zero);
             return path.ProjectGlobal(p);
+        }
+
+        /// <summary>The straight after the first bend: the one that is not the home straight.</summary>
+        bool OnBackStraight(float s)
+        {
+            float L = path.StraightLength, A = path.ArcLength;
+            s = Mathf.Repeat(s, path.LapLength);
+            return s >= L + A && s < 2f * L + A;
         }
 
         bool InBend(float s)

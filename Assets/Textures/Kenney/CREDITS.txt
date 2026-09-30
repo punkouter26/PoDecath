@@ -1,0 +1,9 @@
+Particle Pack 1.1 by Kenney Vleugels (www.kenney.nl), CC0 1.0 (public domain).
+https://kenney.nl/assets/particle-pack  -  downloaded 2026-09-29.
+
+Used by the viewer-chaos effects (KenneyBakery -> Assets/Materials/Fx_Gust|Fx_Shove|Fx_Slick):
+  trace_01.png   wind streaks in a gust
+  twirl_02.png   the swirl a gust throws off
+  star_06.png    the burst on a shove
+  smoke_04.png   the edge of the wet patch
+Credit is not required by the licence; it is given here anyway.

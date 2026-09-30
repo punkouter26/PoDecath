@@ -28,6 +28,12 @@ namespace PoDecath.Sim
         public class Athlete
         {
             public string name;
+            /// <summary>
+            /// The roster entry this runner was spawned from, without the grid number: every "Matt RL n" in
+            /// a field is "Matt RL" here. Athlete cards and personal bests key on it, because they belong to
+            /// the athlete, not to whichever grid slot it happened to start from.
+            /// </summary>
+            public string definitionName;
             public AthleteKind kind;
             public Color color;
             public GameObject go;

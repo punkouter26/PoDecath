@@ -25,6 +25,10 @@ namespace PoDecath.UI
         public PolicyRunner runner;
         public CameraRig cameraRig;
         public TouchPerturbation perturbation;
+        [Tooltip("Broadcast scenes: the GUST / SHOVE / SLICK buttons. Without it the chaos bar stays hidden.")]
+        public ViewerChaos chaos;
+        [Tooltip("Broadcast scenes: the camera picker cycles this director's viewer camera.")]
+        public BroadcastDirector director;
 
         [Header("Layout")]
         [Tooltip("Broadcast scenes hide the card until it is asked for; the dev scenes leave it up.")]
@@ -36,6 +40,10 @@ namespace PoDecath.UI
         Label _model, _speed, _distance, _stability, _attempt, _lastResult;
         VisualElement _statsCard;
         Button _restart, _stats, _slowMo, _camera, _menu;
+
+        VisualElement _chaosBar;
+        Button _gust, _shove, _slick, _cam;
+        Label _gustLabel, _shoveLabel, _slickLabel, _camLabel;
 
         bool _slow;
         float _nextRefresh;
@@ -80,8 +88,66 @@ namespace PoDecath.UI
             if (dash != null) dash.RaceFinished += OnRaceFinished;
             if (perturbation != null) perturbation.enabled = SessionSettings.PerturbationEnabled;
 
+            BuildChaosBar();
             SetSlowMo(false);
             Refresh();
+        }
+
+        /// <summary>
+        /// The viewer's buttons. The three disturbances go through <see cref="ViewerChaos"/>, which owns the
+        /// physics and the cooldowns; the camera picker cycles the director's viewer camera. Both are
+        /// optional, and the bar is only on the picture when at least one of them is wired.
+        /// </summary>
+        void BuildChaosBar()
+        {
+            _chaosBar = Find<VisualElement>("chaos-bar");
+            _gust = Find<Button>("gust");
+            _shove = Find<Button>("shove");
+            _slick = Find<Button>("slick");
+            _cam = Find<Button>("cam");
+            _gustLabel = Find<Label>("gust-label");
+            _shoveLabel = Find<Label>("shove-label");
+            _slickLabel = Find<Label>("slick-label");
+            _camLabel = Find<Label>("cam-label");
+
+            if (_gust != null) _gust.clicked += () => chaos?.Fire(ViewerChaos.Act.Gust);
+            if (_shove != null) _shove.clicked += () => chaos?.Fire(ViewerChaos.Act.Shove);
+            if (_slick != null) _slick.clicked += () => chaos?.Fire(ViewerChaos.Act.Slick);
+            if (_cam != null) _cam.clicked += OnViewerCam;
+
+            Show(_chaosBar, !handsOn && (chaos != null || director != null));
+            Show(_gust, chaos != null);
+            Show(_shove, chaos != null);
+            Show(_slick, chaos != null);
+            Show(_cam, director != null);
+            RefreshChaos();
+        }
+
+        void OnViewerCam()
+        {
+            if (director == null) return;
+            BroadcastDirector.ViewerCam v = director.CycleViewerCam();
+            SetText(_camLabel, v.ToString().ToUpperInvariant());
+        }
+
+        /// <summary>Greys a button out while it cannot fire, and counts down its cooldown in its label.</summary>
+        void RefreshChaos()
+        {
+            // Read back rather than set on press: the director's pick can change from elsewhere (a scene
+            // reload, a test), and a button that names the wrong camera is worse than none.
+            if (director != null) SetText(_camLabel, director.Viewer.ToString().ToUpperInvariant());
+            if (chaos == null) return;
+            Chaos(_gust, _gustLabel, ViewerChaos.Act.Gust, "GUST");
+            Chaos(_shove, _shoveLabel, ViewerChaos.Act.Shove, "SHOVE");
+            Chaos(_slick, _slickLabel, ViewerChaos.Act.Slick, "SLICK");
+        }
+
+        void Chaos(Button b, Label l, ViewerChaos.Act act, string word)
+        {
+            if (b == null) return;
+            b.SetEnabled(chaos.CanFire(act));
+            float left = chaos.CooldownLeft(act);
+            SetText(l, left > 0f ? $"{word} {Mathf.CeilToInt(left)}" : word);
         }
 
         void OnDisable()
@@ -110,6 +176,7 @@ namespace PoDecath.UI
             base.Update();
             if (Time.unscaledTime < _nextRefresh) return;
             _nextRefresh = Time.unscaledTime + 0.1f;
+            RefreshChaos();
             if (!StatsOpen) return;   // nothing to rebuild while it is put away
             Refresh();
         }
