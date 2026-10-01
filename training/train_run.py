@@ -29,6 +29,7 @@ from envs.get_up import GetUpEnv  # noqa: E402
 from envs.run_to_target import RunToTargetEnv  # noqa: E402
 from envs.run_track import RunTrackEnv  # noqa: E402
 from envs.crowd import CrowdEnv  # noqa: E402
+from envs.pack import PackTrackEnv  # noqa: E402
 from ppo import PPO, PPOConfig, export_onnx  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -37,6 +38,9 @@ TASKS = {  # name -> (env class, exported ONNX file name in Assets/Policies)
     "track": ("run_track", RunTrackEnv, "athlete_track.onnx"),
     "getup": ("get_up", GetUpEnv, "athlete_getup.onnx"),
     "crowd": ("crowd", CrowdEnv, "athlete_crowd.onnx"),
+    # The lap with other runners on it. Same observation and same carrot as "track", so it exports
+    # under the lap policy's name and drops into the same slot in the game.
+    "pack": ("run_pack", PackTrackEnv, "athlete_track.onnx"),
 }
 TASK = "run_to_target"
 
@@ -68,8 +72,14 @@ def film_checkpoint(ck: str, tb_dir: str, step: int, task: str, run_name: str) -
     log_path = os.path.join(HERE, "logs", f"{run_name}.video.log")
     try:
         with open(log_path, "a", encoding="utf-8") as log:
+            # Into a sub-run, not the run's own directory. Each clip is a new event file, and
+            # TensorBoard reads a directory's event files in order and never goes back to an earlier
+            # one: with the clip beside the curves, the curves stopped updating at the first clip and
+            # only came back when TensorBoard was restarted (seen 2026-10-01, r2_pack frozen at its
+            # first 200 iterations for four hours).
             subprocess.Popen([sys.executable, os.path.join(HERE, "tools", "rollout_video.py"),
-                              "--ckpt", ck, "--tb-dir", tb_dir, "--step", str(step), "--task", task],
+                              "--ckpt", ck, "--tb-dir", os.path.join(tb_dir, "rollout"),
+                              "--step", str(step), "--task", task],
                              stdout=log, stderr=subprocess.STDOUT, cwd=HERE,
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except Exception as e:  # pragma: no cover
@@ -155,12 +165,27 @@ def main() -> None:
                          "this rig off a cliff at about 5.5 m/s, where the fall rate went 0.04 -> 0.50 "
                          "in one window and episodes halved. This searches for the fastest pace the "
                          "policy can actually hold.")
-    ap.add_argument("--speed-fall-low", type=float, default=0.05,
-                    help="fall rate below which --speed-adaptive asks for more speed.")
-    ap.add_argument("--speed-fall-high", type=float, default=0.15,
-                    help="fall rate above which --speed-adaptive backs the target off.")
+    ap.add_argument("--speed-fall-low", type=float, default=0.12,
+                    help="fall rate below which --speed-adaptive asks for more speed. Was 0.05, which "
+                         "sits under the fall rate randomisation alone produces at walking pace, so "
+                         "the target could never rise once the randomisation ramp finished.")
+    ap.add_argument("--speed-fall-high", type=float, default=0.25,
+                    help="fall rate above which --speed-adaptive backs the target off. Was 0.15.")
     ap.add_argument("--speed-step", type=float, default=0.05,
                     help="m/s the adaptive target moves per measured iteration.")
+    ap.add_argument("--speed-gap", type=float, default=0.3,
+                    help="--speed-adaptive only raises the target while the athlete is within this "
+                         "many m/s of it. Without the check the target is raised on fall rate alone: "
+                         "the 2026-09-29 overnight run asked for 5.5 m/s of an athlete doing 1.65, "
+                         "because walking slowly is a very good way not to fall. 0 turns it off.")
+    ap.add_argument("--speed-smooth", type=float, default=0.1,
+                    help="weight of the newest iteration in the running fall rate and speed the "
+                         "adaptive curriculum decides on. One iteration ends about a hundred "
+                         "episodes, so its own fall rate is noisy by several points either way.")
+    ap.add_argument("--critic-warmup-iters", type=int, default=0,
+                    help="fit only the critic for this many iterations before the actor may move. "
+                         "For a checkpoint rebuilt from an ONNX export (tools/onnx_to_checkpoint.py), "
+                         "which arrives with a trained actor and a blank critic.")
     ap.add_argument("--resume", default="")
     ap.add_argument("--save-every", type=int, default=50)
     ap.add_argument("--tb-port", type=int, default=6006)
@@ -245,6 +270,10 @@ def main() -> None:
     ap.add_argument("--prog-w", type=float, default=0.25,
                     help="weight on raw forward progress. Has to beat the 0.79/step that alive + "
                          "upright + heading pay for standing still, or standing still wins.")
+    ap.add_argument("--no-value-clip", action="store_true",
+                    help="fit the critic by plain regression instead of PPO's clipped value loss, so it "
+                         "can follow a policy that is changing. See PPOConfig.value_clip for the "
+                         "measurement; use it when resuming from a rebuilt checkpoint.")
     ap.add_argument("--keep-old-runs", action="store_true")
     ap.add_argument("--video-every-iters", type=int, default=200,
                     help="film the checkpoint every this many iterations (at the next save) with "
@@ -265,7 +294,8 @@ def main() -> None:
     ap.add_argument("--run-name", default="")
     ap.add_argument("--task", choices=sorted(TASKS.keys()), default="target",
                     help="target = run to random targets; track = laps of the rooftop loop with a carrot "
-                         "target; getup = recover to standing from a random fallen pose")
+                         "target; getup = recover to standing from a random fallen pose; pack = the lap "
+                         "with other runners on it to be bumped by")
     args = ap.parse_args()
 
     global TASK
@@ -329,7 +359,8 @@ def main() -> None:
     cfg = PPOConfig(steps_per_env=args.steps, lr=args.lr, desired_kl=args.desired_kl,
                     gamma=args.gamma, lam=args.gae_lambda, clip=args.clip,
                     entropy_coef=args.entropy_coef, minibatches=minibatches,
-                    epochs=args.epochs, lr_adapt=args.lr_adapt, init_std=args.init_std)
+                    epochs=args.epochs, lr_adapt=args.lr_adapt, init_std=args.init_std,
+                    value_clip=not args.no_value_clip)
     print(f"[ppo] batch {args.steps * args.num_envs:,} samples / iteration in {minibatches} minibatches "
           f"of {args.steps * args.num_envs // minibatches:,}")
     ppo = PPO(env.obs_dim, env.A, args.num_envs, device, cfg)
@@ -368,6 +399,7 @@ def main() -> None:
     obs = env.reset()
     last_video = start_iter // args.video_every_iters if args.video_every_iters > 0 else 0
     total_steps = start_iter * args.steps * args.num_envs
+    fall_avg = v_avg = None      # running readings the adaptive speed curriculum decides on
     t_start = time.time()
     print(f"obs_dim={env.obs_dim} act_dim={env.A} envs={args.num_envs} control_dt={env.dt:.3f}s")
     for it in range(start_iter, args.iters):
@@ -394,7 +426,15 @@ def main() -> None:
                 act = ppo.act(obs)
                 obs, rew, done, timeout = env.step(act)
                 ppo.record(rew, done, timeout)
-        stats = ppo.update(obs)
+        warming = run_it < args.critic_warmup_iters
+        stats = ppo.update(obs, value_only=warming)
+        if warming and run_it + 1 == args.critic_warmup_iters:
+            print(f"[critic-warmup] {args.critic_warmup_iters} iterations done, the critic explains "
+                  f"{stats['explained_var']:.2f} of the returns (value loss {stats['value_loss']:.3f}); "
+                  f"the actor is released", flush=True)
+            # Start the actor's first steps small and let the KL controller find the rate: the
+            # warm-up ran the critic at the full initial rate, which is too much for a trained gait.
+            ppo.cfg.lr = min(ppo.cfg.lr, 5e-5)
         total_steps += args.steps * args.num_envs
         fps = args.steps * args.num_envs / max(1e-6, time.time() - t0)
         s = env.get_stats()
@@ -417,12 +457,24 @@ def main() -> None:
         # runs 20 s episodes that reset in lockstep, so most iterations report no completed episode and
         # a fall rate of 0.0 that means "no data", not "nobody fell". Treating those as success would
         # ratchet the target up every step regardless of what the body is doing.
-        if args.speed_adaptive and args.target_speed_final > 0.0 and s.get("ep_len_s", 0.0) > 0.0:
-            fr = s.get("fall_rate", 0.0)
-            if fr < args.speed_fall_low:
+        #
+        # Two conditions to raise, one to back off (2026-09-30). The raise used to look at the fall rate
+        # alone, and an athlete that is not keeping up with the target is usually not falling either --
+        # so the target ran away to 5.5 m/s over a body doing 1.65. It now also has to be within
+        # --speed-gap of the pace it is already being asked for. Both readings are running averages:
+        # one iteration's fall rate is a hundred-odd episodes and swings several points on its own.
+        if (args.speed_adaptive and args.target_speed_final > 0.0 and s.get("ep_len_s", 0.0) > 0.0
+                and not warming):
+            a = args.speed_smooth
+            fall_avg = s.get("fall_rate", 0.0) if fall_avg is None else (1 - a) * fall_avg + a * s.get("fall_rate", 0.0)
+            v_avg = s.get("v_toward", 0.0) if v_avg is None else (1 - a) * v_avg + a * s.get("v_toward", 0.0)
+            keeping_up = args.speed_gap <= 0.0 or v_avg >= env.target_speed - args.speed_gap
+            if fall_avg < args.speed_fall_low and keeping_up:
                 env.target_speed = min(args.target_speed_final, env.target_speed + args.speed_step)
-            elif fr > args.speed_fall_high:
+            elif fall_avg > args.speed_fall_high:
                 env.target_speed = max(args.target_speed, env.target_speed - args.speed_step)
+            writer.add_scalar("env/curriculum_fall_avg", fall_avg, it)
+            writer.add_scalar("env/curriculum_speed_avg", v_avg, it)
         if it % 10 == 0:
             el = time.time() - t_start
             # The get-up task has nothing to run toward, so it prints what it is actually doing instead.
@@ -436,7 +488,8 @@ def main() -> None:
                       f"| slip {s.get('foot_slip', 0):4.2f}")
             print(f"it {it:5d} | {fps:8.0f} sps | ret {s.get('ep_return', 0):7.2f} | len {s.get('ep_len_s', 0):5.1f}s "
                   f"{middle} "
-                  f"| kl {stats['kl']:.4f} lr {stats['lr']:.1e} std {stats['action_std']:.2f} | {el/60:5.1f} min", flush=True)
+                  f"| kl {stats['kl']:.4f} lr {stats['lr']:.1e} std {stats['action_std']:.2f} "
+                  f"ev {stats['explained_var']:4.2f} tgt {env.target_speed:4.2f} | {el/60:5.1f} min", flush=True)
             if TASK != "get_up":
                 # The KPI line. Return says a run is improving; these say whether it is improving
                 # toward a humanoid that stays up, holds the pace and does not chatter.
@@ -474,7 +527,8 @@ def main() -> None:
             ve = args.video_every_iters
             if ve > 0 and ((it + 1) // ve > last_video or it + 1 == args.iters or out_of_time):
                 last_video = (it + 1) // ve
-                film_checkpoint(ck, tb_dir, it + 1, args.task, run_name)
+                # The pack task is filmed as the lap it is; the rollout has no figures to draw.
+                film_checkpoint(ck, tb_dir, it + 1, "track" if args.task == "pack" else args.task, run_name)
         if out_of_time:
             print(f"[max-hours] reached {args.max_hours:g} h at iteration {it + 1}; stopping cleanly "
                   f"after {(time.time() - t_start) / 3600:.2f} h", flush=True)

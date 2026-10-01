@@ -117,6 +117,15 @@ class PPOConfig:
     # the floor inside 1.4 s -- 0 of 40 trials survived 5 s. Training therefore opened every run by
     # shaking the athlete apart, and the policy's first job was to cancel its own exploration.
     init_std: float = 0.8
+    # Clip the critic's step to `clip` either side of the value it predicted during the rollout.
+    # That clip is in the reward's own units, and here returns run to several hundred, so a clipped
+    # critic can move 0.2 an iteration against targets that move by tens when the policy changes.
+    # Measured 2026-09-30 on a lap policy resumed with a freshly fitted critic: explained variance
+    # fell 0.93 -> 0.75 within 80 iterations of the actor being released and never came back, the
+    # gait drifted toward speed it could not hold, and falls went 0 -> 0.8 by iteration 400 -- in
+    # three runs under two different rewards, while the same actor frozen held 0 falls throughout.
+    # False fits the critic by plain regression so it can keep up with the policy it is judging.
+    value_clip: bool = True
 
 
 class PPO:
@@ -179,7 +188,11 @@ class PPO:
         ret = adv + b["val"]
         return adv, ret
 
-    def update(self, last_raw_obs: torch.Tensor) -> Dict[str, float]:
+    def update(self, last_raw_obs: torch.Tensor, value_only: bool = False) -> Dict[str, float]:
+        """`value_only` fits the critic and leaves the actor exactly where it is. It is for a
+        checkpoint rebuilt from an ONNX export (tools/onnx_to_checkpoint.py), whose critic is freshly
+        initialised: advantages from a value function that knows nothing would otherwise drive the
+        first policy updates and undo a trained gait in a handful of iterations."""
         c, b = self.cfg, self.buf
         with torch.no_grad():
             last_val = self.model.critic(self.obs_rms.normalize(last_raw_obs, c.obs_clip)).squeeze(-1)
@@ -193,6 +206,10 @@ class PPO:
         adv_f, ret_f = flat(adv_n), flat(ret)
 
         stats = {"policy_loss": 0.0, "value_loss": 0.0, "entropy": 0.0, "kl": 0.0}
+        # How much of the returns the critic already explains, on the values it predicted during the
+        # rollout: 1 is a perfect critic, 0 is no better than a constant. The loss alone cannot say
+        # this, because its scale moves with the reward.
+        explained = (1.0 - (ret_f - val_old).var() / ret_f.var().clamp_min(1e-8)).item()
         n_updates = 0
         mb = T * N // c.minibatches
         for _ in range(c.epochs):
@@ -203,7 +220,9 @@ class PPO:
                 with torch.no_grad():
                     kl = torch.sum(torch.log(sigma / sigma_old[idx] + 1e-5)
                                    + (sigma_old[idx].pow(2) + (mu_old[idx] - mu).pow(2)) / (2.0 * sigma.pow(2)) - 0.5, dim=-1).mean()
-                    if kl > c.desired_kl * 2.0:
+                    if value_only:
+                        pass   # the policy is not moving, so its KL says nothing about the step size
+                    elif kl > c.desired_kl * 2.0:
                         self.cfg.lr = max(1e-5, self.cfg.lr / c.lr_adapt)
                     elif kl < c.desired_kl / 2.0 and kl > 0.0:
                         self.cfg.lr = min(1e-2, self.cfg.lr * c.lr_adapt)
@@ -211,9 +230,16 @@ class PPO:
                         g["lr"] = self.cfg.lr
                 ratio = torch.exp(logp - logp_old[idx])
                 surr = -torch.min(ratio * adv_f[idx], ratio.clamp(1 - c.clip, 1 + c.clip) * adv_f[idx]).mean()
-                v_clipped = val_old[idx] + (v - val_old[idx]).clamp(-c.clip, c.clip)
-                v_loss = torch.max((v - ret_f[idx]).pow(2), (v_clipped - ret_f[idx]).pow(2)).mean()
-                loss = surr + c.value_coef * v_loss - c.entropy_coef * ent.mean()
+                if value_only or not c.value_clip:
+                    # Plain regression. The clipped loss below has no gradient once a prediction has
+                    # moved `clip` from where it started the iteration, so a blank critic would close
+                    # on returns in the hundreds at 0.2 per iteration.
+                    v_loss = (v - ret_f[idx]).pow(2).mean()
+                else:
+                    v_clipped = val_old[idx] + (v - val_old[idx]).clamp(-c.clip, c.clip)
+                    v_loss = torch.max((v - ret_f[idx]).pow(2), (v_clipped - ret_f[idx]).pow(2)).mean()
+                loss = (c.value_coef * v_loss if value_only
+                        else surr + c.value_coef * v_loss - c.entropy_coef * ent.mean())
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.model.parameters(), c.max_grad_norm)
@@ -224,6 +250,7 @@ class PPO:
         self.t = 0
         for k in stats: stats[k] /= max(1, n_updates)
         stats["lr"] = self.cfg.lr
+        stats["explained_var"] = explained
         stats["action_std"] = self.model.log_std.exp().mean().item()
         return stats
 

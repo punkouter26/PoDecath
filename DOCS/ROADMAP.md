@@ -29,6 +29,7 @@ a first guess to be set from logged races.
 |---|---|---|
 | Run to target | `training/envs/run_to_target.py` | done, Phase 1 |
 | Balance / get up after a fall | `training/envs/get_up.py` | real env, trained with `--task getup`: fallen-pose resets on a widening tilt curriculum, reward on uprightness then height then a one-second hold, timeout-only termination. Keeps the run-to-target observation contract with the command zeroed, so `athlete_getup.onnx` drops into `PolicyRunner` unchanged and `RecoveryController` switches to it on a fall |
+| Run the lap in a pack | `training/envs/pack.py` | real env, trained with `--task pack` (2026-10-01): the lap task plus two runner-shaped figures per athlete that re-form around it every 3-6 s (one ahead and slower, one coming up behind, one leaning in from the side). Same 80 observations, so it exports into the lap policy's slot. Overnight result: 88 % stay up through 20 s of bumping against 30 % before, at 3.02 m/s on the lap; in the game since 2026-10-01 as `athlete_track_pack.onnx`, the alternate lap policy. **First phone race (v0.1.11): 5 of 8 went down, against 3 of 8 the day before on the other policy** — one race, but the MuJoCo figure did not carry over to PhysX |
 | Kart driving (rooftop track) | placeholder | karts are not part of Phase 1 |
 
 ## Bots roster (house rules)

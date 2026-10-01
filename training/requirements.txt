@@ -1,0 +1,16 @@
+# The trainer's environment. .venv is not in git, so a fresh clone rebuilds it from this:
+#
+#   uv venv .venv --python 3.11
+#   uv pip install --python .venv/Scripts/python.exe "torch==2.11.0" --index-url https://download.pytorch.org/whl/cu128
+#   uv pip install --python .venv/Scripts/python.exe -r requirements.txt
+#
+# torch comes from the PyTorch index (CUDA 12.8 build), so it is installed first and on its own line.
+# mujoco is deliberately not pinned: mujoco-warp follows MuJoCo's main branch and names the build it
+# needs. Rebuilt 2026-09-30 this resolved to mujoco 3.14.1 (dev) with mujoco-warp 3.14.0, and the
+# shipped lap policy gated at exactly its recorded 2.76 m/s on it.
+warp-lang==1.17.0
+mujoco-warp @ git+https://github.com/google-deepmind/mujoco_warp
+tensorboard
+onnx
+pillow
+numpy

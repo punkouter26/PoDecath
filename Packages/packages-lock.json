@@ -7,13 +7,6 @@
       "dependencies": {},
       "hash": "9032874ff0b83a5941a01b2ab99599fcc61e90db"
     },
-    "com.kyrylokuzyk.primetween": {
-      "version": "1.3.3",
-      "depth": 0,
-      "source": "registry",
-      "dependencies": {},
-      "url": "https://package.openupm.com"
-    },
     "com.unity.adaptiveperformance": {
       "version": "6.0.0",
       "depth": 0,
@@ -380,22 +373,6 @@
         "com.unity.modules.physics2d": "1.0.0",
         "com.unity.modules.physics": "1.0.0"
       }
-    },
-    "com.unity.visualeffectgraph": {
-      "version": "17.6.0",
-      "depth": 0,
-      "source": "builtin",
-      "dependencies": {
-        "com.unity.shadergraph": "17.6.0",
-        "com.unity.render-pipelines.core": "17.6.0"
-      }
-    },
-    "com.whinarn.unitymeshsimplifier": {
-      "version": "3.1.1",
-      "depth": 0,
-      "source": "registry",
-      "dependencies": {},
-      "url": "https://package.openupm.com"
     },
     "org.mujoco": {
       "version": "file:org.mujoco",

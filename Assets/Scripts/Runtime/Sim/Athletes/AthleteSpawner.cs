@@ -128,12 +128,16 @@ namespace PoDecath.Sim
             if (dash != null) dash.StartRace();
         }
 
-        // Owner decision 2026-09-30: two lap policies are in play, the shipped athlete_track and the
-        // 09-30 overnight run athlete_track_q5 (faster alone in MuJoCo, slower and falls more in a PhysX
-        // pack), and each app launch flips a coin between them so both get watched in real races. The
-        // pick holds for the whole launch; RaceLog records which one ran.
+        // Owner decision 2026-09-30: two lap policies are in play, the shipped athlete_track and an
+        // alternate, and each app launch flips a coin between them so both get watched in real races.
+        // The pick holds for the whole launch; RaceLog records which one ran.
+        //
+        // The alternate was the 09-30 overnight run athlete_track_q5 (faster alone in MuJoCo, slower and
+        // falls more in a PhysX pack). Since 2026-10-01 (owner: "put it in") it is athlete_track_pack,
+        // the 10-01 overnight run trained with other runners to be bumped by: 3.02 m/s on the lap
+        // against q5's 2.76, and 88 % stay up through 20 s of bumping in MuJoCo against 30 %.
         public const string ShippedTrackPolicy = "athlete_track";
-        public const string AlternateTrackPolicy = "athlete_track_q5";
+        public const string AlternateTrackPolicy = "athlete_track_pack";
         static int s_trackPick = -1;
         public static string TrackPolicyInUse { get; private set; } = ShippedTrackPolicy;
         Unity.InferenceEngine.ModelAsset _trackOverride;

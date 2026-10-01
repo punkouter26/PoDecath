@@ -301,6 +301,75 @@ rule, the loop exits on the plateau clause.
 
 **Loop stopped 04:12, 2026-09-15** (plateau clause, ~3 h ahead of the 07:15 budget cap).
 
+## Section 9 — Overnight batch R: speed, then a pack (2026-09-30 23:12 → 10-01 08:39)
+
+Report with charts: `DOCS/reports/2026-10-01-overnight-pack-training.html`. Script: `training/run_r.ps1`. Host: RTX 5070 Ti
+laptop, 8192 envs, **shared with PoOlympic training runs for about 6 of the 8 hours** (R1 averaged 145k sps, R2 73k).
+The project folder was a fresh clone: no `.venv`, no checkpoints. `.venv` rebuilt from `training/requirements.txt`
+(torch 2.11.0+cu128, warp 1.17.0, mujoco 3.14.1 dev, mujoco-warp 3.14.0 from git main); the warm start rebuilt from
+`Assets/Policies/athlete_track_q5.onnx` by `tools/onnx_to_checkpoint.py`, which gated at exactly the recorded
+2.76 m/s, 100 % clean, pitch/roll 5.9/4.5°.
+
+| Stage | Rounds | Time | Training speed at end | Training falls at end |
+|---|---|---|---|---|
+| r1_speed (`--task track`, adaptive 2.5 → 4.5) | 0-8997 | 3 h 42 | 3.2 m/s (target stalled at 3.41) | < 1 % |
+| r2_pack (`--task pack`, from r1 iter 7800) | 7800-13768 | 4 h 30 | 2.75 m/s (target never left 3.01) | 54 % → 22 % |
+
+Gate (`eval_lap.py`, 3 × 256, deterministic, 20 s; "pack" = `--pack`, the figures at full threat):
+
+| Policy | Lap speed | Clean | Pack clean | Pack speed | Pitch / roll |
+|---|---|---|---|---|---|
+| q5 (before) | 2.76 | 100 % | 30 % | 2.63 | 5.9 / 4.5 |
+| r1_speed iter 7800 | 3.38 | 100 % | 15 % | 3.28 | 5.8 / 4.0 |
+| **r2_pack iter 13769 (the pick)** | **3.02** | **100 %** | **88 %** | 2.88 | 5.9 / 4.1 |
+
+All six r2 checkpoints gated 80-88 % pack clean, rising with iteration. **Nothing published**: the pick is in
+`training/logs/r_final/` (ONNX + manifest with `train_target_clamp` 0.0996), its checkpoint is
+`checkpoints/run_pack/r2_pack/best.pt`. Not yet run in Unity.
+
+**Finding 1 — a checkpoint rebuilt from an ONNX cannot be resumed with PPO's clipped value loss.** The ONNX has
+the actor and the observation normaliser, not the critic. Six 2048-env validation runs, all from the rebuilt q5:
+
+| Run | Result |
+|---|---|
+| speed step 0.05, gap 0.3, default rate controller | 2.70 m/s, 0 falls → 2.40 and 36 % falls by iteration 190 |
+| step 0.01, gap 0.15, `--lr-adapt 1.1` | held to 200, then 71 % falls by 290 |
+| fixed target 5.0 (the reward q5 ended under) | 82 % falls by 400 |
+| actor frozen all run (control) | 0 falls, 2.70 m/s, to 350 |
+| row 2 + `--no-value-clip` | 2.61-2.74 m/s, falls ≤ 12 %, to 420 |
+| target 5.0 + `--no-value-clip` | dipped to 61 % falls at 380, 16 % by 420 |
+
+The control settles it: the updates do the damage, under either reward. `--critic-warmup-iters` fits the blank critic
+first (plain regression; explained variance 0.9 in ~60 iterations), but once the actor is released the clipped loss lets
+each prediction move 0.2 per iteration against returns of several hundred, the critic falls behind the policy it is
+judging (explained variance 0.93 → 0.75 and staying there), and the gait drifts toward speed it cannot hold.
+`--no-value-clip` (`PPOConfig.value_clip`) removes the clip; at 8192 envs the real run wobbled once (47 % falls at
+iteration 170) and recovered inside 50 iterations. Also needed: `--lr-adapt 1.1`, and the release starts the rate at 5e-5.
+
+**Finding 2 — the adaptive curriculum fix works.** `--speed-gap` (raise only within 0.15 m/s of the target),
+thresholds 0.12 / 0.25 on a running average (`--speed-smooth`), `--speed-step 0.01`, `--dr-strength 0.6`. Target rose
+2.5 → 3.39 in 1,500 iterations and stopped when the athlete could not close the gap: no runaway, no lock at the floor.
+
+**Finding 3 — the 3.4 m/s wall again.** R1 reached 3.2 m/s (training) in 1,500 iterations and gained 0.03 in the next
+7,500. Same ceiling as the lap_v80 family (§2.7), from a different lineage. More hours of this recipe will not move it.
+
+**Finding 4 — speed and pack robustness trade.** The faster R1 policy is *worse* in a pack than q5 (15 % vs 30 %).
+A product score (speed × pack clean) therefore ranks q5 above R1, and `run_r.ps1` was about to hand R2 the slow
+policy; it was stopped during the between-stage gating and R1 is now picked on lap speed alone, the product only at
+the end. R2 cost 0.36 m/s of lap speed and bought 73 points of pack survival.
+
+**The pack task** (`envs/pack.py`): `RunTrackEnv` plus two mocap figures per env that re-form around the athlete every
+3-6 s — ahead and slower (45 %), behind and faster by ≤ 0.8 m/s (30 %), alongside and leaning in (25 %) — speeds set off
+the athlete's actual pace. Observation unchanged (80). The figures are immovable, which real athletes are not, so
+the gate is evidence and the 8-runner PhysX race is the test. In R2 the fall rate never went under the 20 % raise
+line, so the stage trained at a fixed 3.01 target; exploration std grew 0.54 → 1.34.
+
+**Also fixed:** rollout clips were written as event files beside the scalars, and TensorBoard stops reading a run's
+earlier event file once a later one exists — the live curves froze at the first clip. Clips now go to `<run>/rollout`.
+
+**Next:** put the pick in the alternate lap slot and count falls in the 8-runner race (phone, 2026-09-30: 3 of 8 down
+by 46 m); if it holds, resume `--task pack` from `r2_pack/best.pt` (trained critic, no warm-up needed).
+
 ## Section 8 — Overnight batch Q: speed from scratch (2026-09-29 23:14 → 09-30 07:18)
 
 Report with charts: `DOCS/reports/2026-09-30-overnight-speed-training.html`. Scripts: `training/run_q.ps1`,

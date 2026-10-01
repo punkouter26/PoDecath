@@ -26,6 +26,7 @@ import torch
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+from envs.pack import PackTrackEnv  # noqa: E402
 from envs.run_track import RunTrackEnv  # noqa: E402
 from ppo import PPO, PPOConfig, ExportPolicy  # noqa: E402
 
@@ -54,6 +55,10 @@ def main() -> None:
                     help="diagnostic only: start episodes already moving at U[0, this] m/s. The official "
                          "gate always starts from a standstill; this separates cruise speed from window "
                          "speed, whose difference is the acceleration phase.")
+    ap.add_argument("--pack", action="store_true",
+                    help="run the lap with the pack task's figures on it at full threat (envs/pack.py). "
+                         "Speed then includes being held up, and 'clean' is how many athletes got "
+                         "through 20 s of being bumped without going down or off the deck.")
     ap.add_argument("--device", default="cuda")
     args = ap.parse_args()
 
@@ -67,11 +72,13 @@ def main() -> None:
     obs_dim = int(ex.get("obs_dim") or ck["model"]["actor.0.weight"].shape[1])
     action_scale = float(ex.get("action_scale", 0.5))
     gait_w = 1.0 if obs_dim >= 80 else 0.0
-    env = RunTrackEnv(args.xml, args.num_envs, device=args.device, seed=0,
+    env = (PackTrackEnv if args.pack else RunTrackEnv)(args.xml, args.num_envs, device=args.device, seed=0,
                       target_speed=args.target_speed, domain_rand=False,
                       action_scale=action_scale, gait_w=gait_w,
                       gait_period=args.gait_period, gait_duty=args.gait_duty,
                       init_speed=args.init_speed)
+    if args.pack:
+        env.set_threat(1.0)
     print(f"contract        obs {obs_dim}, action_scale {action_scale:g}, gait clock {'on' if gait_w > 0 else 'off'}"
           f"{f', warm start U[0,{args.init_speed:g}] m/s' if args.init_speed > 0 else ' (standing start)'}")
     print(f"contract        obs {obs_dim}, action_scale {action_scale:g}, gait clock {'on' if gait_w > 0 else 'off'}")
@@ -141,7 +148,7 @@ def main() -> None:
         import json, time
         row = {"label": args.label or os.path.basename(os.path.dirname(args.ckpt)), "ckpt": args.ckpt,
                "iter": extra.get("iter"), "target_speed": args.target_speed, "seconds": args.seconds,
-               "init_speed": args.init_speed, "num_envs": args.num_envs, "when": time.strftime("%Y-%m-%d %H:%M:%S"),
+               "init_speed": args.init_speed, "pack": bool(args.pack), "num_envs": args.num_envs, "when": time.strftime("%Y-%m-%d %H:%M:%S"),
                "episodes_pass": n_pass, "episodes": len(episodes),
                "mean": {k: mean(k) for k in ("clean", "speed", "speed_err", "v_err", "torque", "power",
                                              "jerk", "pitch_dev", "roll_dev", "act_sat", "duty", "slip")},

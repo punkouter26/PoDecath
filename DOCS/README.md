@@ -181,6 +181,46 @@ references and broken event hookups (none in any of the five). Before and after 
 Checked: `flow_check.sh` 18 of 18 with the new MENU and Back steps, no console errors. Not built: ideas 1 (back a
 runner), 5 (hide the developer corners) and 7 (pause on interruption).
 
+## Phone build 0.1.10 and overnight pack training, 2026-09-30 / 10-01
+
+**Phone build.** `training/deploy_android.ps1 -SkipSceneRebuild` put v0.1.10 on the Pixel 9 Pro and ran an 8-runner
+100 m: 60 FPS on the chip, `RaceLog` 59 FPS mean with a worst frame of 133 ms, 232k triangles on the results screen,
+no exception from the game. **5 of 8 finished in 29.5-31.1 s; 3 of 8 went down between 42 m and 46 m from each other.**
+Thermal row reads "no provider" (Adaptive Performance still off). Not yet tried on the device: SHARE, DEMO, and nobody
+has listened to the recordings. The deploy script's "not clean" verdict came from other apps' lines in logcat
+(Facebook, Android system), which its exception filter does not tell apart from the game's.
+
+**The project folder was a fresh clone.** All 48 Git LFS files (models, skies, lightmaps, the .blend) were 130-byte
+stubs until `git lfs pull`; `training/.venv`, checkpoints and logs were gone. `training/requirements.txt` now records
+the trainer's environment, and `training/tools/onnx_to_checkpoint.py` rebuilds a resumable checkpoint from a shipped
+policy.
+
+**Overnight batch R** (`training/run_r.ps1`, 8 h 12 min of training; `DOCS/reports/2026-10-01-overnight-pack-training.html`,
+`rl_optimization_log.md` section 9):
+
+| Runner | Lap speed (MuJoCo, alone) | Lap time | Stay up 20 s in a pack |
+|---|---|---|---|
+| Before (q5) | 2.76 m/s | 36.2 s | 30 % |
+| After the speed stage | 3.38 m/s | 29.6 s | 15 % |
+| **The night's pick, after the pack stage** | **3.02 m/s** | **33.2 s** | **88 %** |
+
+The pick is `training/logs/r_final/athlete_track.onnx` with its manifest. **It is in the game since 2026-10-01**
+(owner: "put it in") as `Assets/Policies/athlete_track_pack.onnx`, the alternate lap policy a launch's coin flip can
+pick (`AthleteSpawner.AlternateTrackPolicy`), in place of q5.
+
+**Phone build 0.1.11, 2026-10-01, the pack policy's first race in PhysX.** The coin picked `athlete_track_pack` and the
+8-runner 100 m went worse than the day before, not better: **3 of 8 finished (32.8-33.4 s), 5 of 8 went down** between
+21 m and 53 m and none of the five got back up to finish. The 0.1.10 race on the other policy was 5 of 8 finishing in
+29.5-31.1 s. One race each, so it is a reading and not a verdict, but the 88 % from MuJoCo did not carry over: the
+training figures are immovable, real athletes are not. 59.7 FPS mean, worst frame 33 ms, no exception from the game's own
+code (`Build/Android/races/race_20261001_103216.json`); the log does carry one Unity start-up line about a missing
+Play asset-pack class and a failed upload from the optional cloud leaderboard at the end of the race, neither looked into. A policy copied in while the editor is closed is not in
+`PolicyLibrary` until `PoDecath/Refresh Policy Library` runs; the deploy script does not do that, so it was run as its
+own batchmode pass first. New trainer pieces: `--task pack` (`envs/pack.py`), `eval_lap.py --pack`,
+`tools/pick_best.py`, and in `train_run.py` `--speed-gap` / `--speed-smooth` (the adaptive speed rule now checks the
+athlete is keeping up), `--critic-warmup-iters` and `--no-value-clip` (both needed to resume a checkpoint rebuilt from
+an ONNX).
+
 ## State-flow and framing review, 2026-09-13
 
 Ten defects found by driving the live editor over the MCP bridge rather than by reading code, and fixed
