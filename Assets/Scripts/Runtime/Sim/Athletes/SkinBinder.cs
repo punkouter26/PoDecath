@@ -50,8 +50,14 @@ namespace PoDecath.Sim
 
             skin.transform.SetParent(rig.transform, false);
             skin.transform.localPosition = Vector3.zero;
-            skin.transform.localRotation = Quaternion.Euler(skinRootEuler);
-            skin.transform.localScale = Vector3.one;
+            // The model's own root rotation and scale are kept; the facing correction and the fit below are
+            // applied on top of them. Some exports carry their axes and units there: the five phone skins
+            // that went through Blender have 0.01 on the root and two of them a quarter turn as well.
+            // Overwriting both made their skeletons a hundred times too big, past what the fit is allowed
+            // to correct, so on the phone they were drawn twenty to sixty metres tall, and laid the two
+            // on their backs.
+            skin.transform.localRotation = Quaternion.Euler(skinRootEuler) * skin.transform.localRotation;
+            Vector3 authoredScale = skin.transform.localScale;
 
             // Most rigged characters ship with an idle clip. An Animator playing it would pose the same
             // bones this component drives, on the same frame, and whichever wrote last would win — so the
@@ -84,7 +90,7 @@ namespace PoDecath.Sim
             }
 
             float s = skinScale > 0f ? skinScale : FitScale(pairs);
-            if (!Mathf.Approximately(s, 1f)) skin.transform.localScale = Vector3.one * s;
+            if (!Mathf.Approximately(s, 1f)) skin.transform.localScale = authoredScale * s;
 
             foreach ((Transform body, Transform bone) in pairs)
             {
