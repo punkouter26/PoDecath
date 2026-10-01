@@ -94,7 +94,8 @@ STAND_DEG = {  # default posture (external convention) used as policy default_jo
     # 45%, and the foot has only 6.4 cm of heel behind the ankle against 27 cm of toe in front. From
     # there the body topples backwards under its own weight in 1.75 s holding its own pose with zero
     # action -- which is the episode length every training run on this model has ever reported.
-    # 3 degrees moves the centre of mass to mid-foot; see tools/pose_sweep.py and tools/stand_robust.py.
+    # 3 degrees moves the centre of mass to mid-foot; measured by tools/pose_sweep.py and tools/stand_robust.py
+    # (removed 2026-09-30; both are in git history before that date).
     "hip_x": 0, "hip_z": 0, "hip_y": 3, "knee": 0, "ankle_y": -3, "ankle_x": 0,
     "shoulder_x": -78, "shoulder_z": 0, "elbow": -35,
 }

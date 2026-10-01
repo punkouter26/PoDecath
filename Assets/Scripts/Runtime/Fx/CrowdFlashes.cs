@@ -24,7 +24,7 @@ namespace PoDecath.Fx
     ///
     /// One pooled Shuriken system, built in code for the same reason <see cref="VfxLibrary"/> builds its
     /// own: the effect is ten numbers, and the tier budget can be applied at construction. It is Shuriken
-    /// and not VFX Graph on purpose: the VFX Graph package is installed but a <c>.vfx</c> asset cannot be
+    /// and not VFX Graph on purpose (the package was removed 2026-09-30): a <c>.vfx</c> asset cannot be
     /// authored from code, and every effect in this project is generated rather than hand-made. The phone
     /// budget is <see cref="phoneMaxFlashes"/> live pops; the desktop gets <see cref="pcMaxFlashes"/>.
     ///

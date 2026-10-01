@@ -63,23 +63,20 @@ scene YAML.
 
 ## Added packages, and what each is there for
 
-Ten packages were added on 2026-09-14 against the addon shortlist. Every version below was checked
+Ten packages were added on 2026-09-14 (three since removed, see below) against the addon shortlist. Every version below was checked
 against this editor (6000.6.0f1) before it went in: the SRP-family ones are the copies Unity bundles
 with the editor install, the rest were read off the package registry. Nothing here is enabled by
 default; each one costs nothing until something uses it.
 
 | Package | Version | Source | What it is for |
 |---|---|---|---|
-| `com.whinarn.unitymeshsimplifier` | 3.1.1 | OpenUPM | Scripted mesh decimation. `BuildingLodBuilder` and `training/tools/whitehouse_lods.py` currently make the LODs by hand; this makes the step repeatable in-editor and is the lever for the triangle budget below. MIT. |
 | `com.unity.memoryprofiler` | 1.1.12 | registry | Memory captures that can be diffed against each other. |
 | `com.unity.performance.profile-analyzer` | 1.4.0 | registry | Compares two profiler captures rather than one. The point of both: `DOCS/ROADMAP.md` says plainly that none of the broadcast layer has been profiled, and a single capture cannot show what a change did. |
 | `com.unity.adaptiveperformance` | 6.0.0 | editor-bundled | Thermal and frame-rate scaling on Android. |
 | `com.unity.adaptiveperformance.google.android` | 6.0.0 | editor-bundled | The provider that actually reads the device. **The base package does nothing without a provider enabled in Project Settings > Adaptive Performance.** |
-| `com.unity.visualeffectgraph` | 17.6.0 | editor-bundled | GPU particles. The version is deliberately identical to `com.unity.render-pipelines.universal`; VFX Graph is version-locked to the SRP and a mismatch will not compile. Needs compute shader support, so check the minimum Android target before shipping anything built with it. |
 | `com.unity.cloud.draco` | 5.4.3 | registry | Compressed glTF geometry. |
 | `com.unity.meshopt.decompress` | 0.2.0-exp.1 | registry | Compressed glTF buffers. Experimental, and labelled so by Unity. |
 | `com.unity.cloud.ktx` | 3.7.0 | registry | Compressed glTF textures. Added alongside the other two because textures, not triangles, are most of the 122 MB `WhiteHouse.glb`. |
-| `com.kyrylokuzyk.primetween` | 1.3.3 | OpenUPM | Tweening for the broadcast graphics (name strips, split tickers, replay wipes). Chosen over DOTween Free and LeanTween because it is the only one of the three that installs as a real package with a pinned version, and because it allocates nothing per tween, which matters on the zero-GC path this project already keeps. MIT. |
 
 Added on 2026-09-29:
 
@@ -100,18 +97,11 @@ glTFast does not depend on Draco, meshopt or KTX. It detects them through `versi
 them is the whole of the wiring. Nothing re-compresses itself: the `.glb` has to be exported with those
 extensions from Blender before any of it applies.
 
-One scoped registry was added for the two non-Unity packages:
-
-```json
-"scopedRegistries": [
-  { "name": "OpenUPM", "url": "https://package.openupm.com",
-    "scopes": ["com.whinarn.unitymeshsimplifier", "com.kyrylokuzyk.primetween"] }
-]
-```
-
-The scopes are exact package names on purpose. A broader scope such as `com` or `com.unity` would make
-OpenUPM authoritative for names Unity's own registry should answer for, and package resolution would
-start depending on which mirror replied first.
+**Removed 2026-09-30 (cleanup pass):** `com.kyrylokuzyk.primetween`, `com.whinarn.unitymeshsimplifier`
+and `com.unity.visualeffectgraph`. No code used any of them (the broadcast graphics tween by hand, the
+LODs come from `whitehouse_lods.py`, and `CrowdFlashes` is a particle system on purpose), and with the
+two OpenUPM packages gone the OpenUPM scoped registry went too. If one comes back, scope the registry to
+exact package names, never `com` or `com.unity`, so Unity's own registry stays authoritative.
 
 ### Still open on the addon list
 
