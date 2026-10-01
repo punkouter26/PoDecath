@@ -410,18 +410,26 @@ namespace PoDecath.Sim
             a.minHeightFrac = Mathf.Min(a.minHeightFrac, heightFrac);
             a.uprightSum += upright; a.uprightSamples++;
 
+            // Below the deck there is no race to get back up into. The get-up policy stands a runner up on
+            // the roof underneath perfectly well, the height test below then calls it down again the moment
+            // it is handed back, and it spent all three of its recoveries that way (9 of 62 hand-backs
+            // measured 2026-10-01) while the race waited for it. So a runner off the deck is out, whether
+            // it went over the side on its feet or rolled off it part-way through getting up.
+            bool offCourse = heightFrac < -0.3f;
+
             // Already up and running again: the recovery controller hands the body back itself.
-            if (a.recovery != null && a.recovery.Busy)
+            if (!offCourse && a.recovery != null && a.recovery.Busy)
             {
                 a.recovering = true;
                 a.recoveries = a.recovery.Recoveries;
                 return false;   // still in the race, still worth measuring
             }
             a.recovering = false;
+            if (offCourse && a.recovery != null) a.recovery.Abandon();
 
-            if (upright >= fallUprightDot && heightFrac >= fallHeightFraction) return false;
+            if (!offCourse && upright >= fallUprightDot && heightFrac >= fallHeightFraction) return false;
 
-            if (a.recovery != null && a.recovery.TryRecover())
+            if (!offCourse && a.recovery != null && a.recovery.TryRecover())
             {
                 a.recovering = true;
                 return false;

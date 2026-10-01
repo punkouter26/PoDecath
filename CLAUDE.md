@@ -30,8 +30,10 @@ Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the te
     remove them (`train_run.py` clears `training/logs/tb/<task>_*` by default).
 11. Show the simulator's own UI (MuJoCo viewer, or Newton's viewer if that is the better option) so
     the creature can be watched moving during and after training — not just reward curves.
-12. When a run needs 30+ minutes, close the Unity Editor first (saving work), say so, and tell the
-    owner explicitly when training is over and the editor can be reopened.
+12. When a run needs 30+ minutes, close the Unity Editor first (saving work) if that speeds training
+    up dramatically, say so, and tell the owner explicitly when training is over and the editor can
+    be reopened. When only doing RL training, with nothing changing in Unity, close the editor and
+    open it back up when training is complete.
 13. Android builds of MuJoCo come from https://github.com/joanllobera/mujoco-bin/ . (The Unity APK
     is a separate path: `training/deploy_android.ps1`.)
 
@@ -78,6 +80,18 @@ Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the te
     cut the fall count; the answer to pack falls is recovery or contact training, not ghosts. Measured on
     the 8-runner race that day: 4 of 8 fall with contact, 0 of 8 without.
 
+    **Self-collision** (owner's rules, 2026-10-01):
+    - Every creature collides with itself using simple shapes (capsules, boxes, spheres) fitted inside
+      its skinned mesh. Never use the visual mesh or the bones as colliders.
+    - All body-part pairs collide except parent–child pairs and pairs that overlap in the default
+      standing pose; joint limits handle those.
+    - Before training, verify that no pair touches in the T-pose, the default stance and a normal arm
+      and leg swing.
+    - Self-contact never ends an episode. If the policy leans on it, add a small self-contact force
+      penalty.
+    - Train a new skill from a warm start (a brain trained without self-collision, or the previous
+      rung) rather than from scratch.
+
 ### Editor and reports
 
 21. **Keep the editor from stalling:** Preferences "No Throttling", Player "Run In Background" on,
@@ -87,7 +101,8 @@ Read `DOCS/README.md` first for the project summary, then `AGENTS.md` for the te
     side by side with the changes annotated, as an HTML file in `DOCS/reports/`.
 23. **30+ minute training -> chart explainer HTML.** Screenshot the three most consequential
     TensorBoard charts, review them, and explain each at three levels (toddler / child / adult) in an
-    HTML file in `DOCS/reports/`.
+    HTML file in `DOCS/reports/`. Compare the run with previous runs and say in simple terms whether
+    it is doing better or worse, and why.
 
 ## Hard constraints
 

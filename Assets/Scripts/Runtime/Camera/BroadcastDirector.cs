@@ -165,6 +165,23 @@ namespace PoDecath.Cam
         [Tooltip("Seconds of the leader's own speed added ahead of the dollies, so the runner sits still "
                + "in frame instead of drifting through it.")]
         public float leadLookahead = 0.3f;
+        [Tooltip("Seconds the followed runner's speed is averaged over before it places a camera. A runner's "
+               + "speed swings by about a metre a second inside every stride; fed in raw it walked the lead "
+               + "dolly back and forth by a foot twice a second (owner, 2026-10-01: \"the camera is shaking\").")]
+        public float speedSmoothing = 0.8f;
+        [Tooltip("How fast the close-up camera closes on its runner's true position, per second. It travels at "
+               + "the runner's averaged speed and corrects only the difference, at this rate, so the sway and "
+               + "surge of a stride stay in the runner and out of the camera.")]
+        public float closeGlide = 2.5f;
+        [Tooltip("Metres a new leader has to be clear by before the closing close-up changes runner. Two "
+               + "runners level on the run-in swap the lead every few frames, and the camera jumped between "
+               + "them each time.")]
+        public float closeStick = 1f;
+        [Tooltip("How far in from the deck edge the close-up camera stands when it has stepped aside. It steps "
+               + "aside, to its runner's own side of the deck, whenever another runner is where it would "
+               + "otherwise be: the grid is staggered, so the runner leading the race is often a few metres "
+               + "behind somebody on the track, and that somebody ran through the lens.")]
+        public float closeDodgeInset = 0.55f;
         [Tooltip("Extra metres the dollies pull back while the framing nudge is active.")]
         public float widenMetres = 6f;
 
@@ -218,6 +235,36 @@ namespace PoDecath.Cam
 
         bool _closing, _closeUp;                         // in the closing stretch; the head-on camera is the close-up
         RaceEvent.Athlete _closeSubject;                 // who the close-up is on, to snap rather than swing on a change
+
+        /// <summary>
+        /// A position followed at its own averaged speed. The camera that rides it moves at the runner's
+        /// mean pace and only the remaining error is corrected, so it neither lags like a plain glide nor
+        /// carries the stride like a raw read.
+        /// </summary>
+        struct Tracker
+        {
+            public float pos, speed;
+            public bool live;
+            float _prev;
+
+            public void Follow(float raw, float rate, float averaging, float lap)
+            {
+                if (!live) { pos = _prev = raw; live = true; return; }
+                float dt = Time.deltaTime;
+                if (dt < 1e-5f) return;
+                speed += (Mathf.Clamp(Wrap(raw - _prev, lap) / dt, -2f, 12f) - speed) * (1f - Mathf.Exp(-dt / Mathf.Max(0.01f, averaging)));
+                _prev = raw;
+                pos += speed * dt + Wrap(raw - pos, lap) * (1f - Mathf.Exp(-rate * dt));
+            }
+
+            static float Wrap(float d, float lap) => lap > 0f ? Mathf.Repeat(d + lap * 0.5f, lap) - lap * 0.5f : d;
+        }
+
+        Tracker _arc;                                    // the followed runner's arc position
+        RaceEvent.Athlete _arcOf;
+        float _closeLane, _closeY, _closeLead;           // the close-up's lane, subject height and lead, glided
+        float _dodge, _dodgeLeft, _dodgeSide = 1f;       // the close-up stepping aside: 0..1, seconds to hold, which edge
+        Tracker _jumpX;                                  // the jumper's place along the runway
 
         /// <summary>True while the gallery is on the leader's body for the closing stretch of the race.</summary>
         public bool InClosingShot => _closing;
@@ -411,6 +458,9 @@ namespace PoDecath.Cam
                 _headTimer = headEvery * 0.8f;
                 _headLeft = 0f;
                 _snapHead = true;
+                _arc = default;
+                _arcOf = null;
+                _dodge = _dodgeLeft = 0f;
             }
 
             RaceEvent.Athlete leader = Leader(out RaceEvent.Athlete faller, out int fallen, out int finished);
@@ -443,6 +493,12 @@ namespace PoDecath.Cam
             // it, a fall is shown on the faller, close up, rather than on the stadium wide, which is 40 m
             // back and 30 m up and showed the roof rather than anybody on it (owner, 2026-09-30).
             _closing = InClosingStretch(leader);
+            // Two runners level on the run-in swap the lead every few frames. The close-up stays with the
+            // one it is on until the other is clear, rather than jumping between them.
+            if (_closing && focus == leader && _closeSubject != null && _closeSubject != leader
+                && !_closeSubject.fell && !_closeSubject.finished && race.Athletes.Contains(_closeSubject)
+                && leader.distance - _closeSubject.distance < closeStick)
+                focus = _closeSubject;
             bool showFaller = !_closing && Pinned == null && _incidentLeft > 0f && faller != null && faller.go != null;
             if (showFaller) focus = faller;
             _closeUp = _closing || showFaller;
@@ -450,14 +506,58 @@ namespace PoDecath.Cam
             if (!_closeUp && _closeSubject != null) _snapDolly = true;   // back to the leader in one move, not a glide
             _closeSubject = _closeUp ? focus : null;
 
+            // Where the followed runner is along the loop, at its own averaged speed. The averaged speed
+            // is what the dollies' lookahead uses; the position is what the close-up rides.
+            float rawS = focus != null ? ArcOf(focus) : _startS;
+            if (focus != _arcOf || _snapDolly) { _arcOf = focus; _arc.live = false; }
+            bool arcSnapped = !_arc.live;
+            // A body on the deck is not travelling, whatever its last second of speed averaged out to. Bled
+            // off over a quarter of a second rather than dropped, so the camera slows instead of stopping dead.
+            if (focus != null && (focus.fell || focus.recovering))
+                _arc.speed = arcSnapped ? 0f : _arc.speed * Mathf.Exp(-Time.deltaTime / 0.25f);
+            _arc.Follow(rawS, closeGlide, speedSmoothing, path.LapLength);
+
             // The aim glides to whoever is on camera rather than teleporting: a lead change swings the
             // aimed cameras through a fraction of a second instead of yanking all of them at once.
             if (focus != null)
             {
                 Vector3 aimTarget = Subject(focus);
-                // A close-up aims straight at the chest: the glide trails a runner by a couple of metres, which
-                // from a camera three metres away put the leader against the edge of the frame on a bend.
-                _aimSmooth = _snapAim || _closeUp ? aimTarget : Vector3.Lerp(_aimSmooth, aimTarget, 1f - Mathf.Exp(-aimGlide * Time.deltaTime));
+                if (_closeUp)
+                {
+                    // A close-up cannot use the glide: it trails a runner by a couple of metres, which from
+                    // a camera three metres away put the leader against the edge of the frame on a bend.
+                    // Nor the raw chest, which carried every stride into the picture. The aim rides the
+                    // same tracked position as the camera, so the two move as one and the runner moves
+                    // inside a steady frame.
+                    // Lane and height change slowly, so they are followed at half the rate of the arc.
+                    float k = arcSnapped ? 1f : 1f - Mathf.Exp(-closeGlide * 0.5f * Time.deltaTime);
+                    float lead = focus.fell || focus.recovering ? closeLead + 1f : closeLead + Mathf.Max(0f, _arc.speed) * leadLookahead;
+                    _closeLane += (path.Lateral(aimTarget, rawS) - _closeLane) * k;
+                    _closeY += (aimTarget.y - _closeY) * k;
+                    _closeLead += (lead - _closeLead) * k;
+                    Vector3 on = path.Position(_arc.pos, _closeLane);
+                    _aimSmooth = new Vector3(on.x, _closeY, on.z);
+
+                    // Anybody on their feet between the runner and where the camera stands, or just past
+                    // it, is about to be in the lens. The camera steps out to the runner's own side of the
+                    // deck, holds there a moment after the way is clear, and eases back.
+                    bool crowded = false;
+                    float lap = path.LapLength;
+                    foreach (RaceEvent.Athlete a in race.Athletes)
+                    {
+                        if (a == null || a == focus || a.fell || a.follower == null) continue;
+                        float ahead = Mathf.Repeat(a.follower.S - _arc.pos + lap * 0.5f, lap) - lap * 0.5f;
+                        if (ahead > 0.8f && ahead < _closeLead + 2f) { crowded = true; break; }
+                    }
+                    _dodgeLeft = crowded ? 1.5f : _dodgeLeft - Time.deltaTime;
+                    if (_dodge <= 0f) _dodgeSide = _closeLane >= 0f ? 1f : -1f;
+                    float aside = _dodgeLeft > 0f ? 1f : 0f;
+                    _dodge = arcSnapped ? aside : Mathf.MoveTowards(_dodge, aside, Time.deltaTime * 0.8f);
+                    // A change of runner moves the camera in one step; it should arrive already aimed.
+                    if (arcSnapped) StartAimed(headOnCam);
+                }
+                else
+                    _aimSmooth = _snapAim ? aimTarget : Vector3.Lerp(_aimSmooth, aimTarget, 1f - Mathf.Exp(-aimGlide * Time.deltaTime));
                 _snapAim = false;
                 _leaderSubject.position = _aimSmooth;
             }
@@ -466,7 +566,6 @@ namespace PoDecath.Cam
             // The dolly's arc position glides the same way, with wrap handling at the lap line: a raw read
             // of the leader's arc would teleport both moving cameras across the loop the moment one
             // runner overtook another.
-            float rawS = focus != null ? ArcOf(focus) : _startS;
             if (_snapDolly) { _focusS = rawS; _snapDolly = false; }
             else
             {
@@ -542,6 +641,7 @@ namespace PoDecath.Cam
                 {
                     Current = want;
                     _shotAge = 0f;
+                    StartAimed(CamFor(want));
                 }
             }
             Apply();
@@ -552,7 +652,7 @@ namespace PoDecath.Cam
                 _narrow = AthletesInFrame() < minInFrame ? _narrow + Time.deltaTime : Mathf.Max(0f, _narrow - Time.deltaTime * 2f);
             else
                 _narrow = 0f;
-            _widen = Mathf.MoveTowards(_widen, _narrow > 1f ? 1f : 0f, Time.deltaTime * 1.5f);
+            _widen = Mathf.MoveTowards(_widen, _narrow > 1f ? 1f : 0f, Time.deltaTime * 0.6f);
         }
 
         /// <summary>
@@ -643,8 +743,10 @@ namespace PoDecath.Cam
             Vector3 up = Vector3.up;
             // Lookahead: the dollies sit a fraction of a second of the leader's own speed further ahead,
             // so the runner holds their place in frame instead of drifting through it.
-            float look = focus != null ? Mathf.Max(0f, focus.speed) * leadLookahead : 0f;
-            float extra = _widen * widenMetres;   // the framing nudge pulling the shot wider
+            float look = focus != null ? Mathf.Max(0f, _arc.speed) * leadLookahead : 0f;
+            // The framing nudge pulling the shot wider: eased in and out over a couple of seconds. It used to
+            // start and stop dead, six metres in two thirds of a second.
+            float extra = Mathf.SmoothStep(0f, 1f, _widen) * widenMetres;
 
             // The grid shot drifts slowly round the field through the countdown instead of sitting
             // locked-off: a still opening on a screen that is otherwise all motion reads as stuck.
@@ -658,14 +760,12 @@ namespace PoDecath.Cam
             Place(bendCam, path.Position(NearestBendApex(leaderS), outward + 3f) + up * bendHeight);
             if (_closeUp && focus != null)
             {
-                // Close up: a few metres in front of the runner, in the runner's own lane, off the raw arc
-                // position. The glided dolly position trails a runner by about a second of their speed, which
-                // at this distance would put the camera inside them.
-                float s = ArcOf(focus);
-                Vector3 at = focus.IsRL ? focus.rig.BasePosition : focus.go != null ? focus.go.transform.position : path.Position(s);
-                float lane = path.Lateral(at, s);
-                float lead = focus.fell || focus.recovering ? closeLead + 1f : closeLead + look;
-                Place(headOnCam, path.Position(s + lead, lane) + up * closeHeight);
+                // Close up: a few metres in front of the runner, in the runner's own lane, off the tracked
+                // arc position (LateUpdate). The glided dolly position trails a runner by about a second
+                // of their speed, which at this distance would put the camera inside them.
+                float edge = _dodgeSide * (path.deckWidth * 0.5f - closeDodgeInset);
+                float lane = Mathf.Lerp(_closeLane, edge, Mathf.SmoothStep(0f, 1f, _dodge));
+                Place(headOnCam, path.Position(_arc.pos + _closeLead, lane) + up * closeHeight);
             }
             else
                 Place(headOnCam, path.Position(leaderS + headOnLead + look, 0f) + up * headOnHeight);
@@ -688,6 +788,17 @@ namespace PoDecath.Cam
         static void Place(CinemachineCamera cam, Vector3 p)
         {
             if (cam != null) cam.transform.position = p;
+        }
+
+        /// <summary>
+        /// Puts a camera on its subject at once. A camera coming on air, or moved in one step, otherwise
+        /// spends its first second panning from wherever it last pointed, through the aim damping that is
+        /// there to steady a shot already on air: measured 2026-10-01, the aim swung up to 7 degrees after
+        /// a cut onto the close-up.
+        /// </summary>
+        static void StartAimed(CinemachineCamera cam)
+        {
+            if (cam != null) cam.PreviousStateIsValid = false;
         }
 
         /// <summary>
@@ -780,8 +891,11 @@ namespace PoDecath.Cam
             _fieldSubject.position = centroid;
             _leaderSubject.position = who != null ? Subject(who) : centroid;
             float x = who != null ? pit.Along(Subject(who)) : pit.runwayStartX;
+            // The trackside dolly keeps pace with the run-up at its averaged speed, not stride by stride.
+            if (who != _arcOf) { _arcOf = who; _jumpX.live = false; }
+            _jumpX.Follow(x, closeGlide, speedSmoothing, 0f);
 
-            PlaceJumpCameras(x);
+            PlaceJumpCameras(_jumpX.pos);
             PlaceHeadCam(who);
             Shot want = ChooseJump(jump, x);
             if (ViewerPick(out Shot pick)) want = pick;
@@ -790,6 +904,7 @@ namespace PoDecath.Cam
             {
                 Current = want;
                 _shotAge = 0f;
+                StartAimed(CamFor(want));
             }
             Apply();
         }

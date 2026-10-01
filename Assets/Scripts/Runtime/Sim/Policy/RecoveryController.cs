@@ -53,8 +53,9 @@ namespace PoDecath.Sim
 
         [Header("Giving up")]
         [Tooltip("Longest a single recovery may take before the athlete is written off as a DNF. Without a "
-               + "limit a body wedged against a barrier keeps the whole race from ever finishing.")]
-        public float giveUpSeconds = 8f;
+               + "limit a body wedged against a barrier keeps the whole race from ever finishing. Of 76 "
+               + "get-ups timed on RooftopRace on 2026-10-01, 84 % were done inside 8 s and 97 % inside 12.")]
+        public float giveUpSeconds = 12f;
         [Tooltip("Recoveries allowed per attempt. A runner that goes down five times is not having a race, "
                + "and each recovery costs it far more time than the fall did.")]
         public int maxRecoveries = 3;
@@ -164,6 +165,18 @@ namespace PoDecath.Sim
             Recoveries++;
             runner.UseRecovery = false;
             Recovered?.Invoke(this);
+        }
+
+        /// <summary>
+        /// Stops a recovery that can no longer lead anywhere, without the give-up announcement: the caller
+        /// is the event, which books the DNF itself.
+        /// </summary>
+        public void Abandon()
+        {
+            if (!Busy) return;
+            Current = State.Spent;
+            runner.UseRecovery = false;
+            runner.enabled = false;
         }
 
         void GiveUp()

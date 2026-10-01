@@ -612,8 +612,11 @@ named so nobody has to rediscover it.
     MuJoCo's own viewer (or Newton's, if that turns out to be the better window). **Not implemented:**
     `train_run.py` is headless — there is no `mujoco.viewer` launch and no rollout playback anywhere in
     `training/`. Adding a viewer/replay path is outstanding work, not an optional nicety.
-11. **Long runs lock the editor out.** A run of 30+ minutes: close the Unity Editor first (save work),
-    tell the owner it is closed, and tell them when training has finished and they can reopen it.
+11. **Long runs lock the editor out.** A run of 30+ minutes: close the Unity Editor first (save work)
+    whenever that speeds training up dramatically, tell the owner it is closed, and tell them when
+    training has finished and they can reopen it. **When the work is RL training only, with nothing
+    changing on the Unity side, close the editor for the run and open it again when training is
+    complete** (owner's rule list as re-issued 2026-10-01).
     `deploy_android.ps1` refuses to build while the editor holds the project lock for the same reason.
     (The owner's note says "unreal editor"; this project is Unity — the rule is about the Unity Editor.)
 12. **Android MuJoCo builds:** compile with https://github.com/joanllobera/mujoco-bin/ . This is
@@ -685,6 +688,26 @@ named so nobody has to rediscover it.
     falls are expected; the fixes are a working get-up (`RecoveryController`) and a contact-trained
     policy, never switching contact off.
 
+    **Self-collision** (owner's rules, 2026-10-01):
+
+    - Every creature collides with itself using simple shapes (capsules, boxes, spheres) fitted inside
+      its skinned mesh. Never use the visual mesh or the bones as colliders.
+    - All body-part pairs collide except parent–child pairs and pairs that overlap in the default
+      standing pose; joint limits handle those.
+    - Before training, verify that no pair touches in the T-pose, the default stance and a normal arm
+      and leg swing.
+    - Self-contact never ends an episode. If the policy leans on it, add a small self-contact force
+      penalty.
+    - Train a new skill from a warm start (a brain trained without self-collision, or the previous
+      rung) rather than from scratch.
+
+    Where `athlete.xml` stood against them that day (`training/tools/self_collision_check.py`):
+    13 capsules, one sphere and two boxes; the eleven excludes are all parent–child; nothing touches in
+    the rest pose, the `stand` keyframe or a stride sweep (smallest gap 32 mm, torso to thigh); an
+    episode ends on a fall or the clock, never on self-contact; there is no self-contact penalty, and
+    nothing yet says one is needed. Legs that cross do collide (29 % of random poses within 15 degrees
+    of the stance have feet, shins or thighs touching), which is the point.
+
 ### Keeping the editor awake
 
 20. **The editor must not stall in the background.** Three settings, all set through the Unity CLI/MCP
@@ -699,7 +722,9 @@ named so nobody has to rediscover it.
     - Pipeline auto-tick: `unity command set_autotick --enable true --persist true`.
 
     State on 2026-09-29: No Throttling and auto-tick already on; Run In Background switched on in the
-    live editor that day.
+    live editor that day. It never reached the file: on 2026-10-01 `ProjectSettings.asset` still read
+    `runInBackground: 0` and play mode stood still whenever the editor lost focus. Set again outside
+    play mode that day and saved (`runInBackground: 1`).
 
 ### Reports for the owner
 
@@ -714,7 +739,8 @@ the file), named `<yyyy-mm-dd>-<topic>.html`, and linked in the reply.
     three most consequential TensorBoard charts (usually episode reward, episode length, and the
     task's key metric — pick whatever actually tells the story of that run), review them, and explain
     each at three levels: **toddler** (one sentence), **child** (a short paragraph), **adult** (what
-    the numbers say and what to do next).
+    the numbers say and what to do next). **Compare the run with previous runs** and say in simple
+    terms whether it is doing better or worse, and why (added 2026-10-01).
 
 ## Phase 1 game direction (2026-09-04)
 

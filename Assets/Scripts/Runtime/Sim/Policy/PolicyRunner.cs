@@ -24,6 +24,10 @@ namespace PoDecath.Sim
                + "alongside the main one and held ready, so switching to it costs nothing at the moment a "
                + "runner goes down — which is the one moment in a race that must not hitch.")]
         public ModelAsset recoveryModel;
+        [Tooltip("Action clip while the get-up policy drives. Its trainer clamps to +-5 (get_up.py, step), "
+               + "not the running tasks' +-3 that PolicyConfig.actionClip carries; clipped to 3 it has 60 % of "
+               + "the joint travel it learned to stand up with, and never stands.")]
+        public float recoveryActionClip = 5f;
         public BackendType backend = BackendType.CPU;
         public VelocityCommandSource commandSource;
         [Tooltip("Layer used by the creature so height-scan raycasts ignore it.")]
@@ -115,8 +119,20 @@ namespace PoDecath.Sim
         /// run-to-target environment for precisely this reason — so the switch is a change of which worker
         /// the same observation vector is handed to. The only difference on this side is the command: the
         /// get-up policy was trained with it zeroed, because a body on the deck has nowhere to be going.
+        ///
+        /// Handing the body back restarts the stride clock, for the reason <see cref="ResetEpisode"/> gives:
+        /// an athlete that has just stood up is making a standing start.
         /// </summary>
-        public bool UseRecovery { get; set; }
+        public bool UseRecovery
+        {
+            get => _useRecovery;
+            set
+            {
+                if (_useRecovery && !value) _gaitPhase = 0f;
+                _useRecovery = value;
+            }
+        }
+        bool _useRecovery;
 
         /// <summary>Which policy is actually driving right now, for the HUD and the telemetry overlay.</summary>
         public string ActiveModelName =>
@@ -274,7 +290,8 @@ namespace PoDecath.Sim
                     output.CompleteAllPendingOperations();
                     ReadOnlySpan<float> span = output.AsReadOnlySpan();
                     int count = Mathf.Min(span.Length, n);
-                    float clip = config.actionClip;
+                    // Each policy is clipped the way its own trainer clipped it; the two differ.
+                    float clip = worker == _recoveryWorker ? recoveryActionClip : config.actionClip;
                     for (int i = 0; i < count; i++)
                     {
                         float a = span[i];
@@ -366,6 +383,11 @@ namespace PoDecath.Sim
             for (int i = 0; i < _targets.Length; i++) _targets[i] = rig.DefaultPosition(i);
             rig.ResetPose(position, rotation);
             _stepCounter = 0;
+            // The stride clock starts every attempt at 0, as it does on a freshly loaded scene. It used to
+            // carry over from wherever the last race left it, and a standing start at an arbitrary phase is
+            // not one these policies hold: measured 2026-10-01 on RooftopRace, four or more of eight runners
+            // were down inside 9 m in five RACE AGAIN starts of six, and in none of three started at 0.
+            _gaitPhase = 0f;
         }
 
         void DisposeWorker()

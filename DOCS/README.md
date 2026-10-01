@@ -221,6 +221,58 @@ own batchmode pass first. New trainer pieces: `--task pack` (`envs/pack.py`), `e
 athlete is keeping up), `--critic-warmup-iters` and `--no-value-clip` (both needed to resume a checkpoint rebuilt from
 an ONNX).
 
+## RACE AGAIN, the get-up and a steadier camera, 2026-10-01
+
+Found by playing `MAIN` -> 100 m with one of each athlete in the editor and reading the race logs; every figure
+below is from `RooftopRace` on the shipped `athlete_track`.
+
+| Item | Where | Result |
+|---|---|---|
+| RACE AGAIN started most of the field badly | `PolicyRunner.ResetEpisode` | the stride clock (`_gaitPhase`) carried over from wherever the last race left it; a fresh scene starts every runner at 0. Before: four or more of eight down inside 9 m in five restarts of six. After: all eight leave the line in step, as on a fresh load |
+| Nobody ever got back up | `PolicyRunner.recoveryActionClip` (5) | the get-up policy was clipped to the running policies' +-3 when its trainer clamps to +-5 (`get_up.py`, step); this is option A of `rl_optimization_log.md` 3.5 and needed no retraining. Before: 0 get-ups in seven races. After: get-ups in every race, and a fresh 100 m finished 8 of 8 (it was 4 of 8) |
+| A runner handed back by the get-up policy makes a standing start | `PolicyRunner.UseRecovery` | the stride clock goes back to 0 on the hand-back, for the same reason as the restart |
+| Camera shake (owner: "the camera is shaking too much") | `BroadcastDirector` (`speedSmoothing`, `closeGlide`, `closeStick`, `StartAimed`), `CameraRig` | the close-up followed the pelvis stride by stride and jumped between two level runners up to twenty times a second. It now rides the runner's averaged speed, stays with its runner until another is 1 m clear, and a camera coming on air starts aimed. Close-up wobble about 15 cm -> 4 cm; lead dolly 12 cm -> 5 cm; the lap and dash scenes' chase camera about 39 cm -> 2.5 cm (it was locked to the pelvis's twist) |
+
+Finishers in the sixteen eight-runner 100 m races run with the first two fixes in, fresh starts and restarts mixed:
+8, 4, 7, 6, 7, 8, 6, 3, 4, 2, 6, 6, 8, 5, 4, 3 of 8, a mean of 5.4. Before them a fresh race was 4 of 8 every time and
+a restart 3 of 8. The spread is wide: a pile-up in the pack still takes several runners out together, and not
+all of them get up inside the eight seconds the get-up is allowed.
+
+Later the same day, four small ones:
+
+| Item | Where | Result |
+|---|---|---|
+| The close-up camera had runners in its lens | `BroadcastDirector.closeDodgeInset` | the grid is staggered, so the runner leading the race is often a few metres behind somebody on the track. The camera now steps out to its runner's side of the deck while anybody is where it would stand. Another runner within 1.2 m of the lens: 6-15 % of close-up frames -> 1-2 % |
+| Give-up time | `RecoveryController.giveUpSeconds` 8 -> 12 | 84 % of 76 timed get-ups were done inside 8 s, 97 % inside 12 |
+| Runners off the deck were given get-ups | `RaceEvent.DetectFall`, `RecoveryController.Abandon` | a runner on the roof under the deck stood up there, was handed back, was "down" again at once by the race's own height test, and spent all three recoveries that way (9 of 62 hand-backs). Below the deck is now out, at once |
+| A check for the self-collision rules | `training/tools/self_collision_check.py` | nothing touches in the rest pose, the stance or a stride (smallest gap 32 mm); crossed legs do collide |
+
+**The lap policy decides the race far more than any of this.** Same build, same day, eight runners over 100 m:
+the shipped `athlete_track` finished **6.3 of 8** on average (19 races) and the alternate `athlete_track_pack`,
+which a launch's coin flip picks half the time, **3.5 of 8** (36 races). The alternate is also much worse at carrying
+on after a get-up: a runner handed back was still on its feet five seconds later 44 % of the time on
+`athlete_track` and 10-17 % on `athlete_track_pack`. Three things tried at that hand-back made no difference on
+either policy (holding the stance half a second first, clearing the last action, limiting how far round the
+target is reported): the running policy has never started from where the get-up leaves a body, and that is a
+training job, not a setting.
+
+Still open:
+
+- **A restart is not yet identical to a fresh start.** Two fresh starts match to four decimal places through the
+  first three seconds. A restart matches for seven runners; the last on the grid (lane 8) has drifted by half a
+  second in and went down at 3.5 m in two restarts of three. Whatever it still carries over is not the pose, the
+  stride clock or the self-collision excludes.
+- **The same four fall on a fresh start** (Grandma, Grandpa, Trump, Zombie Accurig at 47, 57, 60 and 92 m), and in
+  a 400 m the bodies left on the track took out the rest of the field a lap later. The get-up now clears most of
+  them, but the falls themselves are untouched.
+- **The head cam was left alone**: smoothing it further puts the lens inside the runner's head, and it is only on
+  air when the CAM button asks for it.
+- **The editor crashed once leaving play mode**: its cached import of `WhiteHouse.glb` read as corrupt (the same
+  error on `TRUMP_Rigged.glb` drew Trump solid pink earlier in the session). Both were re-imported and it has not
+  recurred.
+- **A frame rate of 2-4 in the editor is the other project's work, not this one's**: a PoOlympic job using every
+  core starves the 200 Hz physics into a catch-up spiral. The same races ran at 57 FPS once it ended.
+
 ## State-flow and framing review, 2026-09-13
 
 Ten defects found by driving the live editor over the MCP bridge rather than by reading code, and fixed
