@@ -247,6 +247,21 @@ Later the same day, four small ones:
 | Runners off the deck were given get-ups | `RaceEvent.DetectFall`, `RecoveryController.Abandon` | a runner on the roof under the deck stood up there, was handed back, was "down" again at once by the race's own height test, and spent all three recoveries that way (9 of 62 hand-backs). Below the deck is now out, at once |
 | A check for the self-collision rules | `training/tools/self_collision_check.py` | nothing touches in the rest pose, the stance or a stride (smallest gap 32 mm); crossed legs do collide |
 
+**Phone build 0.1.13, and the giants.** v0.1.12 went on the Pixel with one runner filling the screen at 19 FPS. Five
+phone skins (Grandma, Grandpa, Nick, Nick Doggy, Zombie Accurig) carry 0.01 on their root node and two a quarter
+turn, and `SkinBinder.Bind` overwrote both; the fit could not make up a factor of a hundred, so on the phone tier
+they were 20-60 m tall. The binder has not changed since 2026-09-12, so every phone build since the phone skins
+went in (09-30) had them, mostly unseen because the camera is usually inside one. `SkinBinder` now keeps the
+model's own root rotation and scale. v0.1.13: 60 FPS (1 % low 60), 232k triangles, 6 of 8 finished.
+**Reproduce a phone-only look in the editor by setting the `podecath.tier` PlayerPref to 0 before Play** (and back
+to 1 afterwards); nothing about the giants needed a phone.
+
+The two phone skins made from FBX files (Nick Doggy, Zombie Accurig) were also bound in the wrong pose, arms out
+sideways on the phone: Blender exports the scan pose, Unity stands the FBX in its T-pose take. Blender could not
+be made to export the take (it folds the mesh), so the pose now comes from Unity:
+`training/tools/lod_pose_from_unity.cs` then `training/tools/glb_set_pose.py`, after any run of
+`athlete_lods.py` that touches an FBX athlete. Both skins now match their full models to the centimetre.
+
 **The lap policy decides the race far more than any of this.** Same build, same day, eight runners over 100 m:
 the shipped `athlete_track` finished **6.3 of 8** on average (19 races) and the alternate `athlete_track_pack`,
 which a launch's coin flip picks half the time, **3.5 of 8** (36 races). The alternate is also much worse at carrying

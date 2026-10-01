@@ -8,6 +8,12 @@ Defaults: out_dir = <src>/Mobile, budget = 8000 triangles per athlete, tex_max =
 Writes <name>_LOD1.glb per source file (glb and fbx both read; the output is always glb, which is what
 glTFast imports and what AthleteRosterBuilder looks for under Mobile/). Log at training/logs/athlete_lods.log.
 
+**An athlete whose source is an FBX needs one more step after this.** Blender exports its phone skin in
+the pose the scan was taken in; Unity shows the FBX in its T-pose take, and SkinBinder binds a skin in
+the pose its prefab stands in. Run training/tools/lod_pose_from_unity.cs in the editor and then
+training/tools/glb_set_pose.py, which make the phone skeleton the full model's. Skipping it is how Nick
+Doggy came to run with his arms out sideways on the phone (2026-10-01). A glb source needs nothing.
+
 Why this exists. The White House got three levels of detail and the athletes got none: Trump is 25.7 MB,
 the zombie and the dog 21.5 MB each, and up to sixteen of them run at once. On the mobile tier they are
 the other half of a triangle budget the race scene is already 3.5x over. AthleteDefinition.skinOverrideMobile
